@@ -644,5 +644,286 @@ class Database:
         self.conn.commit()
         self.current_period_id = period_id
 
+    def import_legacy_database(self, source_db_path: str) -> dict:
+        imported = {"clients": 0, "orders": 0, "order_lines": 0, "services": 0, "periods": 0}
+        src = sqlite3.connect(source_db_path)
+        src.row_factory = sqlite3.Row
+        src_cur = src.cursor()
+
+        def src_table_exists(name: str) -> bool:
+            src_cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?", (name,))
+            return src_cur.fetchone() is not None
+
+        def src_has_column(table: str, column: str) -> bool:
+            src_cur.execute(f"PRAGMA table_info({table})")
+            return any(row["name"] == column for row in src_cur.fetchall())
+
+        try:
+            if src_table_exists("services_catalog"):
+                if src_has_column("services_catalog", "category"):
+                    src_cur.execute(
+                        """
+                        SELECT name, price, COALESCE(NULLIF(TRIM(category), ''), 'Основные') AS category_name
+                        FROM services_catalog
+                        """
+                    )
+                else:
+                    src_cur.execute(
+                        """
+                        SELECT sc.name, sc.price, COALESCE(cat.name, 'Основные') AS category_name
+                        FROM services_catalog sc
+                        LEFT JOIN service_categories cat ON cat.id = sc.category_id
+                        """
+                    )
+                for row in src_cur.fetchall():
+                    self.cursor.execute("SELECT id FROM services_catalog WHERE name = ?", (row["name"],))
+                    existing = self.cursor.fetchone()
+                    category_id = self._ensure_category(row["category_name"])
+                    if existing:
+                        self.cursor.execute(
+                            "UPDATE services_catalog SET price = ?, category_id = ? WHERE id = ?",
+                            (float(row["price"]), category_id, int(existing["id"])),
+                        )
+                    else:
+                        self.cursor.execute(
+                            """
+                            INSERT INTO services_catalog (name, price, category_id, created_date, is_active)
+                            VALUES (?, ?, ?, ?, 1)
+                            """,
+                            (row["name"], float(row["price"]), category_id, self._now()),
+                        )
+                        imported["services"] += 1
+
+            period_id_map: dict[int, int] = {}
+            if src_table_exists("price_periods"):
+                src_cur.execute("SELECT id, name, start_date, is_active, created_date FROM price_periods ORDER BY id")
+                for row in src_cur.fetchall():
+                    self.cursor.execute(
+                        "SELECT id FROM price_periods WHERE name = ? AND start_date = ?",
+                        (row["name"], row["start_date"]),
+                    )
+                    existing = self.cursor.fetchone()
+                    if existing:
+                        new_pid = int(existing["id"])
+                    else:
+                        self.cursor.execute(
+                            """
+                            INSERT INTO price_periods (name, start_date, is_active, created_date)
+                            VALUES (?, ?, ?, ?)
+                            """,
+                            (row["name"], row["start_date"], int(row["is_active"]), row["created_date"]),
+                        )
+                        new_pid = int(self.cursor.lastrowid)
+                        imported["periods"] += 1
+                    period_id_map[int(row["id"])] = new_pid
+
+            if src_table_exists("period_service_prices"):
+                src_cur.execute(
+                    """
+                    SELECT psp.period_id, sc.name AS service_name, psp.price
+                    FROM period_service_prices psp
+                    JOIN services_catalog sc ON sc.id = psp.service_id
+                    """
+                )
+                for row in src_cur.fetchall():
+                    if int(row["period_id"]) not in period_id_map:
+                        continue
+                    self.cursor.execute("SELECT id FROM services_catalog WHERE name = ?", (row["service_name"],))
+                    s = self.cursor.fetchone()
+                    if not s:
+                        continue
+                    new_pid = period_id_map[int(row["period_id"])]
+                    service_id = int(s["id"])
+                    price = float(row["price"])
+                    self.cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO period_service_prices (period_id, service_id, price)
+                        VALUES (?, ?, ?)
+                        """,
+                        (new_pid, service_id, price),
+                    )
+                    self.cursor.execute(
+                        """
+                        INSERT OR IGNORE INTO period_prices (period_id, service_name, price)
+                        VALUES (?, ?, ?)
+                        """,
+                        (new_pid, row["service_name"], price),
+                    )
+            elif src_table_exists("period_prices"):
+                src_cur.execute("SELECT period_id, service_name, price FROM period_prices")
+                for row in src_cur.fetchall():
+                    if int(row["period_id"]) not in period_id_map:
+                        continue
+                    self.cursor.execute("SELECT id FROM services_catalog WHERE name = ?", (row["service_name"],))
+                    s = self.cursor.fetchone()
+                    if not s:
+                        continue
+                    new_pid = period_id_map[int(row["period_id"])]
+                    service_id = int(s["id"])
+                    price = float(row["price"])
+                    self.cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO period_service_prices (period_id, service_id, price)
+                        VALUES (?, ?, ?)
+                        """,
+                        (new_pid, service_id, price),
+                    )
+                    self.cursor.execute(
+                        """
+                        INSERT OR IGNORE INTO period_prices (period_id, service_name, price)
+                        VALUES (?, ?, ?)
+                        """,
+                        (new_pid, row["service_name"], price),
+                    )
+
+            client_id_map: dict[int, int] = {}
+            if src_table_exists("clients"):
+                src_cur.execute("SELECT id, name, phone, created_date FROM clients")
+                for row in src_cur.fetchall():
+                    self.cursor.execute("SELECT id FROM clients WHERE phone = ?", (row["phone"],))
+                    existing = self.cursor.fetchone()
+                    if existing:
+                        new_cid = int(existing["id"])
+                        self.cursor.execute(
+                            "UPDATE clients SET name = COALESCE(NULLIF(TRIM(name), ''), ?) WHERE id = ?",
+                            (row["name"], new_cid),
+                        )
+                    else:
+                        self.cursor.execute(
+                            """
+                            INSERT INTO clients (name, phone, created_date, total_orders, total_spent)
+                            VALUES (?, ?, ?, 0, 0)
+                            """,
+                            (row["name"], row["phone"], row["created_date"]),
+                        )
+                        new_cid = int(self.cursor.lastrowid)
+                        imported["clients"] += 1
+                    client_id_map[int(row["id"])] = new_cid
+
+            order_id_map: dict[int, int] = {}
+            if src_table_exists("orders"):
+                src_cur.execute("SELECT id, order_number, client_id, created_date, status, total_sum, period_id FROM orders")
+                for row in src_cur.fetchall():
+                    self.cursor.execute("SELECT id FROM orders WHERE order_number = ?", (row["order_number"],))
+                    existing = self.cursor.fetchone()
+                    mapped_client = client_id_map.get(int(row["client_id"])) if row["client_id"] else None
+                    mapped_period = period_id_map.get(int(row["period_id"])) if row["period_id"] else None
+                    if existing:
+                        new_oid = int(existing["id"])
+                    else:
+                        self.cursor.execute(
+                            """
+                            INSERT INTO orders (order_number, client_id, created_date, status, total_sum, period_id)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                row["order_number"],
+                                mapped_client,
+                                row["created_date"],
+                                row["status"],
+                                float(row["total_sum"] or 0),
+                                mapped_period,
+                            ),
+                        )
+                        new_oid = int(self.cursor.lastrowid)
+                        imported["orders"] += 1
+                    order_id_map[int(row["id"])] = new_oid
+
+            line_rows = []
+            if src_table_exists("order_service_lines"):
+                src_cur.execute(
+                    """
+                    SELECT order_id, service_id, service_name_snapshot, unit_price, quantity
+                    FROM order_service_lines
+                    """
+                )
+                line_rows = [dict(row) for row in src_cur.fetchall()]
+            elif src_table_exists("order_services"):
+                src_cur.execute("SELECT order_id, service_name, price, quantity FROM order_services")
+                line_rows = [
+                    {
+                        "order_id": row["order_id"],
+                        "service_id": None,
+                        "service_name_snapshot": row["service_name"],
+                        "unit_price": row["price"],
+                        "quantity": row["quantity"],
+                    }
+                    for row in src_cur.fetchall()
+                ]
+
+            for row in line_rows:
+                src_order_id = int(row["order_id"])
+                if src_order_id not in order_id_map:
+                    continue
+                new_order_id = order_id_map[src_order_id]
+                service_name = row["service_name_snapshot"]
+                service_id = None
+                if row["service_id"] is not None and src_table_exists("services_catalog"):
+                    src_cur.execute("SELECT name FROM services_catalog WHERE id = ?", (int(row["service_id"]),))
+                    src_service = src_cur.fetchone()
+                    if src_service:
+                        service_name = src_service["name"]
+                self.cursor.execute("SELECT id FROM services_catalog WHERE name = ?", (service_name,))
+                s = self.cursor.fetchone()
+                if s:
+                    service_id = int(s["id"])
+                unit_price = float(row["unit_price"])
+                quantity = int(row["quantity"])
+
+                self.cursor.execute(
+                    """
+                    SELECT 1 FROM order_service_lines
+                    WHERE order_id = ? AND COALESCE(service_id, -1) = COALESCE(?, -1)
+                      AND service_name_snapshot = ? AND unit_price = ? AND quantity = ?
+                    LIMIT 1
+                    """,
+                    (new_order_id, service_id, service_name, unit_price, quantity),
+                )
+                if self.cursor.fetchone():
+                    continue
+
+                self.cursor.execute(
+                    """
+                    INSERT INTO order_service_lines (order_id, service_id, service_name_snapshot, unit_price, quantity)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (new_order_id, service_id, service_name, unit_price, quantity),
+                )
+                self.cursor.execute(
+                    """
+                    INSERT INTO order_services (order_id, service_name, price, quantity)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (new_order_id, service_name, unit_price, quantity),
+                )
+                imported["order_lines"] += 1
+
+            self.cursor.execute(
+                """
+                UPDATE orders
+                SET total_sum = (
+                    SELECT COALESCE(SUM(unit_price * quantity), 0)
+                    FROM order_service_lines osl
+                    WHERE osl.order_id = orders.id
+                )
+                """
+            )
+            self.cursor.execute(
+                """
+                UPDATE clients
+                SET total_orders = (
+                        SELECT COUNT(*) FROM orders o WHERE o.client_id = clients.id
+                    ),
+                    total_spent = (
+                        SELECT COALESCE(SUM(o.total_sum), 0) FROM orders o WHERE o.client_id = clients.id
+                    )
+                """
+            )
+
+            self.conn.commit()
+            return imported
+        finally:
+            src.close()
+
     def close(self) -> None:
         self.conn.close()

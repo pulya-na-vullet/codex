@@ -177,6 +177,32 @@ class DatabaseBusinessLogicTests(unittest.TestCase):
         finally:
             os.environ.pop("IT_MASTER_DB_PATH", None)
 
+    def test_import_legacy_database_merges_orders(self):
+        source_db = os.path.join(self.temp_dir.name, "source.db")
+        con = sqlite3.connect(source_db)
+        cur = con.cursor()
+        cur.execute("CREATE TABLE clients (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, phone TEXT UNIQUE, created_date TEXT, total_orders INTEGER DEFAULT 0, total_spent REAL DEFAULT 0)")
+        cur.execute("CREATE TABLE services_catalog (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, price REAL, category TEXT, created_date TEXT, is_active INTEGER DEFAULT 1)")
+        cur.execute("CREATE TABLE price_periods (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, start_date TEXT, is_active INTEGER DEFAULT 1, created_date TEXT)")
+        cur.execute("CREATE TABLE period_prices (id INTEGER PRIMARY KEY AUTOINCREMENT, period_id INTEGER, service_name TEXT, price REAL)")
+        cur.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, order_number TEXT UNIQUE, client_id INTEGER, created_date TEXT, status TEXT, total_sum REAL, period_id INTEGER)")
+        cur.execute("CREATE TABLE order_services (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, service_name TEXT, price REAL, quantity INTEGER)")
+        cur.execute("INSERT INTO clients (name, phone, created_date) VALUES ('Старый Клиент', '+79991112233', '01.01.2026 10:00')")
+        cur.execute("INSERT INTO services_catalog (name, price, category, created_date, is_active) VALUES ('Старая Услуга', 1200, 'Ремонт', '01.01.2026 10:00', 1)")
+        cur.execute("INSERT INTO price_periods (name, start_date, is_active, created_date) VALUES ('Старый период', '01.01.2026 10:00', 1, '01.01.2026 10:00')")
+        cur.execute("INSERT INTO period_prices (period_id, service_name, price) VALUES (1, 'Старая Услуга', 1200)")
+        cur.execute("INSERT INTO orders (order_number, client_id, created_date, status, total_sum, period_id) VALUES ('ORD-999999', 1, '01.01.2026 10:00', 'active', 1200, 1)")
+        cur.execute("INSERT INTO order_services (order_id, service_name, price, quantity) VALUES (1, 'Старая Услуга', 1200, 1)")
+        con.commit()
+        con.close()
+
+        result = self.db.import_legacy_database(source_db)
+        self.assertEqual(result["clients"], 1)
+        self.assertEqual(result["orders"], 1)
+        self.assertGreaterEqual(result["order_lines"], 1)
+        orders = self.db.get_all_orders()
+        self.assertTrue(any(o["order_number"] == "ORD-999999" for o in orders))
+
 
 if __name__ == "__main__":
     unittest.main()
