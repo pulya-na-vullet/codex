@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 import unittest
 
@@ -64,6 +65,106 @@ class DatabaseBusinessLogicTests(unittest.TestCase):
         self.assertSetEqual(names, {"Новая услуга 1", "Новая услуга 2"})
         services = self.db.get_active_services()
         self.assertEqual(len(services), 2)
+
+    def test_migrates_legacy_data_to_normalized_tables(self):
+        self.db.close()
+        legacy_db_path = os.path.join(self.temp_dir.name, "legacy.db")
+
+        conn = sqlite3.connect(legacy_db_path)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE services_catalog (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                price REAL NOT NULL,
+                category TEXT NOT NULL DEFAULT 'Основные',
+                created_date TEXT NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE price_periods (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                start_date TEXT NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_date TEXT NOT NULL
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE period_prices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                period_id INTEGER NOT NULL,
+                service_name TEXT NOT NULL,
+                price REAL NOT NULL
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                phone TEXT NOT NULL UNIQUE,
+                created_date TEXT NOT NULL,
+                total_orders INTEGER DEFAULT 0,
+                total_spent REAL DEFAULT 0
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_number TEXT NOT NULL UNIQUE,
+                client_id INTEGER,
+                created_date TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                total_sum REAL NOT NULL DEFAULT 0,
+                period_id INTEGER
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE order_services (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER NOT NULL,
+                service_name TEXT NOT NULL,
+                price REAL NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 1
+            )
+            """
+        )
+
+        cur.execute(
+            "INSERT INTO services_catalog (name, price, category, created_date, is_active) VALUES ('Диагностика', 500, 'Сервис', '01.01.2026 10:00', 1)"
+        )
+        cur.execute(
+            "INSERT INTO price_periods (name, start_date, is_active, created_date) VALUES ('Период 1', '01.01.2026 10:00', 1, '01.01.2026 10:00')"
+        )
+        cur.execute("INSERT INTO period_prices (period_id, service_name, price) VALUES (1, 'Диагностика', 500)")
+        cur.execute("INSERT INTO clients (name, phone, created_date) VALUES ('Клиент', '+79990000099', '01.01.2026 10:00')")
+        cur.execute(
+            "INSERT INTO orders (order_number, client_id, created_date, status, total_sum, period_id) VALUES ('ORD-000001', 1, '01.01.2026 10:00', 'active', 500, 1)"
+        )
+        cur.execute("INSERT INTO order_services (order_id, service_name, price, quantity) VALUES (1, 'Диагностика', 500, 1)")
+        conn.commit()
+        conn.close()
+
+        migrated = Database(legacy_db_path)
+        category_cnt = migrated.cursor.execute("SELECT COUNT(*) FROM service_categories").fetchone()[0]
+        period_cnt = migrated.cursor.execute("SELECT COUNT(*) FROM period_service_prices").fetchone()[0]
+        lines_cnt = migrated.cursor.execute("SELECT COUNT(*) FROM order_service_lines").fetchone()[0]
+        self.assertGreaterEqual(category_cnt, 1)
+        self.assertEqual(period_cnt, 1)
+        self.assertEqual(lines_cnt, 1)
+        migrated.close()
 
 
 if __name__ == "__main__":

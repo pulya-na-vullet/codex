@@ -19,11 +19,29 @@ class Database:
         self.cursor = self.conn.cursor()
         self.current_period_id: int | None = None
         self.create_tables()
+        self.migrate_database()
         self.seed_data()
         self.load_current_period()
 
     def _now(self) -> str:
         return datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    def _table_exists(self, table_name: str) -> bool:
+        self.cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?", (table_name,))
+        return self.cursor.fetchone() is not None
+
+    def _column_exists(self, table_name: str, column_name: str) -> bool:
+        self.cursor.execute(f"PRAGMA table_info({table_name})")
+        return any(row["name"] == column_name for row in self.cursor.fetchall())
+
+    def _ensure_category(self, category_name: str) -> int:
+        category_name = (category_name or "Основные").strip()
+        self.cursor.execute("SELECT id FROM service_categories WHERE name = ?", (category_name,))
+        row = self.cursor.fetchone()
+        if row:
+            return int(row["id"])
+        self.cursor.execute("INSERT INTO service_categories (name) VALUES (?)", (category_name,))
+        return int(self.cursor.lastrowid)
 
     def create_tables(self) -> None:
         self.cursor.execute(
@@ -99,11 +117,81 @@ class Database:
             )
             """
         )
+        self.cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS service_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE
+            )
+            """
+        )
+        self.cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS period_service_prices (
+                period_id INTEGER NOT NULL,
+                service_id INTEGER NOT NULL,
+                price REAL NOT NULL,
+                PRIMARY KEY (period_id, service_id),
+                FOREIGN KEY (period_id) REFERENCES price_periods(id) ON DELETE CASCADE,
+                FOREIGN KEY (service_id) REFERENCES services_catalog(id) ON DELETE CASCADE
+            )
+            """
+        )
+        self.cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS order_service_lines (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER NOT NULL,
+                service_id INTEGER,
+                service_name_snapshot TEXT NOT NULL,
+                unit_price REAL NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+                FOREIGN KEY (service_id) REFERENCES services_catalog(id) ON DELETE SET NULL
+            )
+            """
+        )
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_client_id ON orders(client_id)")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_period_prices_period ON period_prices(period_id)")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_period_service_prices_period ON period_service_prices(period_id)")
+        self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_service_lines_order ON order_service_lines(order_id)")
+        self.conn.commit()
+
+    def migrate_database(self) -> None:
+        if not self._column_exists("services_catalog", "category_id"):
+            self.cursor.execute("ALTER TABLE services_catalog ADD COLUMN category_id INTEGER")
+
+        self.cursor.execute("SELECT DISTINCT COALESCE(NULLIF(TRIM(category), ''), 'Основные') AS category_name FROM services_catalog")
+        for row in self.cursor.fetchall():
+            self._ensure_category(row["category_name"])
+
+        self.cursor.execute("SELECT id, COALESCE(NULLIF(TRIM(category), ''), 'Основные') AS category_name FROM services_catalog")
+        for row in self.cursor.fetchall():
+            category_id = self._ensure_category(row["category_name"])
+            self.cursor.execute("UPDATE services_catalog SET category_id = ? WHERE id = ?", (category_id, row["id"]))
+
+        self.cursor.execute(
+            """
+            INSERT OR IGNORE INTO period_service_prices (period_id, service_id, price)
+            SELECT pp.period_id, sc.id, pp.price
+            FROM period_prices pp
+            JOIN services_catalog sc ON sc.name = pp.service_name
+            """
+        )
+
+        self.cursor.execute(
+            """
+            INSERT OR IGNORE INTO order_service_lines (id, order_id, service_id, service_name_snapshot, unit_price, quantity)
+            SELECT os.id, os.order_id, sc.id, os.service_name, os.price, os.quantity
+            FROM order_services os
+            LEFT JOIN services_catalog sc ON sc.name = os.service_name
+            """
+        )
         self.conn.commit()
 
     def seed_data(self) -> None:
-        self.cursor.execute("SELECT COUNT(*) FROM services_catalog")
-        if self.cursor.fetchone()[0] == 0:
+        self.cursor.execute("SELECT COUNT(*) AS cnt FROM services_catalog")
+        if int(self.cursor.fetchone()["cnt"]) == 0:
             now = self._now()
             services = [
                 ("Диагностика (вычитается из ремонта)", 500, "Диагностика"),
@@ -117,12 +205,17 @@ class Database:
                 ("Выезд мастера + диагностика", 1500, "Выездные услуги"),
                 ("3D-печать (стандартная)", 500, "3D-печать"),
             ]
-            self.cursor.executemany(
-                "INSERT INTO services_catalog (name, price, category, created_date, is_active) VALUES (?, ?, ?, ?, 1)",
-                [(name, price, category, now) for name, price, category in services],
-            )
-        self.cursor.execute("SELECT COUNT(*) FROM price_periods")
-        if self.cursor.fetchone()[0] == 0:
+            for name, price, category_name in services:
+                category_id = self._ensure_category(category_name)
+                self.cursor.execute(
+                    """
+                    INSERT INTO services_catalog (name, price, category, category_id, created_date, is_active)
+                    VALUES (?, ?, ?, ?, ?, 1)
+                    """,
+                    (name, price, category_name, category_id, now),
+                )
+        self.cursor.execute("SELECT COUNT(*) AS cnt FROM price_periods")
+        if int(self.cursor.fetchone()["cnt"]) == 0:
             self.create_period_from_prices(
                 f"Период с {datetime.datetime.now().strftime('%d.%m.%Y')}",
                 [(s["name"], s["price"]) for s in self.get_active_services()],
@@ -132,42 +225,76 @@ class Database:
     def load_current_period(self) -> None:
         self.cursor.execute("SELECT id FROM price_periods WHERE is_active = 1 ORDER BY id DESC LIMIT 1")
         row = self.cursor.fetchone()
-        self.current_period_id = row["id"] if row else None
+        self.current_period_id = int(row["id"]) if row else None
 
     def get_active_services(self) -> list[sqlite3.Row]:
         self.cursor.execute(
-            "SELECT id, name, price, category, is_active FROM services_catalog WHERE is_active = 1 ORDER BY category, name"
+            """
+            SELECT sc.id, sc.name, sc.price, COALESCE(cat.name, sc.category, 'Основные') AS category, sc.is_active
+            FROM services_catalog sc
+            LEFT JOIN service_categories cat ON cat.id = sc.category_id
+            WHERE sc.is_active = 1
+            ORDER BY category, sc.name
+            """
         )
         return self.cursor.fetchall()
 
     def get_all_services(self) -> list[sqlite3.Row]:
-        self.cursor.execute("SELECT id, name, price, category, is_active FROM services_catalog ORDER BY category, name")
+        self.cursor.execute(
+            """
+            SELECT sc.id, sc.name, sc.price, COALESCE(cat.name, sc.category, 'Основные') AS category, sc.is_active
+            FROM services_catalog sc
+            LEFT JOIN service_categories cat ON cat.id = sc.category_id
+            ORDER BY category, sc.name
+            """
+        )
         return self.cursor.fetchall()
 
     def get_categories(self) -> list[str]:
+        self.cursor.execute("SELECT name FROM service_categories ORDER BY name")
+        rows = self.cursor.fetchall()
+        if rows:
+            return [row["name"] for row in rows]
         self.cursor.execute("SELECT DISTINCT category FROM services_catalog ORDER BY category")
         return [row["category"] for row in self.cursor.fetchall()]
 
     def get_service_by_name(self, name: str) -> sqlite3.Row | None:
-        self.cursor.execute("SELECT id, name, price, category FROM services_catalog WHERE name = ?", (name,))
+        self.cursor.execute(
+            """
+            SELECT sc.id, sc.name, sc.price, COALESCE(cat.name, sc.category, 'Основные') AS category
+            FROM services_catalog sc
+            LEFT JOIN service_categories cat ON cat.id = sc.category_id
+            WHERE sc.name = ?
+            """,
+            (name,),
+        )
         return self.cursor.fetchone()
 
     def add_service(self, name: str, price: float, category: str) -> int | None:
         try:
+            category_id = self._ensure_category(category)
             self.cursor.execute(
-                "INSERT INTO services_catalog (name, price, category, created_date, is_active) VALUES (?, ?, ?, ?, 1)",
-                (name, price, category, self._now()),
+                """
+                INSERT INTO services_catalog (name, price, category, category_id, created_date, is_active)
+                VALUES (?, ?, ?, ?, ?, 1)
+                """,
+                (name, price, category, category_id, self._now()),
             )
             self.conn.commit()
-            return self.cursor.lastrowid
+            return int(self.cursor.lastrowid)
         except sqlite3.IntegrityError:
             return None
 
     def update_service(self, service_id: int, name: str, price: float, category: str) -> bool:
         try:
+            category_id = self._ensure_category(category)
             self.cursor.execute(
-                "UPDATE services_catalog SET name = ?, price = ?, category = ? WHERE id = ?",
-                (name, price, category, service_id),
+                """
+                UPDATE services_catalog
+                SET name = ?, price = ?, category = ?, category_id = ?
+                WHERE id = ?
+                """,
+                (name, price, category, category_id, service_id),
             )
             self.conn.commit()
             return self.cursor.rowcount > 0
@@ -207,7 +334,7 @@ class Database:
                 (name, phone, self._now()),
             )
             self.conn.commit()
-            return self.cursor.lastrowid
+            return int(self.cursor.lastrowid)
         except sqlite3.IntegrityError:
             return None
 
@@ -268,9 +395,25 @@ class Database:
             (number, client_id, self._now(), self.current_period_id),
         )
         self.conn.commit()
-        return self.cursor.lastrowid, number
+        return int(self.cursor.lastrowid), number
 
     def get_order_services(self, order_id: int) -> list[sqlite3.Row]:
+        self.cursor.execute(
+            """
+            SELECT osl.id,
+                   COALESCE(osl.service_name_snapshot, sc.name) AS service_name,
+                   osl.unit_price AS price,
+                   osl.quantity
+            FROM order_service_lines osl
+            LEFT JOIN services_catalog sc ON sc.id = osl.service_id
+            WHERE osl.order_id = ?
+            ORDER BY osl.id
+            """,
+            (order_id,),
+        )
+        rows = self.cursor.fetchall()
+        if rows:
+            return rows
         self.cursor.execute(
             "SELECT id, service_name, price, quantity FROM order_services WHERE order_id = ? ORDER BY id",
             (order_id,),
@@ -278,24 +421,47 @@ class Database:
         return self.cursor.fetchall()
 
     def add_service_to_order(self, order_id: int, service_name: str, price: float, quantity: int = 1) -> int:
+        self.cursor.execute("SELECT id FROM services_catalog WHERE name = ?", (service_name,))
+        service_row = self.cursor.fetchone()
+        service_id = int(service_row["id"]) if service_row else None
+        self.cursor.execute(
+            """
+            INSERT INTO order_service_lines (order_id, service_id, service_name_snapshot, unit_price, quantity)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (order_id, service_id, service_name, price, quantity),
+        )
+        line_id = int(self.cursor.lastrowid)
         self.cursor.execute(
             "INSERT INTO order_services (order_id, service_name, price, quantity) VALUES (?, ?, ?, ?)",
             (order_id, service_name, price, quantity),
         )
         self.conn.commit()
-        return self.cursor.lastrowid
+        return line_id
 
     def update_order_service_quantity(self, order_service_id: int, quantity: int) -> None:
-        self.cursor.execute("UPDATE order_services SET quantity = ? WHERE id = ?", (quantity, order_service_id))
+        self.cursor.execute("UPDATE order_service_lines SET quantity = ? WHERE id = ?", (quantity, order_service_id))
+        if self.cursor.rowcount > 0:
+            self.cursor.execute("UPDATE order_services SET quantity = ? WHERE id = ?", (quantity, order_service_id))
         self.conn.commit()
 
     def delete_order_service(self, order_service_id: int) -> None:
+        self.cursor.execute("DELETE FROM order_service_lines WHERE id = ?", (order_service_id,))
         self.cursor.execute("DELETE FROM order_services WHERE id = ?", (order_service_id,))
         self.conn.commit()
 
     def update_order_total(self, order_id: int) -> float:
-        self.cursor.execute("SELECT COALESCE(SUM(price * quantity), 0) AS total FROM order_services WHERE order_id = ?", (order_id,))
+        self.cursor.execute(
+            "SELECT COALESCE(SUM(unit_price * quantity), 0) AS total FROM order_service_lines WHERE order_id = ?",
+            (order_id,),
+        )
         total = float(self.cursor.fetchone()["total"])
+        if total == 0:
+            self.cursor.execute(
+                "SELECT COALESCE(SUM(price * quantity), 0) AS total FROM order_services WHERE order_id = ?",
+                (order_id,),
+            )
+            total = float(self.cursor.fetchone()["total"])
         self.cursor.execute("UPDATE orders SET total_sum = ? WHERE id = ?", (total, order_id))
         self.conn.commit()
         return total
@@ -358,7 +524,23 @@ class Database:
         pid = period_id if period_id is not None else self.current_period_id
         if pid is None:
             return []
-        self.cursor.execute("SELECT service_name, price FROM period_prices WHERE period_id = ? ORDER BY service_name", (pid,))
+        self.cursor.execute(
+            """
+            SELECT sc.name AS service_name, psp.price
+            FROM period_service_prices psp
+            JOIN services_catalog sc ON sc.id = psp.service_id
+            WHERE psp.period_id = ?
+            ORDER BY sc.name
+            """,
+            (pid,),
+        )
+        rows = self.cursor.fetchall()
+        if rows:
+            return [(row["service_name"], float(row["price"])) for row in rows]
+        self.cursor.execute(
+            "SELECT service_name, price FROM period_prices WHERE period_id = ? ORDER BY service_name",
+            (pid,),
+        )
         return [(row["service_name"], float(row["price"])) for row in self.cursor.fetchall()]
 
     def create_period_from_prices(self, period_name: str, prices: list[tuple[str, float]]) -> int:
@@ -368,19 +550,46 @@ class Database:
             "INSERT INTO price_periods (name, start_date, is_active, created_date) VALUES (?, ?, 1, ?)",
             (period_name, now, now),
         )
-        period_id = self.cursor.lastrowid
+        period_id = int(self.cursor.lastrowid)
+
         self.cursor.execute("DELETE FROM period_prices WHERE period_id = ?", (period_id,))
+        self.cursor.execute("DELETE FROM period_service_prices WHERE period_id = ?", (period_id,))
+        self.cursor.execute("UPDATE services_catalog SET is_active = 0")
+
         for service_name, price in prices:
+            service_name = service_name.strip()
+            self.cursor.execute("SELECT id FROM services_catalog WHERE name = ?", (service_name,))
+            service_row = self.cursor.fetchone()
+            if service_row:
+                service_id = int(service_row["id"])
+                self.cursor.execute(
+                    """
+                    UPDATE services_catalog
+                    SET price = ?, is_active = 1, category = COALESCE(NULLIF(category, ''), 'Основные')
+                    WHERE id = ?
+                    """,
+                    (float(price), service_id),
+                )
+            else:
+                category_id = self._ensure_category("Основные")
+                self.cursor.execute(
+                    """
+                    INSERT INTO services_catalog (name, price, category, category_id, created_date, is_active)
+                    VALUES (?, ?, 'Основные', ?, ?, 1)
+                    """,
+                    (service_name, float(price), category_id, now),
+                )
+                service_id = int(self.cursor.lastrowid)
+
+            self.cursor.execute(
+                "INSERT INTO period_service_prices (period_id, service_id, price) VALUES (?, ?, ?)",
+                (period_id, service_id, float(price)),
+            )
             self.cursor.execute(
                 "INSERT INTO period_prices (period_id, service_name, price) VALUES (?, ?, ?)",
                 (period_id, service_name, float(price)),
             )
-        self.cursor.execute("DELETE FROM services_catalog")
-        for service_name, price in prices:
-            self.cursor.execute(
-                "INSERT INTO services_catalog (name, price, category, created_date, is_active) VALUES (?, ?, 'Основные', ?, 1)",
-                (service_name, float(price), now),
-            )
+
         self.conn.commit()
         self.current_period_id = period_id
         return period_id
