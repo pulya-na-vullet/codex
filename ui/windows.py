@@ -1,7 +1,8 @@
 import datetime
+import os
+import platform
 import re
-import tempfile
-import webbrowser
+import subprocess
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
@@ -543,26 +544,103 @@ class OrderEditor(ctk.CTkToplevel):
         if not order:
             return
         services = self.db.get_order_services(self.order_id)
-        rows_html = "".join(
-            f"<tr><td>{s['service_name']}</td><td style='text-align:right'>{s['price']:.2f}</td><td style='text-align:center'>{s['quantity']}</td><td style='text-align:right'>{float(s['price']) * int(s['quantity']):.2f}</td></tr>"
-            for s in services
+        default_name = f"zakaz_{order['order_number']}.pdf"
+        pdf_path = filedialog.asksaveasfilename(
+            title="Сохранить заказ-наряд в PDF",
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+            initialfile=default_name,
         )
-        html = f"""
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Заказ {order['order_number']}</title>
-<style>body{{font-family:Arial,sans-serif;margin:24px;background:#fff;color:#111}}table{{width:100%;border-collapse:collapse}}th,td{{padding:10px;border-bottom:1px solid #ddd}}th{{background:#1f2937;color:#fff}}.total{{text-align:right;margin-top:16px;font-size:18px;font-weight:700}}</style>
-</head><body>
-<h2>Заказ-наряд {order['order_number']}</h2>
-<p>Клиент: {order['client_name']} | {order['phone']}</p>
-<p>Дата: {order['created_date']}</p>
-<table><thead><tr><th>Услуга</th><th style='text-align:right'>Цена</th><th style='text-align:center'>Кол-во</th><th style='text-align:right'>Сумма</th></tr></thead><tbody>{rows_html}</tbody></table>
-<div class="total">ИТОГО: {order['total_sum']:.2f}</div>
-</body></html>
-"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as f:
-            f.write(html)
-            path = f.name
-        webbrowser.open(path)
+        if not pdf_path:
+            return
+
+        try:
+            self._save_order_as_pdf(pdf_path, order, services)
+        except RuntimeError as err:
+            messagebox.showerror("Ошибка", str(err))
+            return
+        except Exception as err:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить PDF:\n{err}")
+            return
+
+        if messagebox.askyesno("Печать", "Отправить в печать на принтере?"):
+            try:
+                self._print_pdf_file(pdf_path)
+                messagebox.showinfo("Печать", f"PDF отправлен на печать:\n{pdf_path}")
+            except Exception as err:
+                messagebox.showerror("Ошибка печати", f"Не удалось отправить PDF на принтер:\n{err}")
+        else:
+            messagebox.showinfo("Готово", f"PDF сохранен:\n{pdf_path}")
+
+    def _save_order_as_pdf(self, pdf_path: str, order, services):
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            from reportlab.pdfgen import canvas
+        except ImportError:
+            raise RuntimeError("Для сохранения в PDF установите библиотеку reportlab: pip install reportlab")
+
+        font_name = "Helvetica"
+        font_candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        ]
+        for candidate in font_candidates:
+            if os.path.exists(candidate):
+                pdfmetrics.registerFont(TTFont("AppFont", candidate))
+                font_name = "AppFont"
+                break
+
+        c = canvas.Canvas(pdf_path, pagesize=A4)
+        width, height = A4
+        y = height - 42
+
+        c.setFont(font_name, 16)
+        c.drawString(40, y, f"Заказ-наряд {order['order_number']}")
+        y -= 24
+        c.setFont(font_name, 11)
+        c.drawString(40, y, f"Клиент: {order['client_name']} | {format_rf_phone(order['phone'])}")
+        y -= 16
+        c.drawString(40, y, f"Дата: {order['created_date']}")
+        y -= 24
+
+        c.setFont(font_name, 10)
+        c.drawString(40, y, "Услуга")
+        c.drawString(320, y, "Цена")
+        c.drawString(400, y, "Кол-во")
+        c.drawString(470, y, "Сумма")
+        y -= 10
+        c.line(40, y, width - 40, y)
+        y -= 14
+
+        for service in services:
+            line_total = float(service["price"]) * int(service["quantity"])
+            if y < 70:
+                c.showPage()
+                c.setFont(font_name, 10)
+                y = height - 50
+            c.drawString(40, y, str(service["service_name"])[:48])
+            c.drawRightString(380, y, f"{float(service['price']):.2f}")
+            c.drawRightString(440, y, str(int(service["quantity"])))
+            c.drawRightString(555, y, f"{line_total:.2f}")
+            y -= 14
+
+        y -= 10
+        c.line(40, y, width - 40, y)
+        y -= 22
+        c.setFont(font_name, 12)
+        c.drawRightString(width - 40, y, f"ИТОГО: {float(order['total_sum']):.2f}")
+        c.save()
+
+    def _print_pdf_file(self, pdf_path: str):
+        system_name = platform.system()
+        if system_name == "Windows":
+            os.startfile(pdf_path, "print")
+            return
+        subprocess.run(["lp", pdf_path], check=True)
 
 
 class PeriodManager(ctk.CTkToplevel):
@@ -788,17 +866,23 @@ class MainApp(ctk.CTk):
     def setup_ui(self):
         header = card(self)
         header.pack(fill="x", padx=14, pady=(14, 8))
-        ctk.CTkLabel(header, text="Управление заказ-нарядами", font=("Arial", 24, "bold")).pack(side="left", padx=12, pady=10)
-        tools = ctk.CTkFrame(header, fg_color="transparent")
-        tools.pack(side="right", padx=8)
-        styled_button(tools, "Периоды цен", self.open_period_manager, "warning", 130).pack(side="left", padx=4, pady=10)
-        styled_button(tools, "Статистика", self.open_statistics, "secondary", 120).pack(side="left", padx=4, pady=10)
-        styled_button(tools, "Услуги", self.open_service_manager, "primary", 110).pack(side="left", padx=4, pady=10)
-        styled_button(tools, "Добавить услугу", self.add_service_quick, "secondary", 150).pack(side="left", padx=4, pady=10)
-        styled_button(tools, "Новый клиент", self.create_client_from_main, "secondary", 140).pack(side="left", padx=4, pady=10)
-        styled_button(tools, "Новый заказ", self.create_order, "success", 130).pack(side="left", padx=4, pady=10)
-        styled_button(tools, "Открыть", self.open_selected_order, "primary", 100).pack(side="left", padx=4, pady=10)
-        styled_button(tools, "Удалить", self.delete_selected_order, "danger", 100).pack(side="left", padx=4, pady=10)
+        title_row = ctk.CTkFrame(header, fg_color="transparent")
+        title_row.pack(fill="x", padx=12, pady=(10, 4))
+        ctk.CTkLabel(title_row, text="Управление заказ-нарядами", font=("Arial", 24, "bold")).pack(side="left")
+
+        tools_row_1 = ctk.CTkFrame(header, fg_color="transparent")
+        tools_row_1.pack(fill="x", padx=12, pady=(0, 4))
+        styled_button(tools_row_1, "Периоды цен", self.open_period_manager, "neutral", 128).pack(side="left", padx=4, pady=2)
+        styled_button(tools_row_1, "Статистика", self.open_statistics, "neutral", 112).pack(side="left", padx=4, pady=2)
+        styled_button(tools_row_1, "Услуги", self.open_service_manager, "neutral", 104).pack(side="left", padx=4, pady=2)
+        styled_button(tools_row_1, "Добавить услугу", self.add_service_quick, "neutral", 142).pack(side="left", padx=4, pady=2)
+        styled_button(tools_row_1, "Новый клиент", self.create_client_from_main, "neutral", 132).pack(side="left", padx=4, pady=2)
+
+        tools_row_2 = ctk.CTkFrame(header, fg_color="transparent")
+        tools_row_2.pack(fill="x", padx=12, pady=(0, 10))
+        styled_button(tools_row_2, "Новый заказ", self.create_order, "success", 130).pack(side="left", padx=4, pady=2)
+        styled_button(tools_row_2, "Открыть", self.open_selected_order, "neutral", 102).pack(side="left", padx=4, pady=2)
+        styled_button(tools_row_2, "Удалить", self.delete_selected_order, "neutral", 102).pack(side="left", padx=4, pady=2)
 
         body = ctk.CTkFrame(self, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=14, pady=(0, 14))

@@ -30,6 +30,8 @@ def button_style(kind: str = "primary") -> dict:
         color, hover = PALETTE["warning"], "#D97706"
     elif kind == "danger":
         color, hover = PALETTE["danger"], "#DC2626"
+    elif kind == "neutral":
+        color, hover = "#1E3A5F", "#24466F"
     elif kind == "ghost":
         color, hover = ("#E2E8F0", "#374151"), ("#CBD5E1", "#4B5563")
     return {"fg_color": color, "hover_color": hover, "corner_radius": 10, "height": 34}
