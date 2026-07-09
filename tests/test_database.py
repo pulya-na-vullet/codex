@@ -208,6 +208,41 @@ class DatabaseBusinessLogicTests(unittest.TestCase):
         orders = self.db.get_all_orders()
         self.assertTrue(any(o["order_number"] == "ORD-999999" for o in orders))
 
+    def test_category_tree_and_redistribution(self):
+        tree = self.db.get_service_catalog_tree(active_only=True)
+        self.assertGreater(len(tree), 0)
+        # Nested categories exist
+        self.db.cursor.execute("SELECT COUNT(*) AS cnt FROM service_categories WHERE parent_id IS NOT NULL")
+        self.assertGreater(int(self.db.cursor.fetchone()["cnt"]), 0)
+        services = self.db.get_active_services()
+        self.assertTrue(any("/" in (s.get("category_path") or "") or " " in (s.get("category_path") or "") for s in services))
+
+    def test_monthly_statistics_and_top_clients(self):
+        client_id = self.db.create_client("Топ Клиент", "+79990000077")
+        order_id, _ = self.db.create_order(client_id)
+        self.db.add_service_to_order(order_id, "Тест услуга", 5000, 1)
+        total = self.db.update_order_total(order_id)
+        self.db.update_client_stats(client_id, total, 1)
+        monthly = self.db.get_monthly_statistics(12)
+        self.assertGreaterEqual(len(monthly), 1)
+        top = self.db.get_top_clients_by_spent(10)
+        self.assertGreaterEqual(len(top), 1)
+        self.assertEqual(top[0]["name"], "Топ Клиент")
+
+    def test_import_clients_skips_existing_phone(self):
+        self.db.create_client("Существующий", "+79990000055", "old")
+        result = self.db.import_clients_from_rows(
+            [
+                ("+7 999 000 00 55", "Дубликат", "skip"),
+                ("89990000066", "Новый", "ok"),
+                ("bad-phone", "Плохой", ""),
+            ]
+        )
+        self.assertEqual(result["imported"], 1)
+        self.assertEqual(result["skipped_existing"], 1)
+        self.assertEqual(result["skipped_invalid"], 1)
+        self.assertIsNotNone(self.db.find_client_by_phone("+79990000066"))
+
 
 if __name__ == "__main__":
     unittest.main()

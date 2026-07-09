@@ -1,38 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="row g-3 mb-4">
-    <div class="col-12 col-md-3">
-        <div class="card h-100">
-            <div class="card-body">
-                <div class="small-muted">Заказы</div>
-                <div class="fs-3 fw-bold">{{ stats.orders }}</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-12 col-md-3">
-        <div class="card h-100">
-            <div class="card-body">
-                <div class="small-muted">Клиенты</div>
-                <div class="fs-3 fw-bold">{{ stats.clients }}</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-12 col-md-3">
-        <div class="card h-100">
-            <div class="card-body">
-                <div class="small-muted">Услуги</div>
-                <div class="fs-3 fw-bold">{{ stats.services }}</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-12 col-md-3">
-        <div class="card h-100">
-            <div class="card-body">
-                <div class="small-muted">Выручка</div>
-                <div class="fs-3 fw-bold">{{ "%.2f"|format(stats.revenue) }}</div>
-            </div>
-        </div>
-    </div>
+<div class="d-flex flex-wrap gap-2 mb-4">
+    <a class="btn btn-success" href="{{ url_for('clients') }}">Добавить нового клиента</a>
+    <a class="btn btn-primary" href="{{ url_for('services') }}">Добавить новую услугу</a>
+    <a class="btn btn-outline-light" href="{{ url_for('statistics') }}">Статистика</a>
+    <a class="btn btn-outline-light" href="{{ url_for('create_order') }}">Новый заказ</a>
 </div>
 
 <div class="card">

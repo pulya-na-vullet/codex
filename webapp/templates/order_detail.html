@@ -94,15 +94,48 @@
         <div class="card">
             <div class="card-body">
                 <h6 class="mb-3">Добавить услугу</h6>
-                <form method="post" action="{{ url_for('add_order_service', order_id=order.id) }}" class="vstack gap-2">
+                <form method="post" action="{{ url_for('add_order_service', order_id=order.id) }}" class="vstack gap-2" id="add-service-form">
                     <div>
-                        <label class="form-label">Услуга</label>
-                        <select class="form-select" name="service_name" required>
-                            <option value="">Выберите услугу</option>
-                            {% for s in catalog %}
-                                <option value="{{ s.name }}">{{ s.name }} — {{ "%.2f"|format(s.price) }}</option>
-                            {% endfor %}
-                        </select>
+                        <label class="form-label">Поиск услуги</label>
+                        <input class="form-control" type="search" id="service-search" placeholder="Начните вводить название...">
+                    </div>
+                    <div>
+                        <label class="form-label">Категории</label>
+                        <div class="service-tree" id="service-tree">
+                            {% macro render_tree(nodes) -%}
+                                <ul class="tree-list">
+                                {% for node in nodes %}
+                                    <li class="tree-node" data-node-name="{{ node.name|lower }}">
+                                        <details open>
+                                            <summary class="tree-category">{{ node.name }}</summary>
+                                            {% if node.children %}
+                                                {{ render_tree(node.children) }}
+                                            {% endif %}
+                                            {% if node.services %}
+                                                <ul class="tree-services">
+                                                {% for s in node.services %}
+                                                    <li class="tree-service"
+                                                        data-service-name="{{ s.name }}"
+                                                        data-search="{{ (s.name ~ ' ' ~ node.name)|lower }}">
+                                                        <label class="service-option">
+                                                            <input type="radio" name="service_name" value="{{ s.name }}" required>
+                                                            <span>{{ s.name }} — {{ "%.2f"|format(s.price) }}</span>
+                                                        </label>
+                                                    </li>
+                                                {% endfor %}
+                                                </ul>
+                                            {% endif %}
+                                        </details>
+                                    </li>
+                                {% endfor %}
+                                </ul>
+                            {%- endmacro %}
+                            {% if catalog_tree %}
+                                {{ render_tree(catalog_tree) }}
+                            {% else %}
+                                <div class="text-secondary">Каталог пуст</div>
+                            {% endif %}
+                        </div>
                     </div>
                     <div>
                         <label class="form-label">Количество</label>
@@ -114,4 +147,60 @@
         </div>
     </div>
 </div>
+<style>
+    .service-tree {
+        max-height: 360px;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: .5rem;
+        padding: .5rem .65rem;
+        background: #0b1220;
+    }
+    .tree-list, .tree-services { list-style: none; margin: 0; padding-left: .85rem; }
+    .tree-list > .tree-node { margin: .2rem 0; }
+    .tree-category {
+        cursor: pointer;
+        color: #bfdbfe;
+        font-weight: 600;
+    }
+    .service-option {
+        display: flex;
+        gap: .5rem;
+        align-items: flex-start;
+        margin: .25rem 0;
+        cursor: pointer;
+        color: var(--text-main);
+    }
+    .service-option input { margin-top: .2rem; }
+    .tree-service.is-hidden, .tree-node.is-hidden { display: none; }
+</style>
+<script>
+(() => {
+    const search = document.getElementById('service-search');
+    const tree = document.getElementById('service-tree');
+    if (!search || !tree) return;
+
+    const filterTree = () => {
+        const q = (search.value || '').trim().toLowerCase();
+        tree.querySelectorAll('.tree-service').forEach((item) => {
+            const hay = item.dataset.search || '';
+            item.classList.toggle('is-hidden', Boolean(q) && !hay.includes(q));
+        });
+        tree.querySelectorAll('.tree-node').forEach((node) => {
+            const visibleService = node.querySelector('.tree-service:not(.is-hidden)');
+            const visibleChild = node.querySelector('.tree-node:not(.is-hidden)');
+            const matchSelf = !q || (node.dataset.nodeName || '').includes(q);
+            const show = Boolean(visibleService || visibleChild || (matchSelf && !q));
+            // Keep parent visible if any descendant service matches
+            const anyService = node.querySelector('.tree-service:not(.is-hidden)');
+            node.classList.toggle('is-hidden', Boolean(q) && !anyService);
+            if (q && anyService) {
+                const details = node.querySelector(':scope > details');
+                if (details) details.open = true;
+            }
+        });
+    };
+    search.addEventListener('input', filterTree);
+})();
+</script>
 {% endblock %}

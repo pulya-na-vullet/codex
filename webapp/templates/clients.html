@@ -4,12 +4,15 @@
     <div class="col-12 col-lg-7">
         <div class="card">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                     <h5 class="mb-0">Клиенты</h5>
-                    <form class="d-flex gap-2" method="get">
-                        <input class="form-control form-control-sm" name="q" value="{{ query }}" placeholder="Поиск">
-                        <button class="btn btn-primary btn-sm" type="submit">Найти</button>
-                    </form>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a class="btn btn-outline-light btn-sm" href="{{ url_for('export_clients_excel') }}">Выгрузить Excel</a>
+                        <form class="d-flex gap-2" method="get">
+                            <input class="form-control form-control-sm" name="q" value="{{ query }}" placeholder="Поиск">
+                            <button class="btn btn-primary btn-sm" type="submit">Найти</button>
+                        </form>
+                    </div>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm align-middle">
@@ -41,7 +44,7 @@
         </div>
     </div>
     <div class="col-12 col-lg-5">
-        <div class="card">
+        <div class="card mb-3">
             <div class="card-body">
                 <h5 class="mb-3">Новый клиент</h5>
                 <form method="post" class="vstack gap-2">
@@ -58,6 +61,16 @@
                         <textarea class="form-control" rows="3" name="comment"></textarea>
                     </div>
                     <button class="btn btn-success mt-2" type="submit">Сохранить клиента</button>
+                </form>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-body">
+                <h5 class="mb-3">Импорт из Excel</h5>
+                <p class="small-muted mb-2">Столбцы: номер телефона / имя / комментарий. Существующие телефоны пропускаются.</p>
+                <form method="post" action="{{ url_for('import_clients_excel') }}" enctype="multipart/form-data" class="vstack gap-2">
+                    <input class="form-control" type="file" name="excel_file" accept=".xlsx,.xlsm,.xltx,.xltm" required>
+                    <button class="btn btn-outline-light" type="submit">Загрузить клиентов</button>
                 </form>
             </div>
         </div>

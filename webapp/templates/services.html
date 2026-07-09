@@ -19,7 +19,7 @@
                         {% for s in services %}
                             <tr>
                                 <td>{{ s.name }}</td>
-                                <td>{{ s.category }}</td>
+                                <td>{{ s.category_path or s.category }}</td>
                                 <td class="text-end">{{ "%.2f"|format(s.price) }}</td>
                                 <td class="text-center">{{ "Активна" if s.is_active else "Отключена" }}</td>
                             </tr>
@@ -46,8 +46,8 @@
                         <input class="form-control" name="price" required>
                     </div>
                     <div>
-                        <label class="form-label">Категория</label>
-                        <input class="form-control" name="category" list="categories-list">
+                        <label class="form-label">Категория (можно с вложенностью через /)</label>
+                        <input class="form-control" name="category" list="categories-list" placeholder="Компьютеры / Ремонт">
                         <datalist id="categories-list">
                             {% for category in categories %}
                                 <option value="{{ category }}"></option>

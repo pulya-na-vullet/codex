@@ -66,14 +66,58 @@ class Database:
             return None
         return f"+{digits}"
 
-    def _ensure_category(self, category_name: str) -> int:
+    def _ensure_category(self, category_name: str, parent_id: int | None = None) -> int:
         normalized = (category_name or "Основные").strip() or "Основные"
-        self.cursor.execute("SELECT id FROM service_categories WHERE name = ?", (normalized,))
+        if parent_id is None:
+            self.cursor.execute(
+                "SELECT id FROM service_categories WHERE name = ? AND parent_id IS NULL",
+                (normalized,),
+            )
+        else:
+            self.cursor.execute(
+                "SELECT id FROM service_categories WHERE name = ? AND parent_id = ?",
+                (normalized, parent_id),
+            )
         row = self.cursor.fetchone()
         if row:
             return int(row["id"])
-        self.cursor.execute("INSERT INTO service_categories (name) VALUES (?)", (normalized,))
+        self.cursor.execute(
+            "INSERT INTO service_categories (name, parent_id) VALUES (?, ?)",
+            (normalized, parent_id),
+        )
         return int(self.cursor.lastrowid)
+
+    def _ensure_category_path(self, path: list[str] | tuple[str, ...] | str) -> int:
+        if isinstance(path, str):
+            parts = [part.strip() for part in path.split("/") if part.strip()]
+        else:
+            parts = [str(part).strip() for part in path if str(part).strip()]
+        if not parts:
+            parts = ["Основные"]
+        parent_id: int | None = None
+        category_id = self._ensure_category(parts[0], parent_id)
+        parent_id = category_id
+        for part in parts[1:]:
+            category_id = self._ensure_category(part, parent_id)
+            parent_id = category_id
+        return category_id
+
+    def _category_path_label(self, category_id: int) -> str:
+        parts: list[str] = []
+        current_id: int | None = category_id
+        seen: set[int] = set()
+        while current_id is not None and current_id not in seen:
+            seen.add(current_id)
+            self.cursor.execute(
+                "SELECT id, name, parent_id FROM service_categories WHERE id = ?",
+                (current_id,),
+            )
+            row = self.cursor.fetchone()
+            if not row:
+                break
+            parts.append(row["name"])
+            current_id = row["parent_id"]
+        return " / ".join(reversed(parts)) if parts else "Основные"
 
     def create_tables(self) -> None:
         self.cursor.execute(
@@ -93,7 +137,9 @@ class Database:
             """
             CREATE TABLE IF NOT EXISTS service_categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE
+                name TEXT NOT NULL,
+                parent_id INTEGER,
+                FOREIGN KEY (parent_id) REFERENCES service_categories(id)
             )
             """
         )
@@ -205,6 +251,45 @@ class Database:
         if not self._column_exists("clients", "client_comment"):
             self.cursor.execute("ALTER TABLE clients ADD COLUMN client_comment TEXT NOT NULL DEFAULT ''")
 
+        if not self._column_exists("service_categories", "parent_id"):
+            self.cursor.execute("ALTER TABLE service_categories ADD COLUMN parent_id INTEGER")
+
+        # Recreate categories table without UNIQUE(name) to allow nested duplicates.
+        self.cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='service_categories'"
+        )
+        cat_sql_row = self.cursor.fetchone()
+        cat_sql = (cat_sql_row["sql"] if cat_sql_row else "") or ""
+        if "UNIQUE" in cat_sql.upper() or "name TEXT NOT NULL UNIQUE" in cat_sql:
+            self.conn.execute("PRAGMA foreign_keys = OFF")
+            self.cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS service_categories_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    parent_id INTEGER,
+                    FOREIGN KEY (parent_id) REFERENCES service_categories_new(id)
+                )
+                """
+            )
+            if self._column_exists("service_categories", "parent_id"):
+                self.cursor.execute(
+                    """
+                    INSERT INTO service_categories_new (id, name, parent_id)
+                    SELECT id, name, parent_id FROM service_categories
+                    """
+                )
+            else:
+                self.cursor.execute(
+                    """
+                    INSERT INTO service_categories_new (id, name, parent_id)
+                    SELECT id, name, NULL FROM service_categories
+                    """
+                )
+            self.cursor.execute("DROP TABLE service_categories")
+            self.cursor.execute("ALTER TABLE service_categories_new RENAME TO service_categories")
+            self.conn.execute("PRAGMA foreign_keys = ON")
+
         has_category_text = self._column_exists("services_catalog", "category")
         has_category_id = self._column_exists("services_catalog", "category_id")
 
@@ -276,25 +361,133 @@ class Database:
             """
         )
         self.conn.commit()
+        self.redistribute_services_into_categories()
+
+    def redistribute_services_into_categories(self) -> None:
+        """Assign known catalog services into a nested category tree."""
+        mapping: dict[str, tuple[str, ...]] = {
+            "Диагностика компьютера/ноутбука (вычитается из ремонта)": ("Диагностика", "Компьютеры и ноутбуки"),
+            "Выездная диагностика (вычитается из ремонта)": ("Диагностика", "Выезд"),
+            "Экспресс-диагностика (15 мин)": ("Диагностика", "Экспресс"),
+            "Сборка ПК под ключ (подбор + установка)": ("Компьютеры", "Сборка и апгрейд"),
+            "Апгрейд ПК (замена компонентов)": ("Компьютеры", "Сборка и апгрейд"),
+            "Ремонт/замена блока питания": ("Компьютеры", "Ремонт"),
+            "Замена материнской платы": ("Компьютеры", "Ремонт"),
+            "Профилактика ПК (чистка + термопаста)": ("Компьютеры", "Чистка и охлаждение"),
+            "Чистка ПК от пыли": ("Компьютеры", "Чистка и охлаждение"),
+            "Замена термопасты (CPU/GPU)": ("Компьютеры", "Чистка и охлаждение"),
+            "Продувка системного блока": ("Компьютеры", "Чистка и охлаждение"),
+            "Ремонт видеокарты": ("Компьютеры", "Ремонт"),
+            "Замена кулера/системы охлаждения": ("Компьютеры", "Чистка и охлаждение"),
+            "Прошивка BIOS/UEFI": ("Компьютеры", "Прошивка"),
+            "Восстановление после скачков напряжения": ("Компьютеры", "Ремонт"),
+            "Чистка ноутбука + замена термопасты": ("Ноутбуки", "Чистка"),
+            "Замена клавиатуры ноутбука": ("Ноутбуки", "Запчасти"),
+            "Замена матрицы (экрана) ноутбука": ("Ноутбуки", "Запчасти"),
+            "Замена разъема питания (гнезда)": ("Ноутбуки", "Ремонт"),
+            "Восстановление после залития (химчистка)": ("Ноутбуки", "Ремонт"),
+            "Ремонт материнской платы (BGA-пайка)": ("Ноутбуки", "Ремонт"),
+            "Ремонт шлейфов и разъемов": ("Ноутбуки", "Ремонт"),
+            "Замена аккумулятора ноутбука": ("Ноутбуки", "Запчасти"),
+            "Ремонт петли экрана": ("Ноутбуки", "Ремонт"),
+            "Замена HDD/SDD/M2": ("Ноутбуки", "Запчасти"),
+            "Сборка/разборка ноутбука": ("Ноутбуки", "Сервис"),
+            "Установка Windows 10/11 + драйверы + активация": ("Программное обеспечение", "ОС"),
+            "Установка пакета программ (Office, браузеры и т.д.)": ("Программное обеспечение", "ПО"),
+            "Удаление вирусов + лечение системы": ("Программное обеспечение", "Безопасность"),
+            "Восстановление данных с HDD/SSD": ("Программное обеспечение", "Данные"),
+            "Настройка Wi-Fi сети и роутера": ("Сети и ПО", "Сети"),
+            "Резервное копирование данных": ("Программное обеспечение", "Данные"),
+            "Оптимизация и настройка системы": ("Программное обеспечение", "Оптимизация"),
+            "Выезд мастера + диагностика": ("Выездные услуги", "Диагностика"),
+            "Установка ОС и ПО с выездом": ("Выездные услуги", "ПО"),
+            "Чистка ПК/ноутбука с выездом": ("Выездные услуги", "Чистка"),
+            "Замена клавиатуры с выездом": ("Выездные услуги", "Ремонт"),
+            "Ремонт материнской платы (BGA-пайка) с выездом": ("Выездные услуги", "Ремонт"),
+            "Настройка локальной сети": ("Сети и ПО", "Сети"),
+            "Установка и настройка 1С": ("Сети и ПО", "ПО"),
+            "3D-печать (до 50г)": ("3D-печать", "Печать"),
+            "3D-печать (50-200г)": ("3D-печать", "Печать"),
+            "3D-печать (срочная, 24ч)": ("3D-печать", "Печать"),
+            "3D-моделирование (простая модель)": ("3D-печать", "Моделирование"),
+            "3D-моделирование (сложная модель)": ("3D-печать", "Моделирование"),
+            "Замена дисплея (без рамки)": ("Телефоны", "Дисплей"),
+            "Замена дисплея (с рамкой)": ("Телефоны", "Дисплей"),
+            "Замена защитного стекла (поклейка)": ("Телефоны", "Аксессуары"),
+            "Замена аккумулятора телефона": ("Телефоны", "Запчасти"),
+            "Ремонт кнопок/шлейфов телефона": ("Телефоны", "Ремонт"),
+            "Восстановление телефона после воды": ("Телефоны", "Ремонт"),
+            "Ремонт блока питания телевизора": ("Телевизоры", "Ремонт"),
+            "Замена LED подсветки телевизора": ("Телевизоры", "Ремонт"),
+            "Замена материнской платы телевизора": ("Телевизоры", "Ремонт"),
+            "Ремонт матрицы телевизора": ("Телевизоры", "Ремонт"),
+            "Ремонт принтера/МФУ": ("Оргтехника", "Принтеры"),
+            "Настройка умного дома": ("Дополнительно", "Умный дом"),
+            "Монтаж техники на стену": ("Дополнительно", "Монтаж"),
+            "Срочность выполнения (до 24ч)": ("Дополнительно", "Срочность"),
+            "Диагностика (вычитается из ремонта)": ("Диагностика", "Компьютеры и ноутбуки"),
+            "Сборка ПК под ключ": ("Компьютеры", "Сборка и апгрейд"),
+            "Апгрейд ПК": ("Компьютеры", "Сборка и апгрейд"),
+            "Чистка ноутбука + термопаста": ("Ноутбуки", "Чистка"),
+            "Замена матрицы ноутбука": ("Ноутбуки", "Запчасти"),
+            "Установка Windows 10/11 + драйверы": ("Программное обеспечение", "ОС"),
+            "Удаление вирусов": ("Программное обеспечение", "Безопасность"),
+            "3D-печать (стандартная)": ("3D-печать", "Печать"),
+        }
+
+        self.cursor.execute("SELECT id, name, category_id FROM services_catalog")
+        services = self.cursor.fetchall()
+        changed = False
+        for service in services:
+            path = mapping.get(service["name"])
+            if not path:
+                name_l = service["name"].lower()
+                if "3d" in name_l:
+                    path = ("3D-печать", "Прочее")
+                elif "телефон" in name_l or "дисплея" in name_l or "стекла" in name_l:
+                    path = ("Телефоны", "Прочее")
+                elif "телевизор" in name_l:
+                    path = ("Телевизоры", "Прочее")
+                elif "выезд" in name_l:
+                    path = ("Выездные услуги", "Прочее")
+                elif "ноутбук" in name_l:
+                    path = ("Ноутбуки", "Прочее")
+                elif any(x in name_l for x in ("windows", "вирус", "1с", "программ", "данн", "оптимиз", "wi-fi", "сети")):
+                    path = ("Программное обеспечение", "Прочее")
+                elif any(x in name_l for x in ("пк", "видеокарт", "bios", "блок питания", "материнск", "термопаст", "системного")):
+                    path = ("Компьютеры", "Прочее")
+                elif "диагност" in name_l:
+                    path = ("Диагностика", "Прочее")
+                else:
+                    path = ("Дополнительно", "Прочее")
+            category_id = self._ensure_category_path(path)
+            if int(service["category_id"]) != category_id:
+                self.cursor.execute(
+                    "UPDATE services_catalog SET category_id = ? WHERE id = ?",
+                    (category_id, service["id"]),
+                )
+                changed = True
+        if changed:
+            self.conn.commit()
 
     def seed_data(self) -> None:
         self.cursor.execute("SELECT COUNT(*) AS cnt FROM services_catalog")
         if int(self.cursor.fetchone()["cnt"]) == 0:
             now = self._now()
             defaults = [
-                ("Диагностика (вычитается из ремонта)", 500, "Диагностика"),
-                ("Сборка ПК под ключ", 3000, "Компьютеры"),
-                ("Апгрейд ПК", 1500, "Компьютеры"),
-                ("Профилактика ПК (чистка + термопаста)", 2000, "Компьютеры"),
-                ("Чистка ноутбука + термопаста", 2500, "Ноутбуки"),
-                ("Замена матрицы ноутбука", 3000, "Ноутбуки"),
-                ("Установка Windows 10/11 + драйверы", 2500, "Программное обеспечение"),
-                ("Удаление вирусов", 2000, "Программное обеспечение"),
-                ("Выезд мастера + диагностика", 1500, "Выездные услуги"),
-                ("3D-печать (стандартная)", 500, "3D-печать"),
+                ("Диагностика (вычитается из ремонта)", 500, ("Диагностика", "Компьютеры и ноутбуки")),
+                ("Сборка ПК под ключ", 3000, ("Компьютеры", "Сборка и апгрейд")),
+                ("Апгрейд ПК", 1500, ("Компьютеры", "Сборка и апгрейд")),
+                ("Профилактика ПК (чистка + термопаста)", 2000, ("Компьютеры", "Чистка и охлаждение")),
+                ("Чистка ноутбука + термопаста", 2500, ("Ноутбуки", "Чистка")),
+                ("Замена матрицы ноутбука", 3000, ("Ноутбуки", "Запчасти")),
+                ("Установка Windows 10/11 + драйверы", 2500, ("Программное обеспечение", "ОС")),
+                ("Удаление вирусов", 2000, ("Программное обеспечение", "Безопасность")),
+                ("Выезд мастера + диагностика", 1500, ("Выездные услуги", "Диагностика")),
+                ("3D-печать (стандартная)", 500, ("3D-печать", "Печать")),
             ]
-            for name, price, category_name in defaults:
-                category_id = self._ensure_category(category_name)
+            for name, price, category_path in defaults:
+                category_id = self._ensure_category_path(category_path)
                 self.cursor.execute(
                     """
                     INSERT INTO services_catalog (name, price, category_id, created_date, is_active)
@@ -319,46 +512,119 @@ class Database:
     def get_active_services(self) -> list[sqlite3.Row]:
         self.cursor.execute(
             """
-            SELECT sc.id, sc.name, sc.price, cat.name AS category, sc.is_active
+            SELECT sc.id, sc.name, sc.price, sc.category_id, cat.name AS category, sc.is_active
             FROM services_catalog sc
             JOIN service_categories cat ON cat.id = sc.category_id
             WHERE sc.is_active = 1
             ORDER BY cat.name, sc.name
             """
         )
-        return self.cursor.fetchall()
+        rows = self.cursor.fetchall()
+        enriched = []
+        for row in rows:
+            item = dict(row)
+            item["category_path"] = self._category_path_label(int(row["category_id"]))
+            enriched.append(item)
+        return enriched
 
     def get_all_services(self) -> list[sqlite3.Row]:
         self.cursor.execute(
             """
-            SELECT sc.id, sc.name, sc.price, cat.name AS category, sc.is_active
+            SELECT sc.id, sc.name, sc.price, sc.category_id, cat.name AS category, sc.is_active
             FROM services_catalog sc
             JOIN service_categories cat ON cat.id = sc.category_id
             ORDER BY cat.name, sc.name
             """
         )
-        return self.cursor.fetchall()
+        rows = self.cursor.fetchall()
+        enriched = []
+        for row in rows:
+            item = dict(row)
+            item["category_path"] = self._category_path_label(int(row["category_id"]))
+            enriched.append(item)
+        return enriched
 
     def get_categories(self) -> list[str]:
-        self.cursor.execute("SELECT name FROM service_categories ORDER BY name")
-        rows = [row["name"] for row in self.cursor.fetchall()]
-        return rows if rows else ["Основные"]
+        self.cursor.execute("SELECT id FROM service_categories ORDER BY name")
+        paths = [self._category_path_label(int(row["id"])) for row in self.cursor.fetchall()]
+        return paths if paths else ["Основные"]
+
+    def get_category_tree(self) -> list[dict]:
+        self.cursor.execute("SELECT id, name, parent_id FROM service_categories ORDER BY name")
+        categories = [dict(row) for row in self.cursor.fetchall()]
+        by_parent: dict[int | None, list[dict]] = {}
+        for cat in categories:
+            by_parent.setdefault(cat["parent_id"], []).append(cat)
+
+        def build(parent_id: int | None) -> list[dict]:
+            nodes = []
+            for cat in by_parent.get(parent_id, []):
+                nodes.append(
+                    {
+                        "id": cat["id"],
+                        "name": cat["name"],
+                        "children": build(cat["id"]),
+                    }
+                )
+            return nodes
+
+        return build(None)
+
+    def get_service_catalog_tree(self, active_only: bool = True) -> list[dict]:
+        if active_only:
+            services = self.get_active_services()
+        else:
+            services = self.get_all_services()
+        services_by_category: dict[int, list[dict]] = {}
+        for service in services:
+            services_by_category.setdefault(int(service["category_id"]), []).append(
+                {
+                    "id": service["id"],
+                    "name": service["name"],
+                    "price": float(service["price"]),
+                    "is_active": int(service["is_active"]),
+                }
+            )
+
+        def attach(nodes: list[dict]) -> list[dict]:
+            result = []
+            for node in nodes:
+                children = attach(node["children"])
+                own_services = services_by_category.get(int(node["id"]), [])
+                if not children and not own_services:
+                    continue
+                result.append(
+                    {
+                        "id": node["id"],
+                        "name": node["name"],
+                        "children": children,
+                        "services": own_services,
+                    }
+                )
+            return result
+
+        return attach(self.get_category_tree())
 
     def get_service_by_name(self, name: str) -> sqlite3.Row | None:
         self.cursor.execute(
             """
-            SELECT sc.id, sc.name, sc.price, cat.name AS category
+            SELECT sc.id, sc.name, sc.price, sc.category_id, cat.name AS category
             FROM services_catalog sc
             JOIN service_categories cat ON cat.id = sc.category_id
             WHERE sc.name = ?
             """,
             (name,),
         )
-        return self.cursor.fetchone()
+        row = self.cursor.fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        item["category_path"] = self._category_path_label(int(row["category_id"]))
+        return item
 
     def add_service(self, name: str, price: float, category: str) -> int | None:
         try:
-            category_id = self._ensure_category(category)
+            category_id = self._ensure_category_path(category)
             self.cursor.execute(
                 """
                 INSERT INTO services_catalog (name, price, category_id, created_date, is_active)
@@ -373,7 +639,7 @@ class Database:
 
     def update_service(self, service_id: int, name: str, price: float, category: str) -> bool:
         try:
-            category_id = self._ensure_category(category)
+            category_id = self._ensure_category_path(category)
             self.cursor.execute(
                 "UPDATE services_catalog SET name = ?, price = ?, category_id = ? WHERE id = ?",
                 (name, price, category_id, service_id),
@@ -617,19 +883,90 @@ class Database:
         avg_check = total_sum / total_orders if total_orders else 0
         return {"total_sum": total_sum, "total_orders": total_orders, "avg_check": avg_check, "orders": orders}
 
+    def get_monthly_statistics(self, months: int = 12) -> list[dict]:
+        self.cursor.execute(
+            """
+            SELECT o.created_date, o.total_sum
+            FROM orders o
+            ORDER BY o.id DESC
+            """
+        )
+        buckets: dict[str, dict] = {}
+        for row in self.cursor.fetchall():
+            created = str(row["created_date"] or "")
+            # expected: dd.mm.yyyy HH:MM
+            try:
+                day, month, year = created.split(" ")[0].split(".")
+                key = f"{year}-{month}"
+                label = f"{month}.{year}"
+            except ValueError:
+                key = "unknown"
+                label = "Без даты"
+            bucket = buckets.setdefault(key, {"key": key, "label": label, "orders": 0, "revenue": 0.0})
+            bucket["orders"] += 1
+            bucket["revenue"] += float(row["total_sum"] or 0)
+
+        sorted_keys = sorted((k for k in buckets if k != "unknown"), reverse=True)
+        result = [buckets[k] for k in sorted_keys[: max(1, months)]]
+        if "unknown" in buckets:
+            result.append(buckets["unknown"])
+        return result
+
     def get_top_clients_by_orders(self, min_orders: int = 2) -> list[sqlite3.Row]:
         self.cursor.execute(
-            "SELECT id, name, phone, total_orders, total_spent FROM clients WHERE total_orders >= ? ORDER BY total_orders DESC",
+            "SELECT id, name, phone, client_comment, total_orders, total_spent FROM clients WHERE total_orders >= ? ORDER BY total_orders DESC",
             (min_orders,),
         )
         return self.cursor.fetchall()
 
     def get_top_clients_by_spent(self, limit: int = 10) -> list[sqlite3.Row]:
         self.cursor.execute(
-            "SELECT id, name, phone, total_orders, total_spent FROM clients WHERE total_orders > 0 ORDER BY total_spent DESC LIMIT ?",
+            """
+            SELECT id, name, phone, client_comment, total_orders, total_spent
+            FROM clients
+            ORDER BY total_spent DESC, total_orders DESC, id DESC
+            LIMIT ?
+            """,
             (limit,),
         )
         return self.cursor.fetchall()
+
+    def export_clients_excel_rows(self) -> list[tuple[str, str, str]]:
+        self.cursor.execute(
+            "SELECT phone, name, client_comment FROM clients ORDER BY id"
+        )
+        return [(row["phone"], row["name"], row["client_comment"] or "") for row in self.cursor.fetchall()]
+
+    def import_clients_from_rows(self, rows: list[tuple[str, str, str]]) -> dict[str, int]:
+        imported = 0
+        skipped_existing = 0
+        skipped_invalid = 0
+        for phone, name, comment in rows:
+            phone = (phone or "").strip()
+            name = (name or "").strip()
+            comment = (comment or "").strip()
+            if not phone and not name:
+                continue
+            if not name or not phone:
+                skipped_invalid += 1
+                continue
+            normalized = self._normalize_phone(phone)
+            if not normalized:
+                skipped_invalid += 1
+                continue
+            if self.find_client_by_phone(normalized):
+                skipped_existing += 1
+                continue
+            client_id = self.create_client(name, normalized, comment)
+            if client_id:
+                imported += 1
+            else:
+                skipped_existing += 1
+        return {
+            "imported": imported,
+            "skipped_existing": skipped_existing,
+            "skipped_invalid": skipped_invalid,
+        }
 
     def get_all_periods(self) -> list[sqlite3.Row]:
         self.cursor.execute("SELECT id, name, start_date, is_active FROM price_periods ORDER BY id DESC")
