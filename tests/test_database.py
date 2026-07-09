@@ -166,6 +166,17 @@ class DatabaseBusinessLogicTests(unittest.TestCase):
         self.assertEqual(lines_cnt, 1)
         migrated.close()
 
+    def test_respects_env_db_path(self):
+        self.db.close()
+        env_db = os.path.join(self.temp_dir.name, "env_orders.db")
+        os.environ["IT_MASTER_DB_PATH"] = env_db
+        try:
+            db = Database("orders.db")
+            self.assertEqual(os.path.abspath(db.db_path), os.path.abspath(env_db))
+            db.close()
+        finally:
+            os.environ.pop("IT_MASTER_DB_PATH", None)
+
 
 if __name__ == "__main__":
     unittest.main()

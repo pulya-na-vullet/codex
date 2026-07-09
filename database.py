@@ -1,6 +1,8 @@
 import datetime
+import os
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -13,7 +15,8 @@ class ServiceItem:
 
 class Database:
     def __init__(self, db_name: str = "orders.db"):
-        self.conn = sqlite3.connect(db_name)
+        self.db_path = self._resolve_db_path(db_name)
+        self.conn = sqlite3.connect(self.db_path)
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.row_factory = sqlite3.Row
         self.cursor = self.conn.cursor()
@@ -25,6 +28,28 @@ class Database:
 
     def _now(self) -> str:
         return datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    def _resolve_db_path(self, db_name: str) -> str:
+        env_db_path = os.getenv("IT_MASTER_DB_PATH")
+        if env_db_path:
+            return str(Path(env_db_path).expanduser().resolve())
+
+        path = Path(db_name).expanduser()
+        if path.is_absolute():
+            return str(path)
+
+        cwd_candidate = (Path.cwd() / path).resolve()
+        repo_candidate = (Path(__file__).resolve().parent / path).resolve()
+
+        if cwd_candidate.exists() and repo_candidate.exists():
+            cwd_size = cwd_candidate.stat().st_size
+            repo_size = repo_candidate.stat().st_size
+            return str(cwd_candidate if cwd_size >= repo_size else repo_candidate)
+        if cwd_candidate.exists():
+            return str(cwd_candidate)
+        if repo_candidate.exists():
+            return str(repo_candidate)
+        return str(repo_candidate)
 
     def _column_exists(self, table_name: str, column_name: str) -> bool:
         self.cursor.execute(f"PRAGMA table_info({table_name})")
