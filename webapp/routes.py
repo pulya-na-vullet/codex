@@ -299,16 +299,20 @@ def register_routes(app: Flask) -> None:
             tmp.flush()
             tmp.close()
             if platform.system() == "Windows":
+                # Do not delete immediately: the spooler needs the file.
                 os.startfile(tmp.name, "print")
             else:
                 subprocess.run(["lp", tmp.name], check=True)
+                try:
+                    os.unlink(tmp.name)
+                except OSError:
+                    pass
             flash("Документ отправлен на принтер", "success")
         except Exception as err:
             flash(f"Не удалось отправить документ на принтер: {err}", "danger")
-        finally:
             try:
                 os.unlink(tmp.name)
-            except Exception:
+            except OSError:
                 pass
         return redirect(url_for("order_detail", order_id=order_id))
 
