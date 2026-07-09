@@ -1,14 +1,28 @@
 from __future__ import annotations
 
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import Flask, flash, g, redirect, render_template, request, url_for
 
+from database import Database
 from webapp.utils import normalize_rf_phone
 
 
 def register_routes(app: Flask) -> None:
+    def get_db() -> Database:
+        db = g.get("db")
+        if db is None:
+            db = Database()
+            g.db = db
+        return db
+
+    @app.teardown_appcontext
+    def close_db(_exception):
+        db = g.pop("db", None)
+        if db is not None:
+            db.close()
+
     @app.route("/")
     def dashboard():
-        db = app.db
+        db = get_db()
         orders = db.get_all_orders()
         clients = db.get_all_clients()
         services = db.get_all_services()
@@ -23,7 +37,7 @@ def register_routes(app: Flask) -> None:
 
     @app.route("/clients", methods=["GET", "POST"])
     def clients():
-        db = app.db
+        db = get_db()
         if request.method == "POST":
             name = request.form.get("name", "").strip()
             phone_raw = request.form.get("phone", "").strip()
@@ -51,7 +65,7 @@ def register_routes(app: Flask) -> None:
 
     @app.route("/services", methods=["GET", "POST"])
     def services():
-        db = app.db
+        db = get_db()
         if request.method == "POST":
             name = request.form.get("name", "").strip()
             price_raw = request.form.get("price", "").strip().replace(",", ".")
@@ -81,11 +95,11 @@ def register_routes(app: Flask) -> None:
 
     @app.route("/orders")
     def orders():
-        return render_template("orders.html", orders=app.db.get_all_orders())
+        return render_template("orders.html", orders=get_db().get_all_orders())
 
     @app.route("/orders/new", methods=["GET", "POST"])
     def create_order():
-        db = app.db
+        db = get_db()
         if request.method == "POST":
             client_id_raw = request.form.get("client_id", "").strip()
             client_id = int(client_id_raw) if client_id_raw else None
@@ -98,7 +112,7 @@ def register_routes(app: Flask) -> None:
 
     @app.route("/orders/<int:order_id>")
     def order_detail(order_id: int):
-        db = app.db
+        db = get_db()
         order = db.get_order_by_id(order_id)
         if not order:
             flash("Заказ не найден", "warning")
@@ -112,7 +126,7 @@ def register_routes(app: Flask) -> None:
 
     @app.route("/orders/<int:order_id>/add-service", methods=["POST"])
     def add_order_service(order_id: int):
-        db = app.db
+        db = get_db()
         order = db.get_order_by_id(order_id)
         if not order:
             flash("Заказ не найден", "warning")
@@ -134,7 +148,7 @@ def register_routes(app: Flask) -> None:
 
     @app.route("/orders/<int:order_id>/line/<int:line_id>/delete", methods=["POST"])
     def delete_order_line(order_id: int, line_id: int):
-        db = app.db
+        db = get_db()
         db.delete_order_service(line_id)
         db.update_order_total(order_id)
         flash("Позиция удалена", "success")
@@ -142,7 +156,7 @@ def register_routes(app: Flask) -> None:
 
     @app.route("/orders/<int:order_id>/delete", methods=["POST"])
     def delete_order(order_id: int):
-        db = app.db
+        db = get_db()
         db.delete_order(order_id)
         flash("Заказ удален", "success")
         return redirect(url_for("orders"))
