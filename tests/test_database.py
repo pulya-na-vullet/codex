@@ -24,10 +24,15 @@ class DatabaseBusinessLogicTests(unittest.TestCase):
         self.assertGreater(len(prices), 0)
 
     def test_create_client_and_enforce_unique_phone(self):
-        first = self.db.create_client("Иван", "+79990000001")
-        second = self.db.create_client("Петр", "+79990000001")
+        first = self.db.create_client("Иван", "+7 999 000 00 01", "первый")
+        second = self.db.create_client("Петр", "8 (999) 000-00-01")
         self.assertIsNotNone(first)
         self.assertIsNone(second)
+        client = self.db.find_client_by_phone("+79990000001")
+        self.assertIsNotNone(client)
+
+    def test_create_client_rejects_invalid_phone(self):
+        self.assertIsNone(self.db.create_client("Неверный", "12345"))
 
     def test_order_total_calculation(self):
         client_id = self.db.create_client("Анна", "+79990000002")

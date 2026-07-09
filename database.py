@@ -1,5 +1,6 @@
 import datetime
 import os
+import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +56,16 @@ class Database:
         self.cursor.execute(f"PRAGMA table_info({table_name})")
         return any(row["name"] == column_name for row in self.cursor.fetchall())
 
+    def _normalize_phone(self, phone: str) -> str | None:
+        digits = re.sub(r"\D", "", phone or "")
+        if len(digits) == 11 and digits[0] in ("7", "8"):
+            digits = "7" + digits[1:]
+        elif len(digits) == 10 and digits[0] == "9":
+            digits = "7" + digits
+        else:
+            return None
+        return f"+{digits}"
+
     def _ensure_category(self, category_name: str) -> int:
         normalized = (category_name or "Основные").strip() or "Основные"
         self.cursor.execute("SELECT id FROM service_categories WHERE name = ?", (normalized,))
@@ -71,6 +82,7 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 phone TEXT NOT NULL UNIQUE,
+                client_comment TEXT NOT NULL DEFAULT '',
                 created_date TEXT NOT NULL,
                 total_orders INTEGER DEFAULT 0,
                 total_spent REAL DEFAULT 0
@@ -180,6 +192,9 @@ class Database:
         self.conn.commit()
 
     def migrate_database(self) -> None:
+        if not self._column_exists("clients", "client_comment"):
+            self.cursor.execute("ALTER TABLE clients ADD COLUMN client_comment TEXT NOT NULL DEFAULT ''")
+
         has_category_text = self._column_exists("services_catalog", "category")
         has_category_id = self._column_exists("services_catalog", "category_id")
 
@@ -367,26 +382,47 @@ class Database:
         self.conn.commit()
 
     def get_all_clients(self) -> list[sqlite3.Row]:
-        self.cursor.execute("SELECT id, name, phone, created_date, total_orders, total_spent FROM clients ORDER BY id DESC")
+        self.cursor.execute(
+            "SELECT id, name, phone, client_comment, created_date, total_orders, total_spent FROM clients ORDER BY id DESC"
+        )
         return self.cursor.fetchall()
 
     def search_clients(self, query: str) -> list[sqlite3.Row]:
         like = f"%{query.strip()}%"
         self.cursor.execute(
-            "SELECT id, name, phone, created_date, total_orders, total_spent FROM clients WHERE name LIKE ? OR phone LIKE ? ORDER BY id DESC",
-            (like, like),
+            """
+            SELECT id, name, phone, client_comment, created_date, total_orders, total_spent
+            FROM clients
+            WHERE name LIKE ? OR phone LIKE ? OR client_comment LIKE ?
+            ORDER BY id DESC
+            """,
+            (like, like, like),
         )
         return self.cursor.fetchall()
 
     def find_client_by_name_phone(self, name: str, phone: str) -> sqlite3.Row | None:
-        self.cursor.execute("SELECT id, name, phone FROM clients WHERE name = ? AND phone = ?", (name, phone))
+        normalized_phone = self._normalize_phone(phone)
+        self.cursor.execute("SELECT id, name, phone FROM clients WHERE name = ? AND phone = ?", (name, normalized_phone or phone))
         return self.cursor.fetchone()
 
-    def create_client(self, name: str, phone: str) -> int | None:
+    def find_client_by_phone(self, phone: str) -> sqlite3.Row | None:
+        normalized_phone = self._normalize_phone(phone)
+        if normalized_phone is None:
+            return None
+        self.cursor.execute("SELECT id, name, phone FROM clients WHERE phone = ?", (normalized_phone,))
+        return self.cursor.fetchone()
+
+    def create_client(self, name: str, phone: str, comment: str = "") -> int | None:
+        normalized_phone = self._normalize_phone(phone)
+        if normalized_phone is None:
+            return None
         try:
             self.cursor.execute(
-                "INSERT INTO clients (name, phone, created_date, total_orders, total_spent) VALUES (?, ?, ?, 0, 0)",
-                (name, phone, self._now()),
+                """
+                INSERT INTO clients (name, phone, client_comment, created_date, total_orders, total_spent)
+                VALUES (?, ?, ?, ?, 0, 0)
+                """,
+                (name, normalized_phone, (comment or "").strip(), self._now()),
             )
             self.conn.commit()
             return int(self.cursor.lastrowid)
@@ -778,23 +814,35 @@ class Database:
 
             client_id_map: dict[int, int] = {}
             if src_table_exists("clients"):
-                src_cur.execute("SELECT id, name, phone, created_date FROM clients")
+                if src_has_column("clients", "client_comment"):
+                    src_cur.execute("SELECT id, name, phone, client_comment, created_date FROM clients")
+                else:
+                    src_cur.execute("SELECT id, name, phone, '' AS client_comment, created_date FROM clients")
                 for row in src_cur.fetchall():
-                    self.cursor.execute("SELECT id FROM clients WHERE phone = ?", (row["phone"],))
+                    normalized_phone = self._normalize_phone(row["phone"]) or row["phone"]
+                    self.cursor.execute("SELECT id FROM clients WHERE phone = ?", (normalized_phone,))
                     existing = self.cursor.fetchone()
                     if existing:
                         new_cid = int(existing["id"])
                         self.cursor.execute(
-                            "UPDATE clients SET name = COALESCE(NULLIF(TRIM(name), ''), ?) WHERE id = ?",
-                            (row["name"], new_cid),
+                            """
+                            UPDATE clients
+                            SET name = COALESCE(NULLIF(TRIM(name), ''), ?),
+                                client_comment = CASE
+                                    WHEN TRIM(COALESCE(client_comment, '')) = '' THEN ?
+                                    ELSE client_comment
+                                END
+                            WHERE id = ?
+                            """,
+                            (row["name"], row["client_comment"], new_cid),
                         )
                     else:
                         self.cursor.execute(
                             """
-                            INSERT INTO clients (name, phone, created_date, total_orders, total_spent)
-                            VALUES (?, ?, ?, 0, 0)
+                            INSERT INTO clients (name, phone, client_comment, created_date, total_orders, total_spent)
+                            VALUES (?, ?, ?, ?, 0, 0)
                             """,
-                            (row["name"], row["phone"], row["created_date"]),
+                            (row["name"], normalized_phone, row["client_comment"], row["created_date"]),
                         )
                         new_cid = int(self.cursor.lastrowid)
                         imported["clients"] += 1
