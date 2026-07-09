@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from io import BytesIO
+import os
+import platform
+import subprocess
+import tempfile
 
 from flask import Flask, flash, g, redirect, render_template, request, send_file, url_for
 
@@ -22,160 +26,14 @@ def register_routes(app: Flask) -> None:
         if db is not None:
             db.close()
 
-    @app.route("/")
-    def dashboard():
-        db = get_db()
-        orders = db.get_all_orders()
-        clients = db.get_all_clients()
-        services = db.get_all_services()
-        stats = {
-            "orders": len(orders),
-            "clients": len(clients),
-            "services": len(services),
-            "revenue": sum(float(o["total_sum"]) for o in orders),
-        }
-        recent_orders = orders[:20]
-        return render_template("dashboard.html", stats=stats, recent_orders=recent_orders)
-
-    @app.route("/clients", methods=["GET", "POST"])
-    def clients():
-        db = get_db()
-        if request.method == "POST":
-            name = request.form.get("name", "").strip()
-            phone_raw = request.form.get("phone", "").strip()
-            comment = request.form.get("comment", "").strip()
-            normalized = normalize_rf_phone(phone_raw)
-            if not name:
-                flash("Введите имя клиента", "warning")
-                return redirect(url_for("clients"))
-            if not normalized:
-                flash("Введите корректный номер РФ (например, +7 962 550 7832)", "warning")
-                return redirect(url_for("clients"))
-            if db.find_client_by_phone(normalized):
-                flash("Клиент с таким телефоном уже существует", "warning")
-                return redirect(url_for("clients"))
-            client_id = db.create_client(name, normalized, comment)
-            if client_id is None:
-                flash("Не удалось создать клиента", "danger")
-            else:
-                flash("Клиент успешно добавлен", "success")
-            return redirect(url_for("clients"))
-
-        query = request.args.get("q", "").strip()
-        rows = db.search_clients(query) if query else db.get_all_clients()
-        return render_template("clients.html", clients=rows, query=query)
-
-    @app.route("/services", methods=["GET", "POST"])
-    def services():
-        db = get_db()
-        if request.method == "POST":
-            name = request.form.get("name", "").strip()
-            price_raw = request.form.get("price", "").strip().replace(",", ".")
-            category = request.form.get("category", "").strip() or "Основные"
-            if not name:
-                flash("Введите название услуги", "warning")
-                return redirect(url_for("services"))
-            try:
-                price = float(price_raw)
-            except ValueError:
-                flash("Введите корректную цену", "warning")
-                return redirect(url_for("services"))
-            if price < 0:
-                flash("Цена не может быть отрицательной", "warning")
-                return redirect(url_for("services"))
-            if db.get_service_by_name(name):
-                flash("Услуга с таким названием уже существует", "warning")
-                return redirect(url_for("services"))
-            service_id = db.add_service(name, price, category)
-            if service_id is None:
-                flash("Не удалось добавить услугу", "danger")
-            else:
-                flash("Услуга добавлена", "success")
-            return redirect(url_for("services"))
-
-        return render_template("services.html", services=db.get_all_services(), categories=db.get_categories())
-
-    @app.route("/orders")
-    def orders():
-        return render_template("orders.html", orders=get_db().get_all_orders())
-
-    @app.route("/orders/new", methods=["GET", "POST"])
-    def create_order():
-        db = get_db()
-        if request.method == "POST":
-            client_id_raw = request.form.get("client_id", "").strip()
-            client_id = int(client_id_raw) if client_id_raw else None
-            order_id, _ = db.create_order(client_id)
-            flash("Заказ создан", "success")
-            return redirect(url_for("order_detail", order_id=order_id))
-
-        clients = db.get_all_clients()
-        return render_template("order_new.html", clients=clients)
-
-    @app.route("/orders/<int:order_id>")
-    def order_detail(order_id: int):
-        db = get_db()
-        order = db.get_order_by_id(order_id)
-        if not order:
-            flash("Заказ не найден", "warning")
-            return redirect(url_for("orders"))
-        return render_template(
-            "order_detail.html",
-            order=order,
-            services=db.get_order_services(order_id),
-            catalog=db.get_active_services(),
-            device_types=["ПК", "Ноутбук", "Телефон", "Телевизор"],
-        )
-
-    @app.route("/orders/<int:order_id>/meta", methods=["POST"])
-    def update_order_meta(order_id: int):
-        db = get_db()
-        order = db.get_order_by_id(order_id)
-        if not order:
-            flash("Заказ не найден", "warning")
-            return redirect(url_for("orders"))
-        device_type = request.form.get("device_type", "ПК").strip()
-        extra_periphery = request.form.get("extra_periphery", "").strip()
-        technical_notes = request.form.get("technical_notes", "").strip()
-        db.update_order_meta(order_id, device_type, extra_periphery, technical_notes)
-        flash("Данные заказ-наряда обновлены", "success")
-        return redirect(url_for("order_detail", order_id=order_id))
-
-    @app.route("/orders/<int:order_id>/print")
-    def print_order(order_id: int):
-        db = get_db()
-        order = db.get_order_by_id(order_id)
-        if not order:
-            flash("Заказ не найден", "warning")
-            return redirect(url_for("orders"))
-        services = db.get_order_services(order_id)
-        return render_template(
-            "print_order.html",
-            order=order,
-            services=services,
-            company_phone="8 918 802 87 67",
-            quality_phone="8 962 550 78 32",
-            company_name="ИТ-М",
-            company_address="р. Татарстан, д.Куюки, ул. 24 квартал дом 1",
-        )
-
-    @app.route("/orders/<int:order_id>/pdf")
-    def order_pdf(order_id: int):
-        db = get_db()
-        order = db.get_order_by_id(order_id)
-        if not order:
-            flash("Заказ не найден", "warning")
-            return redirect(url_for("orders"))
-        services = db.get_order_services(order_id)
-
+    def build_order_pdf(order, services) -> bytes:
         try:
             from reportlab.lib.pagesizes import A4
             from reportlab.pdfbase import pdfmetrics
             from reportlab.pdfbase.ttfonts import TTFont
             from reportlab.pdfgen import canvas
         except ImportError:
-            flash("Для экспорта PDF установите reportlab: pip install reportlab", "warning")
-            return redirect(url_for("order_detail", order_id=order_id))
+            raise RuntimeError("Для экспорта PDF установите reportlab: pip install reportlab")
 
         buffer = BytesIO()
         c = canvas.Canvas(buffer, pagesize=A4)
@@ -183,19 +41,28 @@ def register_routes(app: Flask) -> None:
         y = height - 40
 
         font_name = "Helvetica"
-        try:
-            pdfmetrics.registerFont(TTFont("DejaVu", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
-            font_name = "DejaVu"
-        except Exception:
-            pass
+        font_candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        ]
+        for candidate in font_candidates:
+            if os.path.exists(candidate):
+                try:
+                    pdfmetrics.registerFont(TTFont("AppFont", candidate))
+                    font_name = "AppFont"
+                    break
+                except Exception:
+                    continue
 
         c.setFont(font_name, 16)
         c.drawString(40, y, f"Заказ-наряд {order['order_number']}")
         y -= 22
         c.setFont(font_name, 11)
-        c.drawString(40, y, "Компания: ИТ-М | тел. 8 918 802 87 67")
+        c.drawString(40, y, "ИТ- Мастерская, тел.: +7 (918) 802 - 87 - 67")
         y -= 16
-        c.drawString(40, y, "Контроль качества: 8 962 550 78 32")
+        c.drawString(40, y, "Контроль качества: +7 (962) 550 - 78 - 32")
         y -= 16
         c.drawString(40, y, "Адрес: р. Татарстан, д.Куюки, ул. 24 квартал дом 1")
         y -= 16
@@ -246,7 +113,7 @@ def register_routes(app: Flask) -> None:
         c.drawString(
             40,
             y,
-            "Гарантия не распространяется на ПО и устранение последствий некорректного использования.",
+            "Гарантия не распространяется на программное обеспечение и устранение последствий некорректного использования.",
         )
         y -= 16
         c.drawString(40, y, f"Техническая информация/рекомендации: {order['technical_notes'] or '-'}")
@@ -263,12 +130,187 @@ def register_routes(app: Flask) -> None:
         c.save()
 
         buffer.seek(0)
+        return buffer.getvalue()
+
+    @app.route("/")
+    def dashboard():
+        db = get_db()
+        orders = db.get_all_orders()
+        clients = db.get_all_clients()
+        services = db.get_all_services()
+        stats = {
+            "orders": len(orders),
+            "clients": len(clients),
+            "services": len(services),
+            "revenue": sum(float(o["total_sum"]) for o in orders),
+        }
+        return render_template("dashboard.html", stats=stats, recent_orders=orders[:20])
+
+    @app.route("/clients", methods=["GET", "POST"])
+    def clients():
+        db = get_db()
+        if request.method == "POST":
+            name = request.form.get("name", "").strip()
+            phone_raw = request.form.get("phone", "").strip()
+            comment = request.form.get("comment", "").strip()
+            normalized = normalize_rf_phone(phone_raw)
+            if not name:
+                flash("Введите имя клиента", "warning")
+                return redirect(url_for("clients"))
+            if not normalized:
+                flash("Введите корректный номер РФ (например, +7 962 550 7832)", "warning")
+                return redirect(url_for("clients"))
+            if db.find_client_by_phone(normalized):
+                flash("Клиент с таким телефоном уже существует", "warning")
+                return redirect(url_for("clients"))
+            client_id = db.create_client(name, normalized, comment)
+            flash("Клиент успешно добавлен" if client_id else "Не удалось создать клиента", "success" if client_id else "danger")
+            return redirect(url_for("clients"))
+
+        query = request.args.get("q", "").strip()
+        rows = db.search_clients(query) if query else db.get_all_clients()
+        return render_template("clients.html", clients=rows, query=query)
+
+    @app.route("/services", methods=["GET", "POST"])
+    def services():
+        db = get_db()
+        if request.method == "POST":
+            name = request.form.get("name", "").strip()
+            price_raw = request.form.get("price", "").strip().replace(",", ".")
+            category = request.form.get("category", "").strip() or "Основные"
+            if not name:
+                flash("Введите название услуги", "warning")
+                return redirect(url_for("services"))
+            try:
+                price = float(price_raw)
+            except ValueError:
+                flash("Введите корректную цену", "warning")
+                return redirect(url_for("services"))
+            if price < 0:
+                flash("Цена не может быть отрицательной", "warning")
+                return redirect(url_for("services"))
+            if db.get_service_by_name(name):
+                flash("Услуга с таким названием уже существует", "warning")
+                return redirect(url_for("services"))
+            service_id = db.add_service(name, price, category)
+            flash("Услуга добавлена" if service_id else "Не удалось добавить услугу", "success" if service_id else "danger")
+            return redirect(url_for("services"))
+
+        return render_template("services.html", services=db.get_all_services(), categories=db.get_categories())
+
+    @app.route("/orders")
+    def orders():
+        return render_template("orders.html", orders=get_db().get_all_orders())
+
+    @app.route("/orders/new", methods=["GET", "POST"])
+    def create_order():
+        db = get_db()
+        if request.method == "POST":
+            client_id_raw = request.form.get("client_id", "").strip()
+            client_id = int(client_id_raw) if client_id_raw else None
+            order_id, _ = db.create_order(client_id)
+            flash("Заказ создан", "success")
+            return redirect(url_for("order_detail", order_id=order_id))
+        return render_template("order_new.html", clients=db.get_all_clients())
+
+    @app.route("/orders/<int:order_id>")
+    def order_detail(order_id: int):
+        db = get_db()
+        order = db.get_order_by_id(order_id)
+        if not order:
+            flash("Заказ не найден", "warning")
+            return redirect(url_for("orders"))
+        return render_template(
+            "order_detail.html",
+            order=order,
+            services=db.get_order_services(order_id),
+            catalog=db.get_active_services(),
+            device_types=["ПК", "Ноутбук", "Телефон", "Телевизор"],
+        )
+
+    @app.route("/orders/<int:order_id>/meta", methods=["POST"])
+    def update_order_meta(order_id: int):
+        db = get_db()
+        order = db.get_order_by_id(order_id)
+        if not order:
+            flash("Заказ не найден", "warning")
+            return redirect(url_for("orders"))
+        db.update_order_meta(
+            order_id,
+            request.form.get("device_type", "ПК").strip(),
+            request.form.get("extra_periphery", "").strip(),
+            request.form.get("technical_notes", "").strip(),
+        )
+        flash("Данные заказ-наряда обновлены", "success")
+        return redirect(url_for("order_detail", order_id=order_id))
+
+    @app.route("/orders/<int:order_id>/print")
+    def print_order(order_id: int):
+        db = get_db()
+        order = db.get_order_by_id(order_id)
+        if not order:
+            flash("Заказ не найден", "warning")
+            return redirect(url_for("orders"))
+        return render_template(
+            "print_order.html",
+            order=order,
+            services=db.get_order_services(order_id),
+            company_phone="+7 (918) 802 - 87 - 67",
+            quality_phone="+7 (962) 550 - 78 - 32",
+            company_name="ИТ- Мастерская",
+            company_address="р. Татарстан, д.Куюки, ул. 24 квартал дом 1",
+        )
+
+    @app.route("/orders/<int:order_id>/pdf")
+    def order_pdf(order_id: int):
+        db = get_db()
+        order = db.get_order_by_id(order_id)
+        if not order:
+            flash("Заказ не найден", "warning")
+            return redirect(url_for("orders"))
+        try:
+            pdf_bytes = build_order_pdf(order, db.get_order_services(order_id))
+        except RuntimeError as err:
+            flash(str(err), "warning")
+            return redirect(url_for("order_detail", order_id=order_id))
         return send_file(
-            buffer,
+            BytesIO(pdf_bytes),
             as_attachment=True,
             download_name=f"{order['order_number']}.pdf",
             mimetype="application/pdf",
         )
+
+    @app.route("/orders/<int:order_id>/print-direct", methods=["POST"])
+    def print_order_direct(order_id: int):
+        db = get_db()
+        order = db.get_order_by_id(order_id)
+        if not order:
+            flash("Заказ не найден", "warning")
+            return redirect(url_for("orders"))
+        try:
+            pdf_bytes = build_order_pdf(order, db.get_order_services(order_id))
+        except RuntimeError as err:
+            flash(str(err), "warning")
+            return redirect(url_for("order_detail", order_id=order_id))
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        try:
+            tmp.write(pdf_bytes)
+            tmp.flush()
+            tmp.close()
+            if platform.system() == "Windows":
+                os.startfile(tmp.name, "print")
+            else:
+                subprocess.run(["lp", tmp.name], check=True)
+            flash("Документ отправлен на принтер", "success")
+        except Exception as err:
+            flash(f"Не удалось отправить документ на принтер: {err}", "danger")
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except Exception:
+                pass
+        return redirect(url_for("order_detail", order_id=order_id))
 
     @app.route("/orders/<int:order_id>/add-service", methods=["POST"])
     def add_order_service(order_id: int):
@@ -278,9 +320,8 @@ def register_routes(app: Flask) -> None:
             flash("Заказ не найден", "warning")
             return redirect(url_for("orders"))
         service_name = request.form.get("service_name", "").strip()
-        qty_raw = request.form.get("quantity", "1").strip()
         try:
-            qty = max(1, int(qty_raw))
+            qty = max(1, int(request.form.get("quantity", "1").strip()))
         except ValueError:
             qty = 1
         service = db.get_service_by_name(service_name)
