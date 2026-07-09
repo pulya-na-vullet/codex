@@ -7,6 +7,16 @@
     <a class="btn btn-outline-light" href="{{ url_for('create_order') }}">Новый заказ</a>
 </div>
 
+{% if lan_urls %}
+<div class="alert alert-primary py-2 mb-4" role="alert">
+    Доступ из локальной сети:
+    {% for url in lan_urls %}
+        <strong class="ms-1">{{ url }}</strong>{% if not loop.last %},{% endif %}
+    {% endfor %}
+    <span class="small-muted ms-2">откройте этот адрес на ПК менеджера в той же Wi‑Fi сети</span>
+</div>
+{% endif %}
+
 <div class="card">
     <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-3">

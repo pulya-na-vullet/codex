@@ -177,9 +177,13 @@ def register_routes(app: Flask) -> None:
 
     @app.route("/")
     def dashboard():
+        from webapp.network import get_lan_ipv4_addresses
+
         db = get_db()
         orders = db.get_all_orders()
-        return render_template("dashboard.html", recent_orders=orders[:20])
+        port = int(os.getenv("IT_MASTER_PORT", "8000"))
+        lan_urls = [f"http://{ip}:{port}" for ip in get_lan_ipv4_addresses() if ip != "127.0.0.1"]
+        return render_template("dashboard.html", recent_orders=orders[:20], lan_urls=lan_urls)
 
     @app.route("/statistics")
     def statistics():
