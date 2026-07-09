@@ -8,7 +8,21 @@
                     <div>
                         <h5 class="mb-1">Заказ {{ order.order_number }}</h5>
                         <div class="small-muted">{{ order.created_date }}</div>
-                        <div class="small-muted">Клиент: {{ order.client_name }} {{ order.phone }}</div>
+                        <div class="small-muted">
+                            Клиент:
+                            {% if order.client_id %}
+                                <a href="{{ url_for('client_detail', client_id=order.client_id) }}">{{ order.client_name }}</a>
+                            {% else %}
+                                {{ order.client_name }}
+                            {% endif %}
+                            {{ order.phone }}
+                        </div>
+                        {% if client and client.is_regular %}
+                            <div class="mt-1">
+                                <span class="badge text-bg-success">Постоянный клиент</span>
+                                <span class="small-muted ms-1">скидка {{ "%.0f"|format(order.discount_percent or client.discount_percent) }}%</span>
+                            </div>
+                        {% endif %}
                     </div>
                     <div class="d-flex gap-2 flex-wrap">
                         <form method="post" action="{{ url_for('print_order_direct', order_id=order.id) }}" class="d-inline"
@@ -51,6 +65,18 @@
                         {% endfor %}
                         </tbody>
                         <tfoot>
+                        <tr>
+                            <th colspan="3" class="text-end">Сумма</th>
+                            <th class="text-end">{{ "%.2f"|format(order.subtotal_sum or order.total_sum) }}</th>
+                            <th></th>
+                        </tr>
+                        {% if order.discount_percent and order.discount_percent > 0 %}
+                        <tr>
+                            <th colspan="3" class="text-end">Скидка постоянного клиента</th>
+                            <th class="text-end">{{ "%.0f"|format(order.discount_percent) }}%</th>
+                            <th></th>
+                        </tr>
+                        {% endif %}
                         <tr>
                             <th colspan="3" class="text-end">Итого</th>
                             <th class="text-end">{{ "%.2f"|format(order.total_sum) }}</th>

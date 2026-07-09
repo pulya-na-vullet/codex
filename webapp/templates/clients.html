@@ -28,7 +28,12 @@
                         <tbody>
                         {% for c in clients %}
                             <tr>
-                                <td>{{ c.name }}</td>
+                                <td>
+                                    <a href="{{ url_for('client_detail', client_id=c.id) }}">{{ c.name }}</a>
+                                    {% if c.is_regular %}
+                                        <span class="badge text-bg-success ms-1">постоянный</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ c.phone }}</td>
                                 <td>{{ c.client_comment }}</td>
                                 <td class="text-center">{{ c.total_orders }}</td>

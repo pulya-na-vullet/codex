@@ -63,14 +63,19 @@
 <nav class="navbar navbar-expand-lg border-bottom mb-4">
     <div class="container-fluid">
         <a class="navbar-brand text-light fw-bold" href="{{ url_for('dashboard') }}">ИТ-мастерская</a>
-        <div class="navbar-nav flex-row gap-2">
+        {% if session.get('authenticated') %}
+        <div class="navbar-nav flex-row gap-2 align-items-center">
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('dashboard') }}">Главная</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('orders') }}">Заказы</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('clients') }}">Клиенты</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('services') }}">Услуги</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('statistics') }}">Статистика</a>
             <a class="btn btn-success btn-sm" href="{{ url_for('create_order') }}">Новый заказ</a>
+            <form method="post" action="{{ url_for('logout') }}" class="d-inline">
+                <button class="btn btn-outline-warning btn-sm" type="submit">Выйти</button>
+            </form>
         </div>
+        {% endif %}
     </div>
 </nav>
 

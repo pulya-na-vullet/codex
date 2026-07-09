@@ -9,7 +9,9 @@
                 <select class="form-select" name="client_id">
                     <option value="">Без клиента</option>
                     {% for c in clients %}
-                        <option value="{{ c.id }}">{{ c.name }} — {{ c.phone }}</option>
+                        <option value="{{ c.id }}" {% if selected_client_id == c.id %}selected{% endif %}>
+                            {{ c.name }} — {{ c.phone }}{% if c.is_regular %} (постоянный, -{{ "%.0f"|format(c.discount_percent) }}%){% endif %}
+                        </option>
                     {% endfor %}
                 </select>
             </div>

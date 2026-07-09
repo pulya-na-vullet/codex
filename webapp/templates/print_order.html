@@ -59,7 +59,13 @@
         {% endfor %}
         </tbody>
     </table>
-    <div class="total">ИТОГО: {{ "%.2f"|format(order.total_sum) }}</div>
+    <div class="total">
+        {% if order.discount_percent and order.discount_percent > 0 %}
+            <div>Сумма: {{ "%.2f"|format(order.subtotal_sum or order.total_sum) }}</div>
+            <div>Скидка постоянного клиента: {{ "%.0f"|format(order.discount_percent) }}%</div>
+        {% endif %}
+        ИТОГО: {{ "%.2f"|format(order.total_sum) }}
+    </div>
     <div style="margin-top: 16px; font-size: 14px;">
         <p><strong>Гарантия:</strong> На выполненные работы и установленные новые детали предоставляется гарантия <strong>3</strong> месяца. Гарантия не распространяется на программное обеспечение и устранение последствий некорректного использования.</p>
         <p><strong>Техническая информация/рекомендации:</strong> {{ order.technical_notes or "-" }}</p>

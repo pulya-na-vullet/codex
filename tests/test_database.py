@@ -50,15 +50,42 @@ class DatabaseBusinessLogicTests(unittest.TestCase):
         client_id = self.db.create_client("Олег", "+79990000003")
         order_id, _ = self.db.create_order(client_id)
         self.db.add_service_to_order(order_id, "Услуга A", 1000, 1)
-        total = self.db.update_order_total(order_id)
-        self.db.update_client_stats(client_id, total, 1)
-        client_before = self.db.find_client_by_name_phone("Олег", "+79990000003")
-        self.assertEqual(int(client_before["id"]), client_id)
+        self.db.update_order_total(order_id)
+        client_before = self.db.get_client_by_id(client_id)
+        self.assertEqual(int(client_before["total_orders"]), 1)
+        self.assertEqual(float(client_before["total_spent"]), 1000.0)
         self.db.delete_order(order_id)
-        clients = self.db.search_clients("Олег")
-        self.assertEqual(len(clients), 1)
-        self.assertEqual(int(clients[0]["total_orders"]), 0)
-        self.assertEqual(float(clients[0]["total_spent"]), 0.0)
+        client_after = self.db.get_client_by_id(client_id)
+        self.assertEqual(int(client_after["total_orders"]), 0)
+        self.assertEqual(float(client_after["total_spent"]), 0.0)
+
+    def test_loyalty_discount_tiers(self):
+        self.assertEqual(self.db.get_loyalty_discount_percent(3), 0.0)
+        self.assertEqual(self.db.get_loyalty_discount_percent(4), 5.0)
+        self.assertEqual(self.db.get_loyalty_discount_percent(7), 7.0)
+        self.assertEqual(self.db.get_loyalty_discount_percent(10), 10.0)
+
+        client_id = self.db.create_client("Постоянный", "+79990000088")
+        # Create 4 orders so client becomes regular ( > 3 )
+        last_order_id = None
+        for _ in range(4):
+            last_order_id, _ = self.db.create_order(client_id)
+            self.db.add_service_to_order(last_order_id, "Услуга", 1000, 1)
+            self.db.update_order_total(last_order_id)
+
+        client = self.db.get_client_by_id(client_id)
+        self.assertTrue(client["is_regular"])
+        self.assertEqual(client["discount_percent"], 5.0)
+        self.assertEqual(int(client["total_orders"]), 4)
+        self.assertEqual(float(client["total_spent"]), 3950.0)  # 3*1000 + 950 with 5% on 4th order
+
+        order = self.db.get_order_by_id(last_order_id)
+        self.assertEqual(float(order["discount_percent"]), 5.0)
+        self.assertEqual(float(order["subtotal_sum"]), 1000.0)
+        self.assertEqual(float(order["total_sum"]), 950.0)
+
+        history = self.db.get_client_orders(client_id)
+        self.assertEqual(len(history), 4)
 
     def test_create_period_from_prices_replaces_catalog(self):
         new_prices = [("Новая услуга 1", 1111.0), ("Новая услуга 2", 2222.0)]
@@ -221,8 +248,7 @@ class DatabaseBusinessLogicTests(unittest.TestCase):
         client_id = self.db.create_client("Топ Клиент", "+79990000077")
         order_id, _ = self.db.create_order(client_id)
         self.db.add_service_to_order(order_id, "Тест услуга", 5000, 1)
-        total = self.db.update_order_total(order_id)
-        self.db.update_client_stats(client_id, total, 1)
+        self.db.update_order_total(order_id)
         monthly = self.db.get_monthly_statistics(12)
         self.assertGreaterEqual(len(monthly), 1)
         top = self.db.get_top_clients_by_spent(10)

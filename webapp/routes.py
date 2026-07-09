@@ -6,9 +6,10 @@ import platform
 import subprocess
 import tempfile
 
-from flask import Flask, flash, g, redirect, render_template, request, send_file, url_for
+from flask import Flask, flash, g, redirect, render_template, request, send_file, session, url_for
 
 from database import Database
+from webapp.auth import attempt_login, logout_user
 from webapp.utils import normalize_rf_phone
 
 
@@ -144,6 +145,11 @@ def register_routes(app: Flask) -> None:
         c.line(40, y, width - 40, y)
         y -= 20
         c.setFont(font_name, 12)
+        if float(order.get("discount_percent") or 0) > 0:
+            c.drawRightString(width - 40, y, f"Сумма: {float(order.get('subtotal_sum') or order['total_sum']):.2f}")
+            y -= 16
+            c.drawRightString(width - 40, y, f"Скидка постоянного клиента: {float(order['discount_percent']):.0f}%")
+            y -= 16
         c.drawRightString(width - 40, y, f"ИТОГО: {float(order['total_sum']):.2f}")
         y -= 24
         c.setFont(font_name, 10)
@@ -174,6 +180,26 @@ def register_routes(app: Flask) -> None:
 
         buffer.seek(0)
         return buffer.getvalue()
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        next_url = request.values.get("next") or url_for("dashboard")
+        if session.get("authenticated"):
+            return redirect(next_url)
+        if request.method == "POST":
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "")
+            if attempt_login(app, username, password):
+                flash("Вход выполнен", "success")
+                return redirect(next_url)
+            flash("Неверный логин или пароль", "danger")
+        return render_template("login.html", next_url=next_url, title="Вход")
+
+    @app.route("/logout", methods=["POST", "GET"])
+    def logout():
+        logout_user()
+        flash("Вы вышли из системы", "success")
+        return redirect(url_for("login"))
 
     @app.route("/")
     def dashboard():
@@ -227,6 +253,21 @@ def register_routes(app: Flask) -> None:
         query = request.args.get("q", "").strip()
         rows = db.search_clients(query) if query else db.get_all_clients()
         return render_template("clients.html", clients=rows, query=query)
+
+    @app.route("/clients/<int:client_id>")
+    def client_detail(client_id: int):
+        db = get_db()
+        client = db.get_client_by_id(client_id)
+        if not client:
+            flash("Клиент не найден", "warning")
+            return redirect(url_for("clients"))
+        db.recalculate_client_stats(client_id)
+        client = db.get_client_by_id(client_id)
+        return render_template(
+            "client_detail.html",
+            client=client,
+            orders=db.get_client_orders(client_id),
+        )
 
     @app.route("/clients/export.xlsx")
     def export_clients_excel():
@@ -312,7 +353,12 @@ def register_routes(app: Flask) -> None:
             order_id, _ = db.create_order(client_id)
             flash("Заказ создан", "success")
             return redirect(url_for("order_detail", order_id=order_id))
-        return render_template("order_new.html", clients=db.get_all_clients())
+        selected_client_id = request.args.get("client_id", type=int)
+        return render_template(
+            "order_new.html",
+            clients=db.get_all_clients(),
+            selected_client_id=selected_client_id,
+        )
 
     @app.route("/orders/<int:order_id>")
     def order_detail(order_id: int):
@@ -321,9 +367,11 @@ def register_routes(app: Flask) -> None:
         if not order:
             flash("Заказ не найден", "warning")
             return redirect(url_for("orders"))
+        client = db.get_client_by_id(int(order["client_id"])) if order.get("client_id") else None
         return render_template(
             "order_detail.html",
             order=order,
+            client=client,
             services=db.get_order_services(order_id),
             catalog=db.get_active_services(),
             catalog_tree=db.get_service_catalog_tree(active_only=True),

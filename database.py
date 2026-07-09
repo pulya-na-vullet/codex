@@ -202,6 +202,8 @@ class Database:
                 device_type TEXT NOT NULL DEFAULT 'ПК',
                 extra_periphery TEXT NOT NULL DEFAULT '',
                 technical_notes TEXT NOT NULL DEFAULT '',
+                discount_percent REAL NOT NULL DEFAULT 0,
+                subtotal_sum REAL NOT NULL DEFAULT 0,
                 period_id INTEGER,
                 FOREIGN KEY (client_id) REFERENCES clients(id),
                 FOREIGN KEY (period_id) REFERENCES price_periods(id)
@@ -250,6 +252,11 @@ class Database:
 
         if not self._column_exists("clients", "client_comment"):
             self.cursor.execute("ALTER TABLE clients ADD COLUMN client_comment TEXT NOT NULL DEFAULT ''")
+
+        if not self._column_exists("orders", "discount_percent"):
+            self.cursor.execute("ALTER TABLE orders ADD COLUMN discount_percent REAL NOT NULL DEFAULT 0")
+        if not self._column_exists("orders", "subtotal_sum"):
+            self.cursor.execute("ALTER TABLE orders ADD COLUMN subtotal_sum REAL NOT NULL DEFAULT 0")
 
         if not self._column_exists("service_categories", "parent_id"):
             self.cursor.execute("ALTER TABLE service_categories ADD COLUMN parent_id INTEGER")
@@ -657,13 +664,13 @@ class Database:
         self.cursor.execute("DELETE FROM services_catalog WHERE id = ?", (service_id,))
         self.conn.commit()
 
-    def get_all_clients(self) -> list[sqlite3.Row]:
+    def get_all_clients(self) -> list[dict]:
         self.cursor.execute(
             "SELECT id, name, phone, client_comment, created_date, total_orders, total_spent FROM clients ORDER BY id DESC"
         )
-        return self.cursor.fetchall()
+        return [self._enrich_client(row) for row in self.cursor.fetchall()]
 
-    def search_clients(self, query: str) -> list[sqlite3.Row]:
+    def search_clients(self, query: str) -> list[dict]:
         like = f"%{query.strip()}%"
         self.cursor.execute(
             """
@@ -674,7 +681,38 @@ class Database:
             """,
             (like, like, like),
         )
-        return self.cursor.fetchall()
+        return [self._enrich_client(row) for row in self.cursor.fetchall()]
+
+    def get_client_by_id(self, client_id: int) -> dict | None:
+        self.cursor.execute(
+            """
+            SELECT id, name, phone, client_comment, created_date, total_orders, total_spent
+            FROM clients
+            WHERE id = ?
+            """,
+            (client_id,),
+        )
+        row = self.cursor.fetchone()
+        return self._enrich_client(row) if row else None
+
+    def _enrich_client(self, row) -> dict:
+        item = dict(row)
+        orders_count = int(item.get("total_orders") or 0)
+        item["is_regular"] = orders_count > 3
+        item["discount_percent"] = self.get_loyalty_discount_percent(orders_count)
+        return item
+
+    @staticmethod
+    def get_loyalty_discount_percent(orders_count: int) -> float:
+        """Permanent client after >3 visits: 5% / 7% / 10% by visit count."""
+        count = int(orders_count or 0)
+        if count >= 10:
+            return 10.0
+        if count >= 7:
+            return 7.0
+        if count > 3:
+            return 5.0
+        return 0.0
 
     def find_client_by_name_phone(self, name: str, phone: str) -> sqlite3.Row | None:
         normalized_phone = self._normalize_phone(phone)
@@ -712,9 +750,32 @@ class Database:
         )
         self.conn.commit()
 
+    def recalculate_client_stats(self, client_id: int | None) -> None:
+        if not client_id:
+            return
+        self.cursor.execute(
+            """
+            UPDATE clients
+            SET total_orders = (
+                    SELECT COUNT(*) FROM orders o WHERE o.client_id = clients.id
+                ),
+                total_spent = (
+                    SELECT COALESCE(SUM(o.total_sum), 0) FROM orders o WHERE o.client_id = clients.id
+                )
+            WHERE id = ?
+            """,
+            (client_id,),
+        )
+        self.conn.commit()
+
     def get_client_orders(self, client_id: int) -> list[sqlite3.Row]:
         self.cursor.execute(
-            "SELECT id, order_number, created_date, status, total_sum FROM orders WHERE client_id = ? ORDER BY id DESC",
+            """
+            SELECT id, order_number, created_date, status, total_sum, subtotal_sum, discount_percent
+            FROM orders
+            WHERE client_id = ?
+            ORDER BY id DESC
+            """,
             (client_id,),
         )
         return self.cursor.fetchall()
@@ -723,7 +784,7 @@ class Database:
         self.cursor.execute(
             """
             SELECT o.id, o.order_number, COALESCE(c.name, 'Без клиента') AS client_name, COALESCE(c.phone, '') AS phone,
-                   o.created_date, o.status, o.total_sum
+                   o.created_date, o.status, o.total_sum, o.discount_percent, o.subtotal_sum, o.client_id
             FROM orders o
             LEFT JOIN clients c ON c.id = o.client_id
             ORDER BY o.id DESC
@@ -731,19 +792,28 @@ class Database:
         )
         return self.cursor.fetchall()
 
-    def get_order_by_id(self, order_id: int) -> sqlite3.Row | None:
+    def get_order_by_id(self, order_id: int) -> dict | None:
         self.cursor.execute(
             """
             SELECT o.id, o.order_number, COALESCE(c.name, 'Без клиента') AS client_name, COALESCE(c.phone, '') AS phone,
                    o.created_date, o.status, o.total_sum, o.client_id,
-                   o.device_type, o.extra_periphery, o.technical_notes
+                   o.device_type, o.extra_periphery, o.technical_notes,
+                   COALESCE(o.discount_percent, 0) AS discount_percent,
+                   COALESCE(o.subtotal_sum, o.total_sum) AS subtotal_sum,
+                   COALESCE(c.total_orders, 0) AS client_total_orders,
+                   COALESCE(c.total_spent, 0) AS client_total_spent
             FROM orders o
             LEFT JOIN clients c ON c.id = o.client_id
             WHERE o.id = ?
             """,
             (order_id,),
         )
-        return self.cursor.fetchone()
+        row = self.cursor.fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        item["client_is_regular"] = int(item.get("client_total_orders") or 0) > 3
+        return item
 
     def next_order_number(self) -> str:
         self.cursor.execute("SELECT order_number FROM orders ORDER BY id DESC LIMIT 1")
@@ -758,15 +828,34 @@ class Database:
 
     def create_order(self, client_id: int | None) -> tuple[int, str]:
         number = self.next_order_number()
+        discount = 0.0
+        if client_id:
+            client = self.get_client_by_id(int(client_id))
+            if client:
+                discount = float(client["discount_percent"])
         self.cursor.execute(
             """
-            INSERT INTO orders (order_number, client_id, created_date, status, total_sum, period_id, device_type, extra_periphery, technical_notes)
-            VALUES (?, ?, ?, 'active', 0, ?, 'ПК', '', '')
+            INSERT INTO orders (
+                order_number, client_id, created_date, status, total_sum, period_id,
+                device_type, extra_periphery, technical_notes, discount_percent, subtotal_sum
+            )
+            VALUES (?, ?, ?, 'active', 0, ?, 'ПК', '', '', ?, 0)
             """,
-            (number, client_id, self._now(), self.current_period_id),
+            (number, client_id, self._now(), self.current_period_id, discount),
         )
+        order_id = int(self.cursor.lastrowid)
         self.conn.commit()
-        return int(self.cursor.lastrowid), number
+        if client_id:
+            self.recalculate_client_stats(int(client_id))
+            # Re-apply discount using updated visit count (includes this new order).
+            client = self.get_client_by_id(int(client_id))
+            if client:
+                self.cursor.execute(
+                    "UPDATE orders SET discount_percent = ? WHERE id = ?",
+                    (float(client["discount_percent"]), order_id),
+                )
+                self.conn.commit()
+        return order_id, number
 
     def update_order_meta(self, order_id: int, device_type: str, extra_periphery: str, technical_notes: str) -> None:
         allowed = {"ПК", "Ноутбук", "Телефон", "Телевизор"}
@@ -834,26 +923,51 @@ class Database:
         self.cursor.execute("DELETE FROM order_services WHERE id = ?", (order_service_id,))
         self.conn.commit()
 
+    def refresh_order_discount(self, order_id: int) -> float:
+        order = self.get_order_by_id(order_id)
+        if not order or not order.get("client_id"):
+            return 0.0
+        client = self.get_client_by_id(int(order["client_id"]))
+        discount = float(client["discount_percent"]) if client else 0.0
+        self.cursor.execute("UPDATE orders SET discount_percent = ? WHERE id = ?", (discount, order_id))
+        self.conn.commit()
+        return discount
+
     def update_order_total(self, order_id: int) -> float:
         self.cursor.execute(
             "SELECT COALESCE(SUM(unit_price * quantity), 0) AS total FROM order_service_lines WHERE order_id = ?",
             (order_id,),
         )
-        total = float(self.cursor.fetchone()["total"])
-        if total == 0:
-            self.cursor.execute("SELECT COALESCE(SUM(price * quantity), 0) AS total FROM order_services WHERE order_id = ?", (order_id,))
-            total = float(self.cursor.fetchone()["total"])
-        self.cursor.execute("UPDATE orders SET total_sum = ? WHERE id = ?", (total, order_id))
+        subtotal = float(self.cursor.fetchone()["total"])
+        if subtotal == 0:
+            self.cursor.execute(
+                "SELECT COALESCE(SUM(price * quantity), 0) AS total FROM order_services WHERE order_id = ?",
+                (order_id,),
+            )
+            subtotal = float(self.cursor.fetchone()["total"])
+
+        self.refresh_order_discount(order_id)
+        self.cursor.execute("SELECT COALESCE(discount_percent, 0) AS discount_percent, client_id FROM orders WHERE id = ?", (order_id,))
+        meta = self.cursor.fetchone()
+        discount_percent = float(meta["discount_percent"] or 0)
+        total = round(subtotal * (1.0 - discount_percent / 100.0), 2)
+        self.cursor.execute(
+            "UPDATE orders SET subtotal_sum = ?, total_sum = ?, discount_percent = ? WHERE id = ?",
+            (subtotal, total, discount_percent, order_id),
+        )
         self.conn.commit()
+        if meta["client_id"]:
+            self.recalculate_client_stats(int(meta["client_id"]))
         return total
 
     def delete_order(self, order_id: int) -> None:
-        self.cursor.execute("SELECT client_id, total_sum FROM orders WHERE id = ?", (order_id,))
+        self.cursor.execute("SELECT client_id FROM orders WHERE id = ?", (order_id,))
         row = self.cursor.fetchone()
-        if row and row["client_id"]:
-            self.update_client_stats(int(row["client_id"]), -float(row["total_sum"]), -1)
+        client_id = int(row["client_id"]) if row and row["client_id"] else None
         self.cursor.execute("DELETE FROM orders WHERE id = ?", (order_id,))
         self.conn.commit()
+        if client_id:
+            self.recalculate_client_stats(client_id)
 
     def set_order_client(self, order_id: int, client_id: int) -> None:
         self.cursor.execute("UPDATE orders SET client_id = ? WHERE id = ?", (client_id, order_id))
