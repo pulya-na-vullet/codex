@@ -153,6 +153,9 @@ class Database:
                 created_date TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'active',
                 total_sum REAL NOT NULL DEFAULT 0,
+                device_type TEXT NOT NULL DEFAULT 'ПК',
+                extra_periphery TEXT NOT NULL DEFAULT '',
+                technical_notes TEXT NOT NULL DEFAULT '',
                 period_id INTEGER,
                 FOREIGN KEY (client_id) REFERENCES clients(id),
                 FOREIGN KEY (period_id) REFERENCES price_periods(id)
@@ -192,6 +195,13 @@ class Database:
         self.conn.commit()
 
     def migrate_database(self) -> None:
+        if not self._column_exists("orders", "device_type"):
+            self.cursor.execute("ALTER TABLE orders ADD COLUMN device_type TEXT NOT NULL DEFAULT 'ПК'")
+        if not self._column_exists("orders", "extra_periphery"):
+            self.cursor.execute("ALTER TABLE orders ADD COLUMN extra_periphery TEXT NOT NULL DEFAULT ''")
+        if not self._column_exists("orders", "technical_notes"):
+            self.cursor.execute("ALTER TABLE orders ADD COLUMN technical_notes TEXT NOT NULL DEFAULT ''")
+
         if not self._column_exists("clients", "client_comment"):
             self.cursor.execute("ALTER TABLE clients ADD COLUMN client_comment TEXT NOT NULL DEFAULT ''")
 
@@ -459,7 +469,8 @@ class Database:
         self.cursor.execute(
             """
             SELECT o.id, o.order_number, COALESCE(c.name, 'Без клиента') AS client_name, COALESCE(c.phone, '') AS phone,
-                   o.created_date, o.status, o.total_sum, o.client_id
+                   o.created_date, o.status, o.total_sum, o.client_id,
+                   o.device_type, o.extra_periphery, o.technical_notes
             FROM orders o
             LEFT JOIN clients c ON c.id = o.client_id
             WHERE o.id = ?
@@ -482,11 +493,27 @@ class Database:
     def create_order(self, client_id: int | None) -> tuple[int, str]:
         number = self.next_order_number()
         self.cursor.execute(
-            "INSERT INTO orders (order_number, client_id, created_date, status, total_sum, period_id) VALUES (?, ?, ?, 'active', 0, ?)",
+            """
+            INSERT INTO orders (order_number, client_id, created_date, status, total_sum, period_id, device_type, extra_periphery, technical_notes)
+            VALUES (?, ?, ?, 'active', 0, ?, 'ПК', '', '')
+            """,
             (number, client_id, self._now(), self.current_period_id),
         )
         self.conn.commit()
         return int(self.cursor.lastrowid), number
+
+    def update_order_meta(self, order_id: int, device_type: str, extra_periphery: str, technical_notes: str) -> None:
+        allowed = {"ПК", "Ноутбук", "Телефон", "Телевизор"}
+        safe_device = device_type if device_type in allowed else "ПК"
+        self.cursor.execute(
+            """
+            UPDATE orders
+            SET device_type = ?, extra_periphery = ?, technical_notes = ?
+            WHERE id = ?
+            """,
+            (safe_device, (extra_periphery or "").strip(), (technical_notes or "").strip(), order_id),
+        )
+        self.conn.commit()
 
     def get_order_services(self, order_id: int) -> list[sqlite3.Row]:
         self.cursor.execute(

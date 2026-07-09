@@ -27,8 +27,14 @@
     </div>
     <h1>Заказ-наряд {{ order.order_number }}</h1>
     <div class="meta">
+        <div><strong>{{ company_name }}</strong>, тел.: {{ company_phone }}</div>
+        <div>Контроль качества: {{ quality_phone }}</div>
+        <div>Адрес: {{ company_address }}</div>
+        <hr>
         <div>Клиент: {{ order.client_name }} {{ order.phone }}</div>
         <div>Дата: {{ order.created_date }}</div>
+        <div>Устройство: {{ order.device_type }}</div>
+        <div>Дополнительная периферия: {{ order.extra_periphery or "-" }}</div>
     </div>
     <table>
         <thead>
@@ -51,5 +57,14 @@
         </tbody>
     </table>
     <div class="total">ИТОГО: {{ "%.2f"|format(order.total_sum) }}</div>
+    <div style="margin-top: 16px; font-size: 14px;">
+        <p><strong>Гарантия:</strong> На выполненные работы и установленные новые детали предоставляется гарантия <strong>3</strong> месяца. Гарантия не распространяется на программное обеспечение и устранение последствий некорректного использования.</p>
+        <p><strong>Техническая информация/рекомендации:</strong> {{ order.technical_notes or "-" }}</p>
+        <p>Исполнитель: _________________ / Григорьев Д.В</p>
+        <p>(Подпись) (Ф.И.О.)</p>
+        <p>Заказчик с работами ознакомлен, результат меня устраивает, претензий не имею.</p>
+        <p>Заказчик:___________________ / __________________________ / «        » _______ 2026г.</p>
+        <p>(Подпись) (Ф.И.О.) (Дата)</p>
+    </div>
 </body>
 </html>

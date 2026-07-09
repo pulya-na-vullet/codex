@@ -124,7 +124,22 @@ def register_routes(app: Flask) -> None:
             order=order,
             services=db.get_order_services(order_id),
             catalog=db.get_active_services(),
+            device_types=["ПК", "Ноутбук", "Телефон", "Телевизор"],
         )
+
+    @app.route("/orders/<int:order_id>/meta", methods=["POST"])
+    def update_order_meta(order_id: int):
+        db = get_db()
+        order = db.get_order_by_id(order_id)
+        if not order:
+            flash("Заказ не найден", "warning")
+            return redirect(url_for("orders"))
+        device_type = request.form.get("device_type", "ПК").strip()
+        extra_periphery = request.form.get("extra_periphery", "").strip()
+        technical_notes = request.form.get("technical_notes", "").strip()
+        db.update_order_meta(order_id, device_type, extra_periphery, technical_notes)
+        flash("Данные заказ-наряда обновлены", "success")
+        return redirect(url_for("order_detail", order_id=order_id))
 
     @app.route("/orders/<int:order_id>/print")
     def print_order(order_id: int):
@@ -134,7 +149,15 @@ def register_routes(app: Flask) -> None:
             flash("Заказ не найден", "warning")
             return redirect(url_for("orders"))
         services = db.get_order_services(order_id)
-        return render_template("print_order.html", order=order, services=services)
+        return render_template(
+            "print_order.html",
+            order=order,
+            services=services,
+            company_phone="8 918 802 87 67",
+            quality_phone="8 962 550 78 32",
+            company_name="ИТ-М",
+            company_address="р. Татарстан, д.Куюки, ул. 24 квартал дом 1",
+        )
 
     @app.route("/orders/<int:order_id>/pdf")
     def order_pdf(order_id: int):
@@ -170,10 +193,21 @@ def register_routes(app: Flask) -> None:
         c.drawString(40, y, f"Заказ-наряд {order['order_number']}")
         y -= 22
         c.setFont(font_name, 11)
+        c.drawString(40, y, "Компания: ИТ-М | тел. 8 918 802 87 67")
+        y -= 16
+        c.drawString(40, y, "Контроль качества: 8 962 550 78 32")
+        y -= 16
+        c.drawString(40, y, "Адрес: р. Татарстан, д.Куюки, ул. 24 квартал дом 1")
+        y -= 16
         c.drawString(40, y, f"Клиент: {order['client_name']}  {order['phone']}")
         y -= 16
         c.drawString(40, y, f"Дата: {order['created_date']}")
         y -= 22
+
+        c.drawString(40, y, f"Устройство: {order['device_type']}")
+        y -= 16
+        c.drawString(40, y, f"Доп. периферия: {order['extra_periphery'] or '-'}")
+        y -= 16
 
         c.setFont(font_name, 10)
         c.drawString(40, y, "Услуга")
@@ -201,6 +235,31 @@ def register_routes(app: Flask) -> None:
         y -= 20
         c.setFont(font_name, 12)
         c.drawRightString(width - 40, y, f"ИТОГО: {float(order['total_sum']):.2f}")
+        y -= 24
+        c.setFont(font_name, 10)
+        c.drawString(
+            40,
+            y,
+            "Гарантия: На выполненные работы и установленные новые детали предоставляется гарантия 3 месяца.",
+        )
+        y -= 14
+        c.drawString(
+            40,
+            y,
+            "Гарантия не распространяется на ПО и устранение последствий некорректного использования.",
+        )
+        y -= 16
+        c.drawString(40, y, f"Техническая информация/рекомендации: {order['technical_notes'] or '-'}")
+        y -= 20
+        c.drawString(40, y, "Исполнитель: _________________ / Григорьев Д.В")
+        y -= 14
+        c.drawString(40, y, "(Подпись) (Ф.И.О.)")
+        y -= 18
+        c.drawString(40, y, "Заказчик с работами ознакомлен, результат меня устраивает, претензий не имею.")
+        y -= 16
+        c.drawString(40, y, "Заказчик:___________________ / __________________________ / «        » _______ 2026г.")
+        y -= 14
+        c.drawString(40, y, "(Подпись) (Ф.И.О.) (Дата)")
         c.save()
 
         buffer.seek(0)
