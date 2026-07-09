@@ -18,6 +18,30 @@ def styled_button(master, text: str, command, kind: str = "primary", width: int 
     return ctk.CTkButton(master, text=text, command=command, width=width, **button_style(kind))
 
 
+def show_notice(parent, text: str, level: str = "info") -> None:
+    colors = {
+        "info": ("#1D4ED8", "#1E3A8A"),
+        "success": ("#059669", "#065F46"),
+        "warning": ("#D97706", "#92400E"),
+        "error": ("#DC2626", "#7F1D1D"),
+    }
+    fg_light, fg_dark = colors.get(level, colors["info"])
+    toast = ctk.CTkToplevel(parent)
+    toast.overrideredirect(True)
+    toast.attributes("-topmost", True)
+    toast.configure(fg_color=(fg_light, fg_dark))
+    try:
+        px = parent.winfo_rootx() + max(parent.winfo_width() - 380, 20)
+        py = parent.winfo_rooty() + 20
+        toast.geometry(f"360x56+{px}+{py}")
+    except Exception:
+        toast.geometry("360x56+40+40")
+    ctk.CTkLabel(toast, text=text, wraplength=330, justify="left", text_color="white").pack(
+        fill="both", expand=True, padx=12, pady=8
+    )
+    toast.after(2600, toast.destroy)
+
+
 def normalize_rf_phone(phone: str) -> str | None:
     digits = re.sub(r"\D", "", phone or "")
     if len(digits) == 11 and digits[0] in ("7", "8"):
@@ -43,8 +67,8 @@ class ServiceManager(ctk.CTkToplevel):
         self.db = db
         self.on_change = on_change
         self.title("Управление услугами")
-        self.geometry("980x620")
-        self.minsize(860, 520)
+        self.geometry("1120x680")
+        self.minsize(980, 560)
         self.configure(fg_color=PALETTE["bg"])
         self.setup_ui()
         self.load_services()
@@ -69,11 +93,11 @@ class ServiceManager(ctk.CTkToplevel):
             child.destroy()
         header = ctk.CTkFrame(self.table, fg_color=PALETTE["card_alt"], corner_radius=8)
         header.pack(fill="x", pady=(0, 4))
-        ctk.CTkLabel(header, text="Название", width=370, anchor="w", font=("Arial", 13, "bold")).pack(side="left", padx=8, pady=8)
-        ctk.CTkLabel(header, text="Цена", width=120, anchor="e", font=("Arial", 13, "bold")).pack(side="left", padx=8)
-        ctk.CTkLabel(header, text="Категория", width=170, anchor="w", font=("Arial", 13, "bold")).pack(side="left", padx=8)
-        ctk.CTkLabel(header, text="Статус", width=90, anchor="center", font=("Arial", 13, "bold")).pack(side="left", padx=8)
-        ctk.CTkLabel(header, text="Действия", width=230, anchor="center", font=("Arial", 13, "bold")).pack(side="left", padx=8)
+        ctk.CTkLabel(header, text="Название", width=320, anchor="w", font=("Arial", 13, "bold")).pack(side="left", padx=6, pady=8)
+        ctk.CTkLabel(header, text="Цена", width=90, anchor="e", font=("Arial", 13, "bold")).pack(side="left", padx=6)
+        ctk.CTkLabel(header, text="Категория", width=130, anchor="w", font=("Arial", 13, "bold")).pack(side="left", padx=6)
+        ctk.CTkLabel(header, text="Статус", width=80, anchor="center", font=("Arial", 13, "bold")).pack(side="left", padx=6)
+        ctk.CTkLabel(header, text="Действия", width=250, anchor="center", font=("Arial", 13, "bold")).pack(side="left", padx=6)
 
         for row in self.db.get_all_services():
             active = bool(row["is_active"])
@@ -83,19 +107,19 @@ class ServiceManager(ctk.CTkToplevel):
                 corner_radius=8,
             )
             row_frame.pack(fill="x", pady=2)
-            ctk.CTkLabel(row_frame, text=row["name"], width=370, anchor="w").pack(side="left", padx=8, pady=6)
-            ctk.CTkLabel(row_frame, text=f"{row['price']:.2f}", width=120, anchor="e").pack(side="left", padx=8)
-            ctk.CTkLabel(row_frame, text=row["category"], width=170, anchor="w").pack(side="left", padx=8)
-            ctk.CTkLabel(row_frame, text="Активна" if active else "Отключена", width=90, anchor="center").pack(side="left", padx=8)
-            styled_button(row_frame, "Редакт.", lambda sid=row["id"]: self.edit_service_dialog(sid), "primary", 72).pack(side="left", padx=3)
+            ctk.CTkLabel(row_frame, text=row["name"], width=320, anchor="w").pack(side="left", padx=6, pady=6)
+            ctk.CTkLabel(row_frame, text=f"{row['price']:.2f}", width=90, anchor="e").pack(side="left", padx=6)
+            ctk.CTkLabel(row_frame, text=row["category"], width=130, anchor="w").pack(side="left", padx=6)
+            ctk.CTkLabel(row_frame, text="Активна" if active else "Отключена", width=80, anchor="center").pack(side="left", padx=6)
+            styled_button(row_frame, "Редакт.", lambda sid=row["id"]: self.edit_service_dialog(sid), "primary", 78).pack(side="left", padx=2)
             styled_button(
                 row_frame,
                 "Откл." if active else "Вкл.",
                 lambda sid=row["id"], st=active: self.toggle_service(sid, st),
                 "warning",
-                64,
-            ).pack(side="left", padx=3)
-            styled_button(row_frame, "Удал.", lambda sid=row["id"]: self.delete_service(sid), "danger", 64).pack(side="left", padx=3)
+                66,
+            ).pack(side="left", padx=2)
+            styled_button(row_frame, "Удал.", lambda sid=row["id"]: self.delete_service(sid), "danger", 66).pack(side="left", padx=2)
 
     def _service_dialog(self, title: str, service=None):
         result: dict[str, str | float | None] = {"name": None, "price": None, "category": None}
@@ -152,10 +176,10 @@ class ServiceManager(ctk.CTkToplevel):
             try:
                 price = float(price_entry.get().strip().replace(",", "."))
             except ValueError:
-                messagebox.showwarning("Ошибка", "Введите корректную цену")
+                show_notice(self, "Введите корректную цену", "warning")
                 return
             if not name or not category or price < 0:
-                messagebox.showwarning("Ошибка", "Заполните все поля корректно")
+                show_notice(self, "Заполните все поля корректно", "warning")
                 return
             result["name"] = name
             result["price"] = price
@@ -176,7 +200,7 @@ class ServiceManager(ctk.CTkToplevel):
             return
         name, price, category = data
         if not self.db.add_service(name, price, category):
-            messagebox.showwarning("Ошибка", "Услуга уже существует")
+            show_notice(self, "Услуга уже существует", "warning")
             return
         self.load_services()
         self.on_change()
@@ -190,7 +214,7 @@ class ServiceManager(ctk.CTkToplevel):
             return
         name, price, category = data
         if not self.db.update_service(service_id, name, price, category):
-            messagebox.showwarning("Ошибка", "Не удалось сохранить изменения")
+            show_notice(self, "Не удалось сохранить изменения", "error")
             return
         self.load_services()
         self.on_change()
@@ -214,8 +238,8 @@ class ClientSelector(ctk.CTkToplevel):
         self.db = db
         self.selected_client_id: int | None = None
         self.title("Выбор клиента")
-        self.geometry("700x560")
-        self.minsize(620, 480)
+        self.geometry("860x620")
+        self.minsize(760, 520)
         self.configure(fg_color=PALETTE["bg"])
         self.setup_ui()
         self.load_clients()
@@ -224,7 +248,7 @@ class ClientSelector(ctk.CTkToplevel):
         top = card(self)
         top.pack(fill="x", padx=14, pady=(14, 8))
         ctk.CTkLabel(top, text="Выбор клиента", font=("Arial", 20, "bold")).pack(side="left", padx=12, pady=10)
-        self.search = ctk.CTkEntry(top, placeholder_text="Имя или телефон", width=320, corner_radius=10)
+        self.search = ctk.CTkEntry(top, placeholder_text="Имя или телефон", width=360, corner_radius=10)
         self.search.pack(side="left", padx=8)
         self.search.bind("<KeyRelease>", lambda _: self.load_clients())
         styled_button(top, "Новый клиент", self.create_client, "success", 130).pack(side="right", padx=6, pady=10)
@@ -243,21 +267,21 @@ class ClientSelector(ctk.CTkToplevel):
 
         header = ctk.CTkFrame(self.list_frame, fg_color=PALETTE["card_alt"], corner_radius=8)
         header.pack(fill="x", pady=(0, 4))
-        ctk.CTkLabel(header, text="Имя", width=150, anchor="w", font=("Arial", 13, "bold")).pack(side="left", padx=8, pady=8)
-        ctk.CTkLabel(header, text="Телефон", width=150, anchor="w", font=("Arial", 13, "bold")).pack(side="left", padx=8)
-        ctk.CTkLabel(header, text="Комментарий", width=170, anchor="w", font=("Arial", 13, "bold")).pack(side="left", padx=8)
-        ctk.CTkLabel(header, text="Заказов", width=70, anchor="center", font=("Arial", 13, "bold")).pack(side="left", padx=8)
-        ctk.CTkLabel(header, text="Потрачено", width=110, anchor="e", font=("Arial", 13, "bold")).pack(side="left", padx=8)
+        ctk.CTkLabel(header, text="Имя", width=130, anchor="w", font=("Arial", 13, "bold")).pack(side="left", padx=6, pady=8)
+        ctk.CTkLabel(header, text="Телефон", width=140, anchor="w", font=("Arial", 13, "bold")).pack(side="left", padx=6)
+        ctk.CTkLabel(header, text="Комментарий", width=140, anchor="w", font=("Arial", 13, "bold")).pack(side="left", padx=6)
+        ctk.CTkLabel(header, text="Заказов", width=60, anchor="center", font=("Arial", 13, "bold")).pack(side="left", padx=6)
+        ctk.CTkLabel(header, text="Потрачено", width=90, anchor="e", font=("Arial", 13, "bold")).pack(side="left", padx=6)
 
         for row in rows:
             frame = ctk.CTkFrame(self.list_frame, fg_color=PALETTE["card_alt"], corner_radius=8)
             frame.pack(fill="x", pady=2)
-            ctk.CTkLabel(frame, text=row["name"], width=150, anchor="w").pack(side="left", padx=8, pady=6)
-            ctk.CTkLabel(frame, text=format_rf_phone(row["phone"]), width=150, anchor="w").pack(side="left", padx=8)
-            ctk.CTkLabel(frame, text=(row["client_comment"] or "")[:26], width=170, anchor="w").pack(side="left", padx=8)
-            ctk.CTkLabel(frame, text=str(row["total_orders"]), width=70, anchor="center").pack(side="left", padx=8)
-            ctk.CTkLabel(frame, text=f"{row['total_spent']:.2f}", width=110, anchor="e").pack(side="left", padx=8)
-            styled_button(frame, "Выбрать", lambda cid=row["id"]: self.select(cid), "primary", 100).pack(side="right", padx=8)
+            ctk.CTkLabel(frame, text=row["name"], width=130, anchor="w").pack(side="left", padx=6, pady=6)
+            ctk.CTkLabel(frame, text=format_rf_phone(row["phone"]), width=140, anchor="w").pack(side="left", padx=6)
+            ctk.CTkLabel(frame, text=(row["client_comment"] or "")[:20], width=140, anchor="w").pack(side="left", padx=6)
+            ctk.CTkLabel(frame, text=str(row["total_orders"]), width=60, anchor="center").pack(side="left", padx=6)
+            ctk.CTkLabel(frame, text=f"{row['total_spent']:.2f}", width=90, anchor="e").pack(side="left", padx=6)
+            styled_button(frame, "Выбрать", lambda cid=row["id"]: self.select(cid), "primary", 92).pack(side="right", padx=6)
 
     def create_client(self):
         dialog = ctk.CTkToplevel(self)
@@ -289,14 +313,14 @@ class ClientSelector(ctk.CTkToplevel):
             comment = comment_entry.get("1.0", "end").strip()
             normalized_phone = normalize_rf_phone(raw_phone)
             if not name:
-                messagebox.showwarning("Ошибка", "Введите имя клиента")
+                show_notice(self, "Введите имя клиента", "warning")
                 return
             if not normalized_phone:
-                messagebox.showwarning("Ошибка", "Введите корректный номер РФ, например: +7 962 550 7832")
+                show_notice(self, "Введите корректный номер РФ, например: +7 962 550 7832", "warning")
                 return
             existing_by_phone = self.db.find_client_by_phone(normalized_phone)
             if existing_by_phone:
-                messagebox.showinfo("Инфо", "Клиент с таким телефоном уже существует, будет выбран существующий")
+                show_notice(self, "Клиент с таким телефоном уже существует, выбран существующий", "info")
                 self.select(int(existing_by_phone["id"]))
                 return
             existing = self.db.find_client_by_name_phone(name, normalized_phone)
@@ -305,7 +329,7 @@ class ClientSelector(ctk.CTkToplevel):
                 return
             client_id = self.db.create_client(name, normalized_phone, comment)
             if client_id is None:
-                messagebox.showwarning("Ошибка", "Не удалось создать клиента")
+                show_notice(self, "Не удалось создать клиента", "error")
                 return
             self.select(client_id)
 
@@ -320,7 +344,7 @@ class ClientSelector(ctk.CTkToplevel):
 
     def confirm(self):
         if self.selected_client_id is None:
-            messagebox.showwarning("Внимание", "Клиент не выбран")
+            show_notice(self, "Выберите клиента из списка или создайте нового", "info")
             return
         self.destroy()
 
@@ -434,7 +458,7 @@ class OrderEditor(ctk.CTkToplevel):
 
     def add_selected_service(self):
         if not self.selected_service_name:
-            messagebox.showwarning("Внимание", "Выберите услугу")
+            show_notice(self, "Выберите услугу из каталога", "info")
             return
         service = next((s for s in self.service_rows if s["name"] == self.selected_service_name), None)
         if not service:
@@ -521,7 +545,7 @@ class OrderEditor(ctk.CTkToplevel):
                 ServiceItem(int(r["id"]), r["service_name"], float(r["price"]), int(r["quantity"]))
                 for r in self.db.get_order_services(self.order_id)
             ]
-            messagebox.showinfo("Успех", f"Создан заказ {number}")
+            show_notice(self, f"Заказ {number} создан", "success")
         else:
             total = self.db.update_order_total(self.order_id)
             order = self.db.get_order_by_id(self.order_id)
@@ -531,14 +555,14 @@ class OrderEditor(ctk.CTkToplevel):
                     (order["client_id"], order["client_id"]),
                 )
                 self.db.conn.commit()
-            messagebox.showinfo("Успех", f"Изменения сохранены, сумма: {total:.2f}")
+            show_notice(self, f"Изменения сохранены, сумма: {total:.2f}", "success")
         self.refresh_items_panel()
         if hasattr(self.master, "refresh_orders"):
             self.master.refresh_orders()
 
     def print_order(self):
         if not self.order_id:
-            messagebox.showwarning("Внимание", "Сначала сохраните заказ")
+            show_notice(self, "Сначала сохраните заказ", "info")
             return
         order = self.db.get_order_by_id(self.order_id)
         if not order:
@@ -557,20 +581,20 @@ class OrderEditor(ctk.CTkToplevel):
         try:
             self._save_order_as_pdf(pdf_path, order, services)
         except RuntimeError as err:
-            messagebox.showerror("Ошибка", str(err))
+            show_notice(self, str(err), "error")
             return
         except Exception as err:
-            messagebox.showerror("Ошибка", f"Не удалось сохранить PDF:\n{err}")
+            show_notice(self, f"Не удалось сохранить PDF: {err}", "error")
             return
 
         if messagebox.askyesno("Печать", "Отправить в печать на принтере?"):
             try:
                 self._print_pdf_file(pdf_path)
-                messagebox.showinfo("Печать", f"PDF отправлен на печать:\n{pdf_path}")
+                show_notice(self, f"PDF отправлен на печать: {pdf_path}", "success")
             except Exception as err:
-                messagebox.showerror("Ошибка печати", f"Не удалось отправить PDF на принтер:\n{err}")
+                show_notice(self, f"Не удалось отправить PDF на принтер: {err}", "error")
         else:
-            messagebox.showinfo("Готово", f"PDF сохранен:\n{pdf_path}")
+            show_notice(self, f"PDF сохранен: {pdf_path}", "success")
 
     def _save_order_as_pdf(self, pdf_path: str, order, services):
         try:
@@ -729,7 +753,7 @@ class PeriodManager(ctk.CTkToplevel):
             return
         prices = self._collect_current_prices()
         if not prices:
-            messagebox.showwarning("Ошибка", "Нет услуг для создания периода")
+            show_notice(self, "Нет услуг для создания периода", "warning")
             return
         self.db.create_period_from_prices(name.strip(), prices)
         self.load_periods()
@@ -754,7 +778,7 @@ class PeriodManager(ctk.CTkToplevel):
             except ValueError:
                 continue
         if not prices:
-            messagebox.showwarning("Ошибка", "Не удалось прочитать цены из файла")
+            show_notice(self, "Не удалось прочитать цены из файла", "warning")
             return
         period_name = f"Период с {datetime.datetime.now().strftime('%d.%m.%Y')}"
         self.db.create_period_from_prices(period_name, prices)
@@ -764,7 +788,7 @@ class PeriodManager(ctk.CTkToplevel):
     def export_active_to_excel(self):
         prices = self.db.get_period_prices()
         if not prices:
-            messagebox.showwarning("Ошибка", "Нет активного периода")
+            show_notice(self, "Нет активного периода", "warning")
             return
         wb = Workbook()
         ws = wb.active
@@ -792,7 +816,7 @@ class PeriodManager(ctk.CTkToplevel):
         )
         if path:
             wb.save(path)
-            messagebox.showinfo("Успех", "Файл сохранен")
+            show_notice(self, "Файл сохранен", "success")
 
 
 class StatisticsWindow(ctk.CTkToplevel):
@@ -857,8 +881,8 @@ class MainApp(ctk.CTk):
         self.orders = []
         self.selected_order_id: int | None = None
         self.title("ИТ-мастерская — Управление заказ-нарядами")
-        self.geometry("1320x820")
-        self.minsize(1080, 660)
+        self.geometry("1360x860")
+        self.minsize(1180, 700)
         self.configure(fg_color=PALETTE["bg"])
         self.setup_ui()
         self.refresh_orders()
@@ -888,8 +912,8 @@ class MainApp(ctk.CTk):
         body.pack(fill="both", expand=True, padx=14, pady=(0, 14))
         left = card(body)
         left.pack(side="left", fill="both", expand=True, padx=(0, 6))
-        right = card(body, width=380)
-        right.pack(side="left", fill="y", padx=(6, 0))
+        right = card(body, width=460)
+        right.pack(side="left", fill="both", padx=(6, 0))
 
         search_frame = ctk.CTkFrame(left, fg_color="transparent")
         search_frame.pack(fill="x", padx=10, pady=(10, 6))
@@ -902,7 +926,7 @@ class MainApp(ctk.CTk):
         self.orders_panel.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         ctk.CTkLabel(right, text="Клиенты", font=("Arial", 18, "bold")).pack(anchor="w", padx=12, pady=(12, 6))
-        self.clients_panel = ctk.CTkScrollableFrame(right, height=520, fg_color="transparent")
+        self.clients_panel = ctk.CTkScrollableFrame(right, fg_color="transparent")
         self.clients_panel.pack(fill="both", expand=True, padx=10, pady=(0, 8))
         self.stats_label = ctk.CTkLabel(right, text="Заказов: 0\nАктивных: 0\nКлиентов: 0", justify="left", font=("Arial", 14))
         self.stats_label.pack(anchor="w", padx=12, pady=(0, 12))
@@ -959,11 +983,19 @@ class MainApp(ctk.CTk):
         for row in self.db.get_all_clients():
             frame = ctk.CTkFrame(self.clients_panel, fg_color=PALETTE["card_alt"], corner_radius=8)
             frame.pack(fill="x", pady=2)
-            ctk.CTkLabel(frame, text=row["name"], width=115, anchor="w").pack(side="left", padx=5, pady=6)
-            ctk.CTkLabel(frame, text=format_rf_phone(row["phone"]), width=120, anchor="w").pack(side="left", padx=5)
-            ctk.CTkLabel(frame, text=(row["client_comment"] or "")[:16], width=90, anchor="w").pack(side="left", padx=5)
-            ctk.CTkLabel(frame, text=str(row["total_orders"]), width=50, anchor="center").pack(side="left", padx=5)
-            ctk.CTkLabel(frame, text=f"{row['total_spent']:.2f}", width=90, anchor="e").pack(side="left", padx=5)
+            top_line = ctk.CTkFrame(frame, fg_color="transparent")
+            top_line.pack(fill="x", padx=6, pady=(4, 1))
+            ctk.CTkLabel(top_line, text=row["name"], anchor="w", font=("Arial", 12, "bold")).pack(side="left")
+            ctk.CTkLabel(top_line, text=format_rf_phone(row["phone"]), anchor="e").pack(side="right")
+            bottom_line = ctk.CTkFrame(frame, fg_color="transparent")
+            bottom_line.pack(fill="x", padx=6, pady=(0, 4))
+            comment = (row["client_comment"] or "").strip() or "Без комментария"
+            ctk.CTkLabel(bottom_line, text=comment[:28], anchor="w", text_color=PALETTE["muted"]).pack(side="left")
+            ctk.CTkLabel(
+                bottom_line,
+                text=f"Заказов: {row['total_orders']}  |  {float(row['total_spent']):.2f}",
+                anchor="e",
+            ).pack(side="right")
 
     def update_stats(self):
         total = len(self.orders)
@@ -1031,20 +1063,20 @@ class MainApp(ctk.CTk):
             try:
                 price = float(price_entry.get().strip().replace(",", "."))
             except ValueError:
-                messagebox.showwarning("Ошибка", "Введите корректную цену")
+                show_notice(self, "Введите корректную цену", "warning")
                 return
             if not name or not category or price < 0:
-                messagebox.showwarning("Ошибка", "Заполните поля корректно")
+                show_notice(self, "Заполните поля корректно", "warning")
                 return
             if self.db.get_service_by_name(name):
-                messagebox.showwarning("Ошибка", "Услуга с таким названием уже существует")
+                show_notice(self, "Услуга с таким названием уже существует", "warning")
                 return
             if not self.db.add_service(name, price, category):
-                messagebox.showwarning("Ошибка", "Не удалось добавить услугу")
+                show_notice(self, "Не удалось добавить услугу", "error")
                 return
             dialog.destroy()
             self.refresh_orders()
-            messagebox.showinfo("Успех", "Услуга добавлена")
+            show_notice(self, "Услуга добавлена", "success")
 
         buttons = ctk.CTkFrame(content, fg_color="transparent")
         buttons.pack(fill="x", padx=12, pady=(0, 12))
@@ -1057,13 +1089,13 @@ class MainApp(ctk.CTk):
 
     def open_selected_order(self):
         if not self.selected_order_id:
-            messagebox.showwarning("Внимание", "Заказ не выбран")
+            show_notice(self, "Выберите заказ в списке слева", "info")
             return
         self.open_order(self.selected_order_id)
 
     def delete_selected_order(self):
         if not self.selected_order_id:
-            messagebox.showwarning("Внимание", "Заказ не выбран")
+            show_notice(self, "Выберите заказ для удаления", "info")
             return
         if not messagebox.askyesno("Подтверждение", "Удалить выбранный заказ?"):
             return
