@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title or "ИТ-мастерская" }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #0b1220; color: #e5e7eb; }
+        .navbar, .card { background: #111827; border-color: #374151; }
+        .table { color: #e5e7eb; }
+        .table thead th { color: #93c5fd; }
+        .form-control, .form-select { background: #0f172a; color: #e5e7eb; border-color: #334155; }
+        .form-control:focus, .form-select:focus { background: #0f172a; color: #fff; border-color: #60a5fa; box-shadow: none; }
+        .btn-primary { background: #1d4ed8; border-color: #1d4ed8; }
+        .btn-success { background: #059669; border-color: #059669; }
+        .btn-warning { background: #d97706; border-color: #d97706; }
+        .small-muted { color: #94a3b8; font-size: .9rem; }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg border-bottom mb-4">
+    <div class="container-fluid">
+        <a class="navbar-brand text-light fw-bold" href="{{ url_for('dashboard') }}">ИТ-мастерская</a>
+        <div class="navbar-nav flex-row gap-2">
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('dashboard') }}">Главная</a>
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('orders') }}">Заказы</a>
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('clients') }}">Клиенты</a>
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('services') }}">Услуги</a>
+            <a class="btn btn-success btn-sm" href="{{ url_for('create_order') }}">Новый заказ</a>
+        </div>
+    </div>
+</nav>
+
+<main class="container-fluid pb-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-3">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} py-2 mb-2" role="alert">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+</main>
+</body>
+</html>

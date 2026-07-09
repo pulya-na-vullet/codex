@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3">
+    <div class="col-12 col-lg-7">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Клиенты</h5>
+                    <form class="d-flex gap-2" method="get">
+                        <input class="form-control form-control-sm" name="q" value="{{ query }}" placeholder="Поиск">
+                        <button class="btn btn-primary btn-sm" type="submit">Найти</button>
+                    </form>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                        <tr>
+                            <th>Имя</th>
+                            <th>Телефон</th>
+                            <th>Комментарий</th>
+                            <th class="text-center">Заказов</th>
+                            <th class="text-end">Потрачено</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for c in clients %}
+                            <tr>
+                                <td>{{ c.name }}</td>
+                                <td>{{ c.phone }}</td>
+                                <td>{{ c.client_comment }}</td>
+                                <td class="text-center">{{ c.total_orders }}</td>
+                                <td class="text-end">{{ "%.2f"|format(c.total_spent) }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="5" class="text-center text-secondary">Клиентов нет</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-5">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="mb-3">Новый клиент</h5>
+                <form method="post" class="vstack gap-2">
+                    <div>
+                        <label class="form-label">Имя</label>
+                        <input class="form-control" name="name" required>
+                    </div>
+                    <div>
+                        <label class="form-label">Телефон</label>
+                        <input class="form-control" name="phone" placeholder="+7 962 550 7832" required>
+                    </div>
+                    <div>
+                        <label class="form-label">Комментарий</label>
+                        <textarea class="form-control" rows="3" name="comment"></textarea>
+                    </div>
+                    <button class="btn btn-success mt-2" type="submit">Сохранить клиента</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

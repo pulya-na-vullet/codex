@@ -1,12 +1,8 @@
-from ui.theme import setup_theme
-from ui.windows import MainApp
-
-
 def main():
-    setup_theme()
-    app = MainApp()
-    app.protocol("WM_DELETE_WINDOW", app.on_close)
-    app.mainloop()
+    from webapp import create_app
+
+    app = create_app()
+    app.run(host="0.0.0.0", port=8000, debug=False)
 
 
 if __name__ == "__main__":

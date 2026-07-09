@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3">
+    <div class="col-12 col-lg-7">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="mb-3">Каталог услуг</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                        <tr>
+                            <th>Название</th>
+                            <th>Категория</th>
+                            <th class="text-end">Цена</th>
+                            <th class="text-center">Статус</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for s in services %}
+                            <tr>
+                                <td>{{ s.name }}</td>
+                                <td>{{ s.category }}</td>
+                                <td class="text-end">{{ "%.2f"|format(s.price) }}</td>
+                                <td class="text-center">{{ "Активна" if s.is_active else "Отключена" }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="4" class="text-center text-secondary">Услуг нет</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-5">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="mb-3">Добавить услугу</h5>
+                <form method="post" class="vstack gap-2">
+                    <div>
+                        <label class="form-label">Название</label>
+                        <input class="form-control" name="name" required>
+                    </div>
+                    <div>
+                        <label class="form-label">Цена</label>
+                        <input class="form-control" name="price" required>
+                    </div>
+                    <div>
+                        <label class="form-label">Категория</label>
+                        <input class="form-control" name="category" list="categories-list">
+                        <datalist id="categories-list">
+                            {% for category in categories %}
+                                <option value="{{ category }}"></option>
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                    <button class="btn btn-success mt-2" type="submit">Сохранить услугу</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

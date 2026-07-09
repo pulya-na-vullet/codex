@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card mx-auto" style="max-width: 760px;">
+    <div class="card-body">
+        <h5 class="mb-3">Новый заказ</h5>
+        <form method="post" class="vstack gap-2">
+            <div>
+                <label class="form-label">Клиент</label>
+                <select class="form-select" name="client_id">
+                    <option value="">Без клиента</option>
+                    {% for c in clients %}
+                        <option value="{{ c.id }}">{{ c.name }} — {{ c.phone }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="btn btn-success mt-2" type="submit">Создать заказ</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
