@@ -10,9 +10,13 @@
                         <div class="small-muted">{{ order.created_date }}</div>
                         <div class="small-muted">Клиент: {{ order.client_name }} {{ order.phone }}</div>
                     </div>
-                    <form method="post" action="{{ url_for('delete_order', order_id=order.id) }}">
-                        <button class="btn btn-outline-danger btn-sm">Удалить заказ</button>
-                    </form>
+                    <div class="d-flex gap-2">
+                        <a class="btn btn-outline-light btn-sm" target="_blank" href="{{ url_for('print_order', order_id=order.id) }}">Печать</a>
+                        <a class="btn btn-outline-warning btn-sm" href="{{ url_for('order_pdf', order_id=order.id) }}">Скачать PDF</a>
+                        <form method="post" action="{{ url_for('delete_order', order_id=order.id) }}">
+                            <button class="btn btn-outline-danger btn-sm">Удалить заказ</button>
+                        </form>
+                    </div>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-sm align-middle">

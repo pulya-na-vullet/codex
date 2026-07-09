@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from flask import Flask, flash, g, redirect, render_template, request, url_for
+from io import BytesIO
+
+from flask import Flask, flash, g, redirect, render_template, request, send_file, url_for
 
 from database import Database
 from webapp.utils import normalize_rf_phone
@@ -122,6 +124,91 @@ def register_routes(app: Flask) -> None:
             order=order,
             services=db.get_order_services(order_id),
             catalog=db.get_active_services(),
+        )
+
+    @app.route("/orders/<int:order_id>/print")
+    def print_order(order_id: int):
+        db = get_db()
+        order = db.get_order_by_id(order_id)
+        if not order:
+            flash("Заказ не найден", "warning")
+            return redirect(url_for("orders"))
+        services = db.get_order_services(order_id)
+        return render_template("print_order.html", order=order, services=services)
+
+    @app.route("/orders/<int:order_id>/pdf")
+    def order_pdf(order_id: int):
+        db = get_db()
+        order = db.get_order_by_id(order_id)
+        if not order:
+            flash("Заказ не найден", "warning")
+            return redirect(url_for("orders"))
+        services = db.get_order_services(order_id)
+
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            from reportlab.pdfgen import canvas
+        except ImportError:
+            flash("Для экспорта PDF установите reportlab: pip install reportlab", "warning")
+            return redirect(url_for("order_detail", order_id=order_id))
+
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        y = height - 40
+
+        font_name = "Helvetica"
+        try:
+            pdfmetrics.registerFont(TTFont("DejaVu", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
+            font_name = "DejaVu"
+        except Exception:
+            pass
+
+        c.setFont(font_name, 16)
+        c.drawString(40, y, f"Заказ-наряд {order['order_number']}")
+        y -= 22
+        c.setFont(font_name, 11)
+        c.drawString(40, y, f"Клиент: {order['client_name']}  {order['phone']}")
+        y -= 16
+        c.drawString(40, y, f"Дата: {order['created_date']}")
+        y -= 22
+
+        c.setFont(font_name, 10)
+        c.drawString(40, y, "Услуга")
+        c.drawString(350, y, "Цена")
+        c.drawString(430, y, "Кол-во")
+        c.drawString(500, y, "Сумма")
+        y -= 10
+        c.line(40, y, width - 40, y)
+        y -= 14
+
+        for service in services:
+            if y < 70:
+                c.showPage()
+                c.setFont(font_name, 10)
+                y = height - 50
+            line_total = float(service["price"]) * int(service["quantity"])
+            c.drawString(40, y, str(service["service_name"])[:52])
+            c.drawRightString(400, y, f"{float(service['price']):.2f}")
+            c.drawRightString(470, y, f"{int(service['quantity'])}")
+            c.drawRightString(555, y, f"{line_total:.2f}")
+            y -= 14
+
+        y -= 8
+        c.line(40, y, width - 40, y)
+        y -= 20
+        c.setFont(font_name, 12)
+        c.drawRightString(width - 40, y, f"ИТОГО: {float(order['total_sum']):.2f}")
+        c.save()
+
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"{order['order_number']}.pdf",
+            mimetype="application/pdf",
         )
 
     @app.route("/orders/<int:order_id>/add-service", methods=["POST"])

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Печать {{ order.order_number }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; color: #111; }
+        h1 { margin-bottom: 8px; }
+        .meta { margin-bottom: 16px; color: #444; }
+        table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+        th, td { border: 1px solid #bbb; padding: 8px; }
+        th { background: #f1f5f9; text-align: left; }
+        td.num, th.num { text-align: right; }
+        .total { margin-top: 12px; text-align: right; font-size: 18px; font-weight: bold; }
+        .actions { margin-bottom: 12px; }
+        @media print {
+            .actions { display: none; }
+            body { margin: 10mm; }
+        }
+    </style>
+</head>
+<body>
+    <div class="actions">
+        <button onclick="window.print()">Печать</button>
+        <button onclick="window.history.back()">Назад</button>
+    </div>
+    <h1>Заказ-наряд {{ order.order_number }}</h1>
+    <div class="meta">
+        <div>Клиент: {{ order.client_name }} {{ order.phone }}</div>
+        <div>Дата: {{ order.created_date }}</div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Услуга</th>
+                <th class="num">Цена</th>
+                <th class="num">Кол-во</th>
+                <th class="num">Сумма</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for s in services %}
+            <tr>
+                <td>{{ s.service_name }}</td>
+                <td class="num">{{ "%.2f"|format(s.price) }}</td>
+                <td class="num">{{ s.quantity }}</td>
+                <td class="num">{{ "%.2f"|format(s.price * s.quantity) }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="total">ИТОГО: {{ "%.2f"|format(order.total_sum) }}</div>
+</body>
+</html>
