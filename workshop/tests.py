@@ -89,7 +89,10 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(r.status_code, 302)
         r = self.http.get("/")
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Последние заказы")
+        self.assertContains(r, "Сейчас в работе")
+        self.assertContains(r, "Задач в работе")
+        self.assertContains(r, "Диагностика в работе")
+        self.assertContains(r, "Нужно позвонить")
 
     def test_delete_client_and_service(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})

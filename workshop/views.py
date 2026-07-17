@@ -64,9 +64,23 @@ def logout_view(request: HttpRequest):
 
 
 def dashboard(request: HttpRequest):
-    recent = Order.objects.select_related("client")[:20]
-    return render(request, "workshop/dashboard.html", {"recent_orders": recent})
+    from workshop.models import AcceptanceActStatus
 
+    orders_in_work = Order.objects.filter(status=OrderStatus.ACTIVE).count()
+    diagnostics_in_work = AcceptanceAct.objects.filter(status=AcceptanceActStatus.DIAGNOSTICS).count()
+    calls_needed = (
+        Order.objects.filter(status=OrderStatus.READY_CALL).count()
+        + AcceptanceAct.objects.filter(status=AcceptanceActStatus.DIAGNOSTICS_DONE).count()
+    )
+    return render(
+        request,
+        "workshop/dashboard.html",
+        {
+            "orders_in_work": orders_in_work,
+            "diagnostics_in_work": diagnostics_in_work,
+            "calls_needed": calls_needed,
+        },
+    )
 
 def statistics(request: HttpRequest):
     from calendar import Calendar
