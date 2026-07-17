@@ -750,7 +750,7 @@ def order_set_mytax(request: HttpRequest, order_id: int):
 def debtors_list(request: HttpRequest):
     from workshop.models import debt_tracking_start, debtor_orders_queryset
 
-    orders = list(debtor_orders_queryset().select_related("client").order_by("-closed_at", "-id"))
+    orders = list(debtor_orders_queryset().select_related("client").order_by("-debt_closed_at", "-id"))
     total_debt = sum((o.total_sum for o in orders), Decimal("0"))
     return render(
         request,

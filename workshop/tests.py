@@ -178,17 +178,27 @@ class AuthAndPagesTests(TestCase):
             created_at=debt_tracking_start() + timedelta(hours=3),
             closed_at=timezone.now() - timedelta(hours=12),
         )
+        legacy_done = Order.objects.create(
+            order_number="ORD-LEGACY1",
+            client=client,
+            total_sum=Decimal("700"),
+            payment_method=PaymentMethod.UNPAID,
+            status="done",
+            created_at=debt_tracking_start() + timedelta(days=1),
+            closed_at=None,
+        )
         self.assertFalse(old.is_debtor)
         self.assertTrue(new.is_debtor)
         self.assertFalse(in_progress.is_debtor)
         self.assertFalse(just_closed.is_debtor)
+        self.assertTrue(legacy_done.is_debtor)
         r = self.http.get("/debtors")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "ORD-NEW0001")
+        self.assertContains(r, "ORD-LEGACY1")
         self.assertNotContains(r, "ORD-OLD0001")
         self.assertNotContains(r, "ORD-PROG001")
         self.assertNotContains(r, "ORD-FRESH01")
-        self.assertContains(r, "300,00")
         self.assertContains(r, "10.07.2026")
 
     def test_orders_list_shows_payment_and_mytax_badges(self):

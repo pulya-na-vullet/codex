@@ -31,7 +31,7 @@
                     <td>{{ o.order_number }}</td>
                     <td>{% if o.client %}<a href="{% url 'client_detail' o.client.id %}">{{ o.client.name }}</a>{% else %}Без клиента{% endif %}</td>
                     <td>{% if o.client %}{{ o.client.phone }}{% endif %}</td>
-                    <td>{% if o.closed_at %}{{ o.closed_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</td>
+                    <td>{% if o.effective_closed_at %}{{ o.effective_closed_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</td>
                     <td class="text-end">{{ o.total_sum|money }}</td>
                     <td>{% if o.mytax_issued %}выдан{% else %}нет{% endif %}</td>
                     <td><a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' o.id %}">Открыть</a></td>

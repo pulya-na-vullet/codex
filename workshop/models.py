@@ -33,16 +33,21 @@ def is_debt_tracking_active_for(created_at) -> bool:
 
 def debtor_orders_queryset():
     """Неоплаченные закрытые заказы, у которых прошли сутки после закрытия."""
+    from django.db.models.functions import Coalesce
+
     from workshop.models import Order, OrderStatus, PaymentMethod
 
     grace_before = timezone.now() - debt_grace_period()
-    return Order.objects.filter(
-        status=OrderStatus.DONE,
-        payment_method=PaymentMethod.UNPAID,
-        total_sum__gt=0,
-        closed_at__isnull=False,
-        closed_at__lte=grace_before,
-        created_at__gte=debt_tracking_start(),
+    # У старых «Завершён» без closed_at берём дату создания заказа.
+    return (
+        Order.objects.annotate(debt_closed_at=Coalesce("closed_at", "created_at"))
+        .filter(
+            status=OrderStatus.DONE,
+            payment_method=PaymentMethod.UNPAID,
+            total_sum__gt=0,
+            debt_closed_at__lte=grace_before,
+            created_at__gte=debt_tracking_start(),
+        )
     )
 
 
@@ -248,15 +253,27 @@ class Order(models.Model):
         return self.status == OrderStatus.ACTIVE
 
     @property
+    def effective_closed_at(self):
+        """Дата закрытия: closed_at или created_at для старых завершённых без даты."""
+        if self.closed_at:
+            return self.closed_at
+        if self.status == OrderStatus.DONE:
+            return self.created_at
+        return None
+
+    @property
     def is_debtor(self) -> bool:
         """Должник: заказ закрыт, не оплачен, и прошли сутки после закрытия."""
         if self.is_paid or self.total_sum <= 0:
             return False
-        if self.status != OrderStatus.DONE or not self.closed_at:
+        if self.status != OrderStatus.DONE:
+            return False
+        closed = self.effective_closed_at
+        if not closed:
             return False
         if not is_debt_tracking_active_for(self.created_at):
             return False
-        return timezone.now() >= self.closed_at + debt_grace_period()
+        return timezone.now() >= closed + debt_grace_period()
 
     def apply_status(self, status: str, *, save: bool = True) -> None:
         """Update work status and closed_at timestamp."""
