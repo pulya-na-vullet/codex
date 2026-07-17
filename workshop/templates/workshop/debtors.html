@@ -4,7 +4,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h4 class="mb-1">Должники</h4>
-        <div class="small-muted">Неоплаченные заказы с {{ debt_tracking_start|date:"d.m.Y" }} (раньше этой даты учёт долгов не ведётся)</div>
+        <div class="small-muted">Закрытые заказ-наряды без оплаты спустя 1 день после закрытия (учёт с {{ debt_tracking_start|date:"d.m.Y" }})</div>
     </div>
     <div class="text-end">
         <div>Заказов: <strong>{{ count }}</strong></div>
@@ -19,7 +19,7 @@
                 <th>Номер</th>
                 <th>Клиент</th>
                 <th>Телефон</th>
-                <th>Дата заказа</th>
+                <th>Закрыт</th>
                 <th class="text-end">Сумма</th>
                 <th>Мой налог</th>
                 <th></th>
@@ -31,7 +31,7 @@
                     <td>{{ o.order_number }}</td>
                     <td>{% if o.client %}<a href="{% url 'client_detail' o.client.id %}">{{ o.client.name }}</a>{% else %}Без клиента{% endif %}</td>
                     <td>{% if o.client %}{{ o.client.phone }}{% endif %}</td>
-                    <td>{{ o.created_at|date:"d.m.Y H:i" }}</td>
+                    <td>{% if o.closed_at %}{{ o.closed_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</td>
                     <td class="text-end">{{ o.total_sum|money }}</td>
                     <td>{% if o.mytax_issued %}выдан{% else %}нет{% endif %}</td>
                     <td><a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' o.id %}">Открыть</a></td>

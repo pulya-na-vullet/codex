@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from django.conf import settings
@@ -19,10 +19,31 @@ def debt_tracking_start() -> datetime:
     )
 
 
+def debt_grace_period() -> timedelta:
+    """Сколько ждать после закрытия заказ-наряда, прежде чем считать должником."""
+    days = int(getattr(settings, "DEBT_GRACE_DAYS", 1) or 1)
+    return timedelta(days=max(0, days))
+
+
 def is_debt_tracking_active_for(created_at) -> bool:
     if created_at is None:
         return False
     return created_at >= debt_tracking_start()
+
+
+def debtor_orders_queryset():
+    """Неоплаченные закрытые заказы, у которых прошли сутки после закрытия."""
+    from workshop.models import Order, OrderStatus, PaymentMethod
+
+    grace_before = timezone.now() - debt_grace_period()
+    return Order.objects.filter(
+        status=OrderStatus.DONE,
+        payment_method=PaymentMethod.UNPAID,
+        total_sum__gt=0,
+        closed_at__isnull=False,
+        closed_at__lte=grace_before,
+        created_at__gte=debt_tracking_start(),
+    )
 
 
 class Client(models.Model):
@@ -156,6 +177,7 @@ class Order(models.Model):
         choices=OrderStatus.choices,
         default=OrderStatus.ACTIVE,
     )
+    closed_at = models.DateTimeField("Закрыт", null=True, blank=True, db_index=True)
     device_type = models.CharField(
         "Устройство",
         max_length=32,
@@ -227,11 +249,25 @@ class Order(models.Model):
 
     @property
     def is_debtor(self) -> bool:
-        return (
-            is_debt_tracking_active_for(self.created_at)
-            and not self.is_paid
-            and self.total_sum > 0
-        )
+        """Должник: заказ закрыт, не оплачен, и прошли сутки после закрытия."""
+        if self.is_paid or self.total_sum <= 0:
+            return False
+        if self.status != OrderStatus.DONE or not self.closed_at:
+            return False
+        if not is_debt_tracking_active_for(self.created_at):
+            return False
+        return timezone.now() >= self.closed_at + debt_grace_period()
+
+    def apply_status(self, status: str, *, save: bool = True) -> None:
+        """Update work status and closed_at timestamp."""
+        self.status = status
+        if status == OrderStatus.DONE:
+            if not self.closed_at:
+                self.closed_at = timezone.now()
+        else:
+            self.closed_at = None
+        if save:
+            self.save(update_fields=["status", "closed_at"])
 
     def recalculate_totals(self, save: bool = True) -> Decimal:
         subtotal = Decimal("0")

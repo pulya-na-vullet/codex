@@ -6,6 +6,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.test import Client as HttpClient, TestCase, override_settings
+from django.utils import timezone
 
 from workshop.models import Client, Order, OrderLine, PaymentMethod, Service, debt_tracking_start, loyalty_discount_percent
 from workshop.pdf import build_order_pdf
@@ -107,9 +108,19 @@ class AuthAndPagesTests(TestCase):
         cat = ensure_category_path(("Тест",))
         service = Service.objects.create(name="Оплата тест", price=Decimal("500"), category=cat)
         client = Client.objects.create(name="Должник", phone="+79993334455")
-        order = Order.objects.create(order_number="ORD-777777", client=client, total_sum=Decimal("500"))
+        order = Order.objects.create(
+            order_number="ORD-777777",
+            client=client,
+            total_sum=Decimal("500"),
+            status="done",
+            closed_at=timezone.now() - timedelta(days=2),
+        )
         OrderLine.objects.create(order=order, service=service, service_name=service.name, unit_price=Decimal("500"), quantity=1)
         order.recalculate_totals()
+        order.status = "done"
+        order.closed_at = timezone.now() - timedelta(days=2)
+        order.save(update_fields=["status", "closed_at", "total_sum"])
+        self.assertTrue(order.is_debtor)
         r = self.http.get("/debtors")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "ORD-777777")
@@ -118,6 +129,7 @@ class AuthAndPagesTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.payment_method, PaymentMethod.CASH)
         self.assertIsNotNone(order.payment_at)
+        self.assertFalse(order.is_debtor)
         r = self.http.get("/debtors")
         self.assertNotContains(r, "ORD-777777")
         r = self.http.post(f"/orders/{order.id}/mytax", {"mytax_issued": "1"})
@@ -136,21 +148,46 @@ class AuthAndPagesTests(TestCase):
             client=client,
             total_sum=Decimal("900"),
             payment_method=PaymentMethod.UNPAID,
+            status="done",
             created_at=debt_tracking_start() - timedelta(days=1),
+            closed_at=timezone.now() - timedelta(days=2),
         )
         new = Order.objects.create(
             order_number="ORD-NEW0001",
             client=client,
             total_sum=Decimal("300"),
             payment_method=PaymentMethod.UNPAID,
+            status="done",
             created_at=debt_tracking_start() + timedelta(hours=1),
+            closed_at=timezone.now() - timedelta(days=2),
+        )
+        in_progress = Order.objects.create(
+            order_number="ORD-PROG001",
+            client=client,
+            total_sum=Decimal("400"),
+            payment_method=PaymentMethod.UNPAID,
+            status="active",
+            created_at=debt_tracking_start() + timedelta(hours=2),
+        )
+        just_closed = Order.objects.create(
+            order_number="ORD-FRESH01",
+            client=client,
+            total_sum=Decimal("200"),
+            payment_method=PaymentMethod.UNPAID,
+            status="done",
+            created_at=debt_tracking_start() + timedelta(hours=3),
+            closed_at=timezone.now() - timedelta(hours=12),
         )
         self.assertFalse(old.is_debtor)
         self.assertTrue(new.is_debtor)
+        self.assertFalse(in_progress.is_debtor)
+        self.assertFalse(just_closed.is_debtor)
         r = self.http.get("/debtors")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "ORD-NEW0001")
         self.assertNotContains(r, "ORD-OLD0001")
+        self.assertNotContains(r, "ORD-PROG001")
+        self.assertNotContains(r, "ORD-FRESH01")
         self.assertContains(r, "300,00")
         self.assertContains(r, "10.07.2026")
 

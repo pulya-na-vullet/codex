@@ -105,6 +105,7 @@ PRINT_JOB_TIMEOUT_SEC = float(os.getenv("IT_MASTER_PRINT_TIMEOUT", "600"))
 from datetime import date
 
 DEBT_TRACKING_START_DATE = date(2026, 7, 10)
+DEBT_GRACE_DAYS = int(os.getenv("IT_MASTER_DEBT_GRACE_DAYS", "1"))
 
 from django.contrib.messages import constants as message_constants
 

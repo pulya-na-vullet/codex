@@ -276,8 +276,7 @@ def order_set_status(request: HttpRequest, order_id: int):
         messages.warning(request, "Некорректный статус")
         return redirect(request.POST.get("next") or "work_queue")
     old = order.status
-    order.status = status
-    order.save(update_fields=["status"])
+    order.apply_status(status)
     log_action(
         request,
         "order_set_status",
@@ -749,17 +748,9 @@ def order_set_mytax(request: HttpRequest, order_id: int):
 
 
 def debtors_list(request: HttpRequest):
-    from workshop.models import debt_tracking_start
+    from workshop.models import debt_tracking_start, debtor_orders_queryset
 
-    orders = list(
-        Order.objects.select_related("client")
-        .filter(
-            payment_method=PaymentMethod.UNPAID,
-            total_sum__gt=0,
-            created_at__gte=debt_tracking_start(),
-        )
-        .order_by("-id")
-    )
+    orders = list(debtor_orders_queryset().select_related("client").order_by("-closed_at", "-id"))
     total_debt = sum((o.total_sum for o in orders), Decimal("0"))
     return render(
         request,

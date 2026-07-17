@@ -32,11 +32,11 @@
                     <td class="text-end">{{ row.total_sum|money }}</td>
                     <td>
                         {% if row.is_debtor %}
-                            <span class="badge text-bg-danger">Не оплачен</span>
+                            <span class="badge text-bg-danger">Долг</span>
                         {% elif row.is_paid %}
                             <span class="badge text-bg-success">{{ row.get_payment_method_display }}</span>
                         {% else %}
-                            <span class="badge text-bg-secondary">До учёта долгов</span>
+                            <span class="badge text-bg-secondary">Не оплачен</span>
                         {% endif %}
                     </td>
                     <td>
