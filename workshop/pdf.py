@@ -11,6 +11,11 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 
+MAX_MAILING_CONSENT = (
+    "* Клиент даёт согласие на информационную рассылку в мессенджере Max."
+)
+
+
 def _font_name() -> str:
     candidates = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -144,6 +149,11 @@ def build_order_pdf(order, lines) -> bytes:
     c.drawString(40, y, "Заказчик:___________________ / __________________________ / «        » _______ 2026г.")
     y -= 14
     c.drawString(40, y, "(Подпись) (Ф.И.О.) (Дата)")
+    y -= 22
+    if y < 40:
+        c.showPage()
+        y = height - 40
+    y = _draw_wrapped(c, font, 9, MAX_MAILING_CONSENT, 40, y, 100, 30, height)
     c.save()
     buffer.seek(0)
     return buffer.getvalue()
@@ -205,6 +215,11 @@ def build_acceptance_act_pdf(act) -> bytes:
     c.drawString(40, y, "Сдал (клиент): _________________ / __________________________")
     y -= 16
     c.drawString(40, y, "(Подпись) (Ф.И.О.)")
+    y -= 22
+    if y < 40:
+        c.showPage()
+        y = height - 40
+    y = _draw_wrapped(c, font, 9, MAX_MAILING_CONSENT, 40, y, 100, 30, height)
     c.save()
     buffer.seek(0)
     return buffer.getvalue()

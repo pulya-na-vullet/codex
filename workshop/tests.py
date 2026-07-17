@@ -72,6 +72,18 @@ class OrderLogicTests(TestCase):
         pdf = build_order_pdf(order, list(order.lines.all()))
         self.assertGreater(len(pdf), 500)
         self.assertTrue(pdf.startswith(b"%PDF"))
+        from workshop.pdf import MAX_MAILING_CONSENT, build_acceptance_act_pdf
+        from workshop.models import AcceptanceAct, DeviceType
+
+        self.assertIn("мессенджере Max", MAX_MAILING_CONSENT)
+        act = AcceptanceAct.objects.create(
+            act_number="ACT-PDF01",
+            client=self.client_obj,
+            device_type=DeviceType.PC,
+            declared_defect="Тест",
+        )
+        act_pdf = build_acceptance_act_pdf(act)
+        self.assertTrue(act_pdf.startswith(b"%PDF"))
 
 
 @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
