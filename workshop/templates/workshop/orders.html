@@ -8,18 +8,43 @@
     </div>
     <div class="table-responsive">
         <table class="table table-sm align-middle">
-            <thead><tr><th>Номер</th><th>Клиент</th><th>Телефон</th><th>Дата</th><th class="text-end">Сумма</th><th></th></tr></thead>
+            <thead>
+                <tr>
+                    <th>Номер</th>
+                    <th>Клиент</th>
+                    <th>Телефон</th>
+                    <th>Дата</th>
+                    <th class="text-end">Сумма</th>
+                    <th>Оплата</th>
+                    <th>Мой налог</th>
+                    <th></th>
+                </tr>
+            </thead>
             <tbody>
             {% for row in orders %}
-                <tr>
+                <tr class="{% if not row.is_paid and row.total_sum > 0 %}order-row-unpaid{% elif row.is_paid and not row.mytax_issued %}order-row-paid-no-mytax{% elif row.is_paid and row.mytax_issued %}order-row-complete{% endif %}">
                     <td>{{ row.order_number }}</td>
                     <td>{% if row.client %}{{ row.client.name }}{% else %}Без клиента{% endif %}</td>
                     <td>{% if row.client %}{{ row.client.phone }}{% endif %}</td>
                     <td>{{ row.created_at|date:"d.m.Y H:i" }}</td>
                     <td class="text-end">{{ row.total_sum|money }}</td>
+                    <td>
+                        {% if row.is_paid %}
+                            <span class="badge text-bg-success">{{ row.get_payment_method_display }}</span>
+                        {% else %}
+                            <span class="badge text-bg-danger">Не оплачен</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.mytax_issued %}
+                            <span class="badge text-bg-primary">Чек выдан</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Нет чека</span>
+                        {% endif %}
+                    </td>
                     <td><a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' row.id %}">Открыть</a></td>
                 </tr>
-            {% empty %}<tr><td colspan="6" class="text-center text-secondary">Заказов пока нет</td></tr>{% endfor %}
+            {% empty %}<tr><td colspan="8" class="text-center text-secondary">Заказов пока нет</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>

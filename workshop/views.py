@@ -310,6 +310,23 @@ def service_delete(request: HttpRequest, service_id: int):
     return redirect("services")
 
 
+@require_POST
+def service_toggle_active(request: HttpRequest, service_id: int):
+    service = get_object_or_404(Service, pk=service_id)
+    service.is_active = not service.is_active
+    service.save(update_fields=["is_active"])
+    status_label = "активна" if service.is_active else "неактивна"
+    log_action(
+        request,
+        "service_toggle_active",
+        entity_type="service",
+        entity_id=service.id,
+        details=f"{service.name}: {status_label}",
+    )
+    messages.success(request, f"Услуга «{service.name}» теперь {status_label}")
+    return redirect("services")
+
+
 def orders_list(request: HttpRequest):
     return render(
         request,

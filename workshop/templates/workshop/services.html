@@ -10,15 +10,28 @@
                     <thead><tr><th>Название</th><th>Категория</th><th class="text-end">Цена</th><th class="text-center">Статус</th><th></th></tr></thead>
                     <tbody>
                     {% for s in services %}
-                        <tr>
+                        <tr class="{% if not s.is_active %}service-inactive{% endif %}">
                             <td>{{ s.name }}</td>
                             <td>{{ s.category.path_label }}</td>
                             <td class="text-end">{{ s.price|money }}</td>
-                            <td class="text-center">{% if s.is_active %}Активна{% else %}Отключена{% endif %}</td>
+                            <td class="text-center">
+                                {% if s.is_active %}
+                                    <span class="badge text-bg-success">Активна</span>
+                                {% else %}
+                                    <span class="badge text-bg-secondary">Неактивна</span>
+                                {% endif %}
+                            </td>
                             <td class="text-end">
-                                <form method="post" action="{% url 'service_delete' s.id %}" onsubmit="return confirm('Удалить услугу?');">{% csrf_token %}
-                                    <button class="btn btn-outline-danger btn-sm">Удалить</button>
-                                </form>
+                                <div class="d-inline-flex gap-1">
+                                    <form method="post" action="{% url 'service_toggle_active' s.id %}">{% csrf_token %}
+                                        <button class="btn btn-outline-{% if s.is_active %}warning{% else %}success{% endif %} btn-sm" type="submit">
+                                            {% if s.is_active %}Отключить{% else %}Включить{% endif %}
+                                        </button>
+                                    </form>
+                                    <form method="post" action="{% url 'service_delete' s.id %}" onsubmit="return confirm('Удалить услугу?');">{% csrf_token %}
+                                        <button class="btn btn-outline-danger btn-sm" type="submit">Удалить</button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                     {% empty %}<tr><td colspan="5" class="text-center text-secondary">Услуг нет</td></tr>{% endfor %}

@@ -126,3 +126,44 @@ class AuthAndPagesTests(TestCase):
         r = self.http.get("/audit-log")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "order_payment")
+
+    def test_orders_list_shows_payment_and_mytax_badges(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        client = Client.objects.create(name="Клиент", phone="+79990001122")
+        unpaid = Order.objects.create(order_number="ORD-UNPAID1", client=client, total_sum=Decimal("100"))
+        paid = Order.objects.create(
+            order_number="ORD-PAID001",
+            client=client,
+            total_sum=Decimal("200"),
+            payment_method=PaymentMethod.CASH,
+            mytax_issued=True,
+        )
+        r = self.http.get("/orders")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, unpaid.order_number)
+        self.assertContains(r, paid.order_number)
+        self.assertContains(r, "Не оплачен")
+        self.assertContains(r, "Наличные")
+        self.assertContains(r, "Чек выдан")
+        self.assertContains(r, "Нет чека")
+
+    def test_service_toggle_active_hides_from_order_catalog(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        cat = ensure_category_path(("Каталог",))
+        service = Service.objects.create(name="Скрываемая услуга", price=Decimal("50"), category=cat, is_active=True)
+        order = Order.objects.create(order_number="ORD-HIDE001")
+        r = self.http.get(f"/orders/{order.id}")
+        self.assertContains(r, "Скрываемая услуга")
+        r = self.http.post(f"/services/{service.id}/toggle-active", follow=True)
+        self.assertEqual(r.status_code, 200)
+        service.refresh_from_db()
+        self.assertFalse(service.is_active)
+        r = self.http.get(f"/orders/{order.id}")
+        self.assertContains(r, "Каталог пуст")
+        self.assertNotContains(r, "Скрываемая услуга")
+        r = self.http.post(f"/orders/{order.id}/add-service", {"service_name": "Скрываемая услуга", "quantity": "1"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(order.lines.count(), 0)
+        r = self.http.get("/services")
+        self.assertContains(r, "Неактивна")
+        self.assertContains(r, "Включить")
