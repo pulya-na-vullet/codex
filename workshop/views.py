@@ -68,27 +68,81 @@ def dashboard(request: HttpRequest):
 
 
 def statistics(request: HttpRequest):
-    period = request.GET.get("period", "month")
+    from calendar import Calendar
+    from collections import defaultdict
+
+    period = request.GET.get("period", "week")
     if period not in {"week", "month", "year"}:
-        period = "month"
+        period = "week"
+
     now = timezone.localtime()
     if period == "week":
         start = now - timedelta(days=7)
+        end = now
+        period_label = "за 7 дней"
     elif period == "year":
         start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = now
+        period_label = f"за {now.year} год"
     else:
         start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = now
+        period_label = now.strftime("%m.%Y")
 
     orders = list(
-        Order.objects.select_related("client").filter(created_at__gte=start).order_by("-id")
+        Order.objects.select_related("client").filter(created_at__gte=start, created_at__lte=end).order_by("-id")
+    )
+    acts = list(
+        AcceptanceAct.objects.select_related("client").filter(created_at__gte=start, created_at__lte=end).order_by("-id")
     )
     total_sum = sum((o.total_sum for o in orders), Decimal("0"))
     total_orders = len(orders)
     avg_check = (total_sum / total_orders) if total_orders else Decimal("0")
 
-    # Monthly breakdown from all orders
+    # Unique contacted clients (orders + acceptance acts)
+    visitors_map: dict[int, dict] = {}
+    for o in orders:
+        if not o.client_id:
+            continue
+        row = visitors_map.setdefault(
+            o.client_id,
+            {
+                "id": o.client_id,
+                "name": o.client.name,
+                "phone": o.client.phone,
+                "orders": 0,
+                "acts": 0,
+                "spent": Decimal("0"),
+            },
+        )
+        row["orders"] += 1
+        row["spent"] += o.total_sum
+    for a in acts:
+        row = visitors_map.setdefault(
+            a.client_id,
+            {
+                "id": a.client_id,
+                "name": a.client.name,
+                "phone": a.client.phone,
+                "orders": 0,
+                "acts": 0,
+                "spent": Decimal("0"),
+            },
+        )
+        row["acts"] += 1
+    visitors = sorted(visitors_map.values(), key=lambda r: (r["orders"] + r["acts"], r["spent"]), reverse=True)
+
+    # Top clients by spend in period
+    top_clients = sorted(visitors_map.values(), key=lambda r: r["spent"], reverse=True)[:10]
+
+    # Monthly breakdown (year view / shared)
     monthly_map: dict[str, dict] = {}
-    for o in Order.objects.all().only("created_at", "total_sum"):
+    year_orders_qs = Order.objects.filter(created_at__year=now.year).only("created_at", "total_sum")
+    if period == "year":
+        source_orders = year_orders_qs
+    else:
+        source_orders = Order.objects.all().only("created_at", "total_sum")
+    for o in source_orders:
         local = timezone.localtime(o.created_at)
         key = local.strftime("%Y-%m")
         label = local.strftime("%m.%Y")
@@ -97,23 +151,88 @@ def statistics(request: HttpRequest):
         bucket["revenue"] += o.total_sum
     monthly = [monthly_map[k] for k in sorted(monthly_map.keys(), reverse=True)[:12]]
 
-    # Top clients by spent (annotate)
-    clients = Client.objects.all()
-    top = sorted(clients, key=lambda c: c.total_spent, reverse=True)[:10]
+    # Calendar heatmap for current month
+    calendar_weeks = []
+    max_day_visits = 0
+    if period == "month":
+        day_counts: dict = defaultdict(int)
+        month_start = start
+        if now.month == 12:
+            month_end = now.replace(year=now.year + 1, month=1, day=1)
+        else:
+            month_end = now.replace(month=now.month + 1, day=1)
+        for o in Order.objects.filter(created_at__gte=month_start, created_at__lt=month_end).only("created_at"):
+            day_counts[timezone.localtime(o.created_at).date()] += 1
+        for a in AcceptanceAct.objects.filter(created_at__gte=month_start, created_at__lt=month_end).only("created_at"):
+            day_counts[timezone.localtime(a.created_at).date()] += 1
+        max_day_visits = max(day_counts.values()) if day_counts else 0
+        cal = Calendar(firstweekday=0)  # Monday
+        for week in cal.monthdatescalendar(now.year, now.month):
+            cells = []
+            for d in week:
+                count = day_counts.get(d, 0)
+                intensity = 0
+                if max_day_visits and count:
+                    intensity = max(1, round(count / max_day_visits * 4))
+                cells.append(
+                    {
+                        "day": d.day,
+                        "date": d,
+                        "count": count,
+                        "in_month": d.month == now.month,
+                        "intensity": intensity,
+                        "is_today": d == now.date(),
+                    }
+                )
+            calendar_weeks.append(cells)
+
+    # Year-over-year comparison (for year period; scaffold for the future)
+    yoy = None
+    if period == "year":
+        prev_start = start.replace(year=start.year - 1)
+        prev_end = start
+        prev_orders = list(Order.objects.filter(created_at__gte=prev_start, created_at__lt=prev_end))
+        prev_sum = sum((o.total_sum for o in prev_orders), Decimal("0"))
+        prev_count = len(prev_orders)
+        prev_avg = (prev_sum / prev_count) if prev_count else Decimal("0")
+
+        def _delta(curr, prev):
+            if prev == 0:
+                return None if curr == 0 else Decimal("100")
+            return ((curr - prev) / prev * Decimal("100")).quantize(Decimal("0.1"))
+
+        yoy = {
+            "prev_year": start.year - 1,
+            "curr_year": start.year,
+            "prev_orders": prev_count,
+            "prev_sum": prev_sum,
+            "prev_avg": prev_avg,
+            "orders_delta_pct": _delta(Decimal(total_orders), Decimal(prev_count)),
+            "sum_delta_pct": _delta(total_sum, prev_sum),
+            "avg_delta_pct": _delta(avg_check, prev_avg),
+        }
 
     return render(
         request,
         "workshop/statistics.html",
         {
             "period": period,
+            "period_label": period_label,
             "stats": {
                 "total_sum": total_sum,
                 "total_orders": total_orders,
                 "avg_check": avg_check,
-                "orders": orders,
+                "visitors_count": len(visitors),
+                "acts_count": len(acts),
             },
+            "orders": orders,
+            "visitors": visitors,
             "monthly": monthly,
-            "top_clients": top,
+            "top_clients": top_clients,
+            "calendar_weeks": calendar_weeks,
+            "max_day_visits": max_day_visits,
+            "yoy": yoy,
+            "weekday_labels": ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
         },
     )
 
@@ -142,7 +261,6 @@ def clients(request: HttpRequest):
     if query:
         qs = qs.filter(Q(name__icontains=query) | Q(phone__icontains=query) | Q(comment__icontains=query))
     rows = list(qs)
-    # attach computed fields for template convenience
     enriched = []
     for c in rows:
         enriched.append(
@@ -160,8 +278,23 @@ def clients(request: HttpRequest):
     return render(request, "workshop/clients.html", {"clients": enriched, "query": query})
 
 
+@require_http_methods(["GET", "POST"])
 def client_detail(request: HttpRequest, client_id: int):
     client = get_object_or_404(Client, pk=client_id)
+    if request.method == "POST":
+        comment = request.POST.get("comment", "").strip()
+        client.comment = comment
+        client.save(update_fields=["comment"])
+        log_action(
+            request,
+            "client_update_comment",
+            entity_type="client",
+            entity_id=client.id,
+            details=f"{client.name}: {comment[:120]}",
+        )
+        messages.success(request, "Комментарий сохранён")
+        return redirect("client_detail", client_id=client.id)
+
     orders = client.orders.all()
     acts = client.acceptance_acts.all()[:20]
     ctx_client = {
@@ -267,6 +400,10 @@ def import_clients_excel(request: HttpRequest):
 
 @require_http_methods(["GET", "POST"])
 def services(request: HttpRequest):
+    status_filter = request.GET.get("status", "all")
+    if status_filter not in {"all", "active", "inactive"}:
+        status_filter = "all"
+
     if request.method == "POST":
         name = request.POST.get("name", "").strip()
         price_raw = request.POST.get("price", "").strip().replace(",", ".")
@@ -278,7 +415,7 @@ def services(request: HttpRequest):
                 price = Decimal(price_raw)
             except (InvalidOperation, ValueError):
                 messages.warning(request, "Введите корректную цену")
-                return redirect("services")
+                return redirect(f"/services?status={status_filter}")
             if price < 0:
                 messages.warning(request, "Цена не может быть отрицательной")
             elif Service.objects.filter(name=name).exists():
@@ -288,16 +425,30 @@ def services(request: HttpRequest):
                 Service.objects.create(name=name, price=price, category=cat, is_active=True)
                 log_action(request, "service_create", entity_type="service", details=f"{name}={price}")
                 messages.success(request, "Услуга добавлена")
-        return redirect("services")
+        return redirect(f"/services?status={status_filter}")
+
+    qs = Service.objects.select_related("category")
+    if status_filter == "active":
+        qs = qs.filter(is_active=True)
+    elif status_filter == "inactive":
+        qs = qs.filter(is_active=False)
 
     return render(
         request,
         "workshop/services.html",
         {
-            "services": Service.objects.select_related("category"),
+            "services": qs,
             "categories": category_choices(),
+            "status_filter": status_filter,
         },
     )
+
+
+def _services_status_redirect(request: HttpRequest) -> str:
+    status = request.POST.get("status") or request.GET.get("status") or "all"
+    if status not in {"all", "active", "inactive"}:
+        status = "all"
+    return f"/services?status={status}"
 
 
 @require_POST
@@ -307,7 +458,7 @@ def service_delete(request: HttpRequest, service_id: int):
     service.delete()
     log_action(request, "service_delete", entity_type="service", entity_id=service_id, details=details)
     messages.success(request, "Услуга удалена")
-    return redirect("services")
+    return redirect(_services_status_redirect(request))
 
 
 @require_POST
@@ -324,7 +475,7 @@ def service_toggle_active(request: HttpRequest, service_id: int):
         details=f"{service.name}: {status_label}",
     )
     messages.success(request, f"Услуга «{service.name}» теперь {status_label}")
-    return redirect("services")
+    return redirect(_services_status_redirect(request))
 
 
 def orders_list(request: HttpRequest):

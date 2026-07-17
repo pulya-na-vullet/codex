@@ -2,18 +2,167 @@
 {% load workshop_extras %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-    <h4 class="mb-0">Статистика</h4>
+    <div>
+        <h4 class="mb-0">Статистика</h4>
+        <div class="small-muted">{{ period_label }}</div>
+    </div>
     <div class="btn-group">
         <a class="btn btn-sm {% if period == 'week' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?period=week">Неделя</a>
         <a class="btn btn-sm {% if period == 'month' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?period=month">Месяц</a>
         <a class="btn btn-sm {% if period == 'year' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?period=year">Год</a>
     </div>
 </div>
+
 <div class="row g-3 mb-4">
-    <div class="col-md-4"><div class="card"><div class="card-body"><div class="small-muted">Заказов</div><div class="fs-3 fw-bold">{{ stats.total_orders }}</div></div></div></div>
-    <div class="col-md-4"><div class="card"><div class="card-body"><div class="small-muted">Выручка</div><div class="fs-3 fw-bold">{{ stats.total_sum|money }}</div></div></div></div>
-    <div class="col-md-4"><div class="card"><div class="card-body"><div class="small-muted">Средний чек</div><div class="fs-3 fw-bold">{{ stats.avg_check|money }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">Заказов</div><div class="fs-3 fw-bold">{{ stats.total_orders }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">Выручка</div><div class="fs-3 fw-bold">{{ stats.total_sum|money }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">Средний чек</div><div class="fs-3 fw-bold">{{ stats.avg_check|money }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">Обратившихся клиентов</div><div class="fs-3 fw-bold">{{ stats.visitors_count }}</div></div></div></div>
 </div>
+
+{% if period == 'week' %}
+<div class="row g-3">
+    <div class="col-xl-7">
+        <div class="card h-100"><div class="card-body">
+            <h5 class="mb-3">Выручка за неделю (детально)</h5>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Заказ</th><th>Клиент</th><th>Дата</th><th class="text-end">Сумма</th></tr></thead>
+                    <tbody>
+                    {% for o in orders %}
+                        <tr>
+                            <td><a href="{% url 'order_detail' o.id %}">{{ o.order_number }}</a></td>
+                            <td>{% if o.client %}{{ o.client.name }}{% else %}Без клиента{% endif %}</td>
+                            <td>{{ o.created_at|date:"d.m.Y H:i" }}</td>
+                            <td class="text-end">{{ o.total_sum|money }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="text-center text-secondary">Заказов за неделю нет</td></tr>
+                    {% endfor %}
+                    </tbody>
+                    {% if orders %}
+                    <tfoot><tr><th colspan="3">Итого</th><th class="text-end">{{ stats.total_sum|money }}</th></tr></tfoot>
+                    {% endif %}
+                </table>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-xl-5">
+        <div class="card h-100"><div class="card-body">
+            <h5 class="mb-3">Обратившиеся клиенты</h5>
+            <p class="small-muted mb-3">Заказ-наряды и акты приёма-передачи за период (актов: {{ stats.acts_count }})</p>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Клиент</th><th class="text-center">Заказы</th><th class="text-center">Акты</th><th class="text-end">Сумма</th></tr></thead>
+                    <tbody>
+                    {% for v in visitors %}
+                        <tr>
+                            <td><a href="{% url 'client_detail' v.id %}">{{ v.name }}</a><div class="small-muted">{{ v.phone }}</div></td>
+                            <td class="text-center">{{ v.orders }}</td>
+                            <td class="text-center">{{ v.acts }}</td>
+                            <td class="text-end">{{ v.spent|money }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="text-center text-secondary">Обращений нет</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div></div>
+    </div>
+</div>
+
+{% elif period == 'month' %}
+<div class="row g-3 mb-3">
+    <div class="col-xl-5">
+        <div class="card h-100"><div class="card-body">
+            <h5 class="mb-3">Топ-10 клиентов за месяц</h5>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead><tr><th>#</th><th>Клиент</th><th class="text-center">Заказов</th><th class="text-end">Потрачено</th></tr></thead>
+                    <tbody>
+                    {% for c in top_clients %}
+                        <tr>
+                            <td>{{ forloop.counter }}</td>
+                            <td><a href="{% url 'client_detail' c.id %}">{{ c.name }}</a><div class="small-muted">{{ c.phone }}</div></td>
+                            <td class="text-center">{{ c.orders }}</td>
+                            <td class="text-end">{{ c.spent|money }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="text-center text-secondary">Нет данных</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-xl-7">
+        <div class="card h-100"><div class="card-body">
+            <h5 class="mb-3">Календарь обращений</h5>
+            <p class="small-muted mb-3">Заказ-наряды и акты приёма по дням месяца</p>
+            <div class="stats-calendar">
+                <div class="stats-calendar-head">
+                    {% for label in weekday_labels %}<div>{{ label }}</div>{% endfor %}
+                </div>
+                {% for week in calendar_weeks %}
+                <div class="stats-calendar-row">
+                    {% for day in week %}
+                    <div class="stats-day {% if not day.in_month %}is-out{% endif %} {% if day.is_today %}is-today{% endif %} intensity-{{ day.intensity }}" title="{{ day.date|date:'d.m.Y' }}: {{ day.count }}">
+                        <div class="stats-day-num">{{ day.day }}</div>
+                        {% if day.in_month and day.count %}<div class="stats-day-count">{{ day.count }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="small-muted mt-2">Интенсивность = число обращений в день (макс. {{ max_day_visits }})</div>
+        </div></div>
+    </div>
+</div>
+<div class="card"><div class="card-body">
+    <h5 class="mb-3">Заказы месяца</h5>
+    <div class="table-responsive">
+        <table class="table table-sm">
+            <thead><tr><th>Номер</th><th>Клиент</th><th>Дата</th><th class="text-end">Сумма</th></tr></thead>
+            <tbody>
+            {% for o in orders %}
+                <tr>
+                    <td><a href="{% url 'order_detail' o.id %}">{{ o.order_number }}</a></td>
+                    <td>{% if o.client %}{{ o.client.name }}{% else %}Без клиента{% endif %}</td>
+                    <td>{{ o.created_at|date:"d.m.Y H:i" }}</td>
+                    <td class="text-end">{{ o.total_sum|money }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="4" class="text-center text-secondary">Заказов нет</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div></div>
+
+{% else %}
+{% if yoy %}
+<div class="card mb-3"><div class="card-body">
+    <h5 class="mb-3">Сравнение год к году</h5>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="small-muted">Заказы {{ yoy.curr_year }} / {{ yoy.prev_year }}</div>
+            <div class="fs-5 fw-bold">{{ stats.total_orders }} / {{ yoy.prev_orders }}</div>
+            {% if yoy.orders_delta_pct != None %}<div class="small-muted">{% if yoy.orders_delta_pct > 0 %}+{% endif %}{{ yoy.orders_delta_pct }}%</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+            <div class="small-muted">Выручка {{ yoy.curr_year }} / {{ yoy.prev_year }}</div>
+            <div class="fs-5 fw-bold">{{ stats.total_sum|money }} / {{ yoy.prev_sum|money }}</div>
+            {% if yoy.sum_delta_pct != None %}<div class="small-muted">{% if yoy.sum_delta_pct > 0 %}+{% endif %}{{ yoy.sum_delta_pct }}%</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+            <div class="small-muted">Средний чек {{ yoy.curr_year }} / {{ yoy.prev_year }}</div>
+            <div class="fs-5 fw-bold">{{ stats.avg_check|money }} / {{ yoy.prev_avg|money }}</div>
+            {% if yoy.avg_delta_pct != None %}<div class="small-muted">{% if yoy.avg_delta_pct > 0 %}+{% endif %}{{ yoy.avg_delta_pct }}%</div>{% endif %}
+        </div>
+    </div>
+</div></div>
+{% endif %}
 <div class="row g-3">
     <div class="col-xl-6"><div class="card h-100"><div class="card-body">
         <h5 class="mb-3">Разбивка по месяцам</h5>
@@ -23,11 +172,12 @@
         </table></div>
     </div></div></div>
     <div class="col-xl-6"><div class="card h-100"><div class="card-body">
-        <h5 class="mb-3">Топ-10 клиентов</h5>
+        <h5 class="mb-3">Топ-10 клиентов за год</h5>
         <div class="table-responsive"><table class="table table-sm">
-            <thead><tr><th>#</th><th>Клиент</th><th>Телефон</th><th class="text-center">Заказов</th><th class="text-end">Потрачено</th></tr></thead>
-            <tbody>{% for c in top_clients %}<tr><td>{{ forloop.counter }}</td><td>{{ c.name }}</td><td>{{ c.phone }}</td><td class="text-center">{{ c.total_orders }}</td><td class="text-end">{{ c.total_spent|money }}</td></tr>{% empty %}<tr><td colspan="5" class="text-center text-secondary">Нет данных</td></tr>{% endfor %}</tbody>
+            <thead><tr><th>#</th><th>Клиент</th><th class="text-center">Заказов</th><th class="text-end">Потрачено</th></tr></thead>
+            <tbody>{% for c in top_clients %}<tr><td>{{ forloop.counter }}</td><td><a href="{% url 'client_detail' c.id %}">{{ c.name }}</a></td><td class="text-center">{{ c.orders }}</td><td class="text-end">{{ c.spent|money }}</td></tr>{% empty %}<tr><td colspan="4" class="text-center text-secondary">Нет данных</td></tr>{% endfor %}</tbody>
         </table></div>
     </div></div></div>
 </div>
+{% endif %}
 {% endblock %}

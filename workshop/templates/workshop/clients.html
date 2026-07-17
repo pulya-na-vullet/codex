@@ -25,7 +25,7 @@
                                 {% if c.is_regular %}<span class="badge text-bg-success ms-1">постоянный</span>{% endif %}
                             </td>
                             <td>{{ c.phone }}</td>
-                            <td>{{ c.comment }}</td>
+                            <td class="comment-cell">{% if c.comment %}{{ c.comment }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
                             <td class="text-center">{{ c.total_orders }}</td>
                             <td class="text-end">{{ c.total_spent|money }}</td>
                         </tr>
