@@ -6,7 +6,7 @@
             <h5 class="mb-3">Акты приёма-передачи техники</h5>
             <div class="table-responsive">
                 <table class="table table-sm">
-                    <thead><tr><th>Номер</th><th>Дата</th><th>Клиент</th><th>Устройство</th><th></th></tr></thead>
+                    <thead><tr><th>Номер</th><th>Дата</th><th>Клиент</th><th>Устройство</th><th>Статус</th><th></th></tr></thead>
                     <tbody>
                     {% for a in acts %}
                         <tr>
@@ -14,9 +14,14 @@
                             <td>{{ a.created_at|date:"d.m.Y H:i" }}</td>
                             <td>{{ a.client.name }}</td>
                             <td>{{ a.device_type }} {{ a.brand_model }}</td>
+                            <td>
+                                <span class="badge {% if a.status == 'diagnostics' %}text-bg-purple{% elif a.status == 'diagnostics_done' %}text-bg-warning{% else %}text-bg-success{% endif %}">
+                                    {{ a.get_status_display }}
+                                </span>
+                            </td>
                             <td><a class="btn btn-outline-light btn-sm" href="{% url 'acceptance_detail' a.id %}">Открыть</a></td>
                         </tr>
-                    {% empty %}<tr><td colspan="5" class="text-center text-secondary">Актов нет</td></tr>{% endfor %}
+                    {% empty %}<tr><td colspan="6" class="text-center text-secondary">Актов нет</td></tr>{% endfor %}
                     </tbody>
                 </table>
             </div>

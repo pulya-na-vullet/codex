@@ -18,6 +18,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from workshop.audit import log_action
 from workshop.models import (
     AcceptanceAct,
+    AcceptanceActStatus,
     AuditLog,
     Client,
     DeviceType,
@@ -254,18 +255,38 @@ def statistics(request: HttpRequest):
 
 
 def work_queue(request: HttpRequest):
-    orders = (
+    orders = list(
         Order.objects.select_related("client")
         .filter(status=OrderStatus.ACTIVE)
         .order_by("created_at", "id")
+    )
+    acts = list(
+        AcceptanceAct.objects.select_related("client", "order")
+        .filter(status=AcceptanceActStatus.DIAGNOSTICS)
+        .order_by("created_at", "id")
+    )
+    call_orders = list(
+        Order.objects.select_related("client")
+        .filter(status=OrderStatus.READY_CALL)
+        .order_by("closed_at", "id")
+    )
+    call_acts = list(
+        AcceptanceAct.objects.select_related("client", "order")
+        .filter(status=AcceptanceActStatus.DIAGNOSTICS_DONE)
+        .order_by("finished_at", "id")
     )
     return render(
         request,
         "workshop/work_queue.html",
         {
             "orders": orders,
+            "acts": acts,
+            "call_orders": call_orders,
+            "call_acts": call_acts,
             "order_statuses": OrderStatus.choices,
-            "count": orders.count(),
+            "act_statuses": AcceptanceActStatus.choices,
+            "count": len(orders) + len(acts),
+            "call_count": len(call_orders) + len(call_acts),
         },
     )
 
@@ -284,15 +305,74 @@ def order_set_status(request: HttpRequest, order_id: int):
         "order_set_status",
         entity_type="order",
         entity_id=order.id,
-        details=f"{order.order_number}: {old} → {status}",
+        details=f"{order.order_number}: {old} → {order.status}",
     )
     messages.success(request, f"Статус заказа {order.order_number}: {order.get_status_display()}")
     next_url = request.POST.get("next") or ""
     if next_url.startswith("/"):
         return redirect(next_url)
-    if status == OrderStatus.ACTIVE:
+    if order.status in {OrderStatus.ACTIVE, OrderStatus.READY_CALL}:
         return redirect("work_queue")
     return redirect("order_detail", order_id=order.id)
+
+
+@require_POST
+def order_mark_called(request: HttpRequest, order_id: int):
+    order = get_object_or_404(Order, pk=order_id)
+    order.mark_client_called()
+    log_action(
+        request,
+        "order_client_called",
+        entity_type="order",
+        entity_id=order.id,
+        details=order.order_number,
+    )
+    messages.success(request, f"Звонок по заказу {order.order_number} отмечен — статус «Выполнена»")
+    next_url = request.POST.get("next") or ""
+    if next_url.startswith("/"):
+        return redirect(next_url)
+    return redirect("work_queue")
+
+
+@require_POST
+def acceptance_set_status(request: HttpRequest, act_id: int):
+    act = get_object_or_404(AcceptanceAct, pk=act_id)
+    status = request.POST.get("status", "").strip()
+    if status not in dict(AcceptanceActStatus.choices):
+        messages.warning(request, "Некорректный статус акта")
+        return redirect(request.POST.get("next") or "work_queue")
+    old = act.status
+    act.apply_status(status)
+    log_action(
+        request,
+        "acceptance_set_status",
+        entity_type="acceptance",
+        entity_id=act.id,
+        details=f"{act.act_number}: {old} → {act.status}",
+    )
+    messages.success(request, f"Статус акта {act.act_number}: {act.get_status_display()}")
+    next_url = request.POST.get("next") or ""
+    if next_url.startswith("/"):
+        return redirect(next_url)
+    return redirect("work_queue")
+
+
+@require_POST
+def acceptance_mark_called(request: HttpRequest, act_id: int):
+    act = get_object_or_404(AcceptanceAct, pk=act_id)
+    act.mark_client_called()
+    log_action(
+        request,
+        "acceptance_client_called",
+        entity_type="acceptance",
+        entity_id=act.id,
+        details=act.act_number,
+    )
+    messages.success(request, f"Звонок по акту {act.act_number} отмечен — статус «Выполнена»")
+    next_url = request.POST.get("next") or ""
+    if next_url.startswith("/"):
+        return redirect(next_url)
+    return redirect("work_queue")
 
 
 @require_http_methods(["GET", "POST"])
@@ -1047,13 +1127,21 @@ def acceptance_list_create(request: HttpRequest):
             "clients": Client.objects.all(),
             "orders": Order.objects.select_related("client")[:100],
             "device_types": [c[0] for c in DeviceType.choices],
+            "act_statuses": AcceptanceActStatus.choices,
         },
     )
 
 
 def acceptance_detail(request: HttpRequest, act_id: int):
     act = get_object_or_404(AcceptanceAct.objects.select_related("client", "order"), pk=act_id)
-    return render(request, "workshop/acceptance_detail.html", {"act": act})
+    return render(
+        request,
+        "workshop/acceptance_detail.html",
+        {
+            "act": act,
+            "act_statuses": AcceptanceActStatus.choices,
+        },
+    )
 
 
 def acceptance_print(request: HttpRequest, act_id: int):

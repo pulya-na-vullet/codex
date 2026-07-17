@@ -285,6 +285,8 @@ class AuthAndPagesTests(TestCase):
 
     def test_work_queue_and_status(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        from workshop.models import AcceptanceAct, AcceptanceActStatus, DeviceType
+
         client = Client.objects.create(name="Очередь", phone="+79998887766")
         order = Order.objects.create(
             order_number="ORD-WORK01",
@@ -292,15 +294,47 @@ class AuthAndPagesTests(TestCase):
             total_sum=Decimal("500"),
             status="active",
         )
+        act = AcceptanceAct.objects.create(
+            act_number="ACT-WORK01",
+            client=client,
+            device_type=DeviceType.PC,
+            declared_defect="Не включается",
+            status=AcceptanceActStatus.DIAGNOSTICS,
+        )
         r = self.http.get("/work-queue")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "ORD-WORK01")
-        self.assertContains(r, "В работе")
+        self.assertContains(r, "ACT-WORK01")
+        self.assertContains(r, "Диагностика идёт")
+        # Работа выполнена → «позвонить», не сразу «Выполнена»
         r = self.http.post(f"/orders/{order.id}/status", {"status": "done", "next": "/work-queue"}, follow=True)
         self.assertEqual(r.status_code, 200)
         order.refresh_from_db()
+        self.assertEqual(order.status, "ready_call")
+        self.assertContains(r, "Позвонить клиенту")
+        self.assertContains(r, "ORD-WORK01")
+        r = self.http.post(f"/orders/{order.id}/mark-called", {"next": "/work-queue"}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        order.refresh_from_db()
         self.assertEqual(order.status, "done")
-        self.assertContains(r, "В очереди работ пусто")
+        self.assertIsNotNone(order.client_called_at)
+
+        r = self.http.post(
+            f"/acceptance/{act.id}/status",
+            {"status": "diagnostics_done", "next": "/work-queue"},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        act.refresh_from_db()
+        self.assertEqual(act.status, "diagnostics_done")
+        self.assertContains(r, "ACT-WORK01")
+        r = self.http.post(f"/acceptance/{act.id}/mark-called", {"next": "/work-queue"}, follow=True)
+        act.refresh_from_db()
+        self.assertEqual(act.status, "done")
+        self.assertIsNotNone(act.client_called_at)
+        self.assertContains(r, "Нет заказ-нарядов в работе")
+        self.assertContains(r, "Нет актов на диагностике")
+
         r = self.http.get("/statistics")
         self.assertContains(r, "Оплачено")
         self.assertContains(r, "Долги")

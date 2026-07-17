@@ -25,7 +25,7 @@
                             </div>
                         {% endif %}
                         <div class="mt-2 d-flex flex-wrap gap-2">
-                            <span class="badge {% if order.is_in_progress %}text-bg-purple{% elif order.status == 'done' %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                            <span class="badge {% if order.is_in_progress %}text-bg-purple{% elif order.needs_client_call %}text-bg-warning{% elif order.status == 'done' %}text-bg-success{% else %}text-bg-secondary{% endif %}">
                                 {{ order.get_status_display }}
                             </span>
                             {% if order.is_paid %}
@@ -37,6 +37,9 @@
                                 <span class="badge text-bg-primary">Мой налог{% if order.mytax_at %} {{ order.mytax_at|date:"d.m.Y H:i" }}{% endif %}</span>
                             {% else %}
                                 <span class="badge text-bg-secondary">Чек Мой налог не выдан</span>
+                            {% endif %}
+                            {% if order.client_called_at %}
+                                <span class="badge text-bg-success">Звонок {{ order.client_called_at|date:"d.m.Y H:i" }}</span>
                             {% endif %}
                         </div>
                         <form method="post" action="{% url 'order_set_status' order.id %}" class="d-flex flex-wrap gap-2 align-items-center mt-3">
@@ -50,6 +53,16 @@
                             </select>
                             <button class="btn btn-violet btn-sm" type="submit">Сохранить статус</button>
                         </form>
+                        {% if order.needs_client_call %}
+                        <form method="post" action="{% url 'order_mark_called' order.id %}" class="mt-2">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{% url 'order_detail' order.id %}">
+                            <button class="btn btn-warning btn-sm" type="submit"
+                                    onclick="return confirm('Подтвердить звонок клиенту?');">
+                                Позвонил клиенту → Выполнена
+                            </button>
+                        </form>
+                        {% endif %}
                     </div>
                     <div class="d-flex gap-2 flex-wrap">
                         <form method="post" action="{% url 'order_print_direct' order.id %}" class="d-inline"

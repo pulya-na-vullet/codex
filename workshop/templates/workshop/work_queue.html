@@ -4,11 +4,87 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
         <h4 class="mb-1">Очередь работ</h4>
-        <div class="small-muted">Заказ-наряды в статусе «В работе»: {{ count }}</div>
+        <div class="small-muted">В работе: {{ count }} · Позвонить клиенту: {{ call_count }}</div>
     </div>
-    <a class="btn btn-success btn-sm" href="{% url 'create_order' %}">Новый заказ</a>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-light btn-sm" href="{% url 'acceptance_acts' %}">Новый акт</a>
+        <a class="btn btn-success btn-sm" href="{% url 'create_order' %}">Новый заказ</a>
+    </div>
 </div>
-<div class="card"><div class="card-body">
+
+{% if call_count %}
+<div class="card mb-3 border-warning"><div class="card-body">
+    <h5 class="mb-2">Позвонить клиенту <span class="badge text-bg-warning">{{ call_count }}</span></h5>
+    <div class="small-muted mb-3">Работа/диагностика выполнена — отметьте звонок, после этого статус станет «Выполнена».</div>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+            <tr>
+                <th>Тип</th>
+                <th>Номер</th>
+                <th>Клиент</th>
+                <th>Телефон</th>
+                <th>Статус</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for o in call_orders %}
+                <tr class="order-row-in-progress">
+                    <td><span class="badge text-bg-purple">Заказ</span></td>
+                    <td>{{ o.order_number }}</td>
+                    <td>{% if o.client %}{{ o.client.name }}{% else %}Без клиента{% endif %}</td>
+                    <td>
+                        {% if o.client %}
+                            <a href="tel:{{ o.client.phone }}">{{ o.client.phone }}</a>
+                        {% endif %}
+                    </td>
+                    <td>{{ o.get_status_display }}</td>
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-1 flex-wrap justify-content-end">
+                            <form method="post" action="{% url 'order_mark_called' o.id %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="{% url 'work_queue' %}">
+                                <button class="btn btn-warning btn-sm" type="submit"
+                                        onclick="return confirm('Подтвердить звонок клиенту по {{ o.order_number }}?');">
+                                    Позвонил
+                                </button>
+                            </form>
+                            <a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' o.id %}">Открыть</a>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            {% for a in call_acts %}
+                <tr class="order-row-in-progress">
+                    <td><span class="badge text-bg-info">Акт</span></td>
+                    <td>{{ a.act_number }}</td>
+                    <td>{{ a.client.name }}</td>
+                    <td><a href="tel:{{ a.client.phone }}">{{ a.client.phone }}</a></td>
+                    <td>{{ a.get_status_display }}</td>
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-1 flex-wrap justify-content-end">
+                            <form method="post" action="{% url 'acceptance_mark_called' a.id %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="{% url 'work_queue' %}">
+                                <button class="btn btn-warning btn-sm" type="submit"
+                                        onclick="return confirm('Подтвердить звонок клиенту по {{ a.act_number }}?');">
+                                    Позвонил
+                                </button>
+                            </form>
+                            <a class="btn btn-outline-light btn-sm" href="{% url 'acceptance_detail' a.id %}">Открыть</a>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div></div>
+{% endif %}
+
+<div class="card mb-3"><div class="card-body">
+    <h5 class="mb-3">Заказ-наряды в работе</h5>
     <div class="table-responsive">
         <table class="table table-sm align-middle">
             <thead>
@@ -26,23 +102,21 @@
             </thead>
             <tbody>
             {% for o in orders %}
-                <tr class="{% if o.is_debtor %}order-row-unpaid{% else %}order-row-in-progress{% endif %}">
+                <tr class="order-row-in-progress">
                     <td>{{ forloop.counter }}</td>
                     <td>{{ o.order_number }}</td>
                     <td>{% if o.client %}{{ o.client.name }}{% else %}Без клиента{% endif %}</td>
-                    <td>{% if o.client %}{{ o.client.phone }}{% endif %}</td>
+                    <td>{% if o.client %}<a href="tel:{{ o.client.phone }}">{{ o.client.phone }}</a>{% endif %}</td>
                     <td>{{ o.created_at|date:"d.m.Y H:i" }}</td>
                     <td class="text-end">{{ o.total_sum|money }}</td>
                     <td>
-                        {% if o.is_debtor %}
-                            <span class="badge text-bg-danger">Долг</span>
-                        {% elif o.is_paid %}
+                        {% if o.is_paid %}
                             <span class="badge text-bg-success">{{ o.get_payment_method_display }}</span>
                         {% else %}
                             <span class="badge text-bg-secondary">Не оплачен</span>
                         {% endif %}
                     </td>
-                    <td style="min-width: 180px;">
+                    <td style="min-width: 220px;">
                         <form method="post" action="{% url 'order_set_status' o.id %}" class="d-flex gap-1">
                             {% csrf_token %}
                             <input type="hidden" name="next" value="{% url 'work_queue' %}">
@@ -57,7 +131,54 @@
                     <td><a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' o.id %}">Открыть</a></td>
                 </tr>
             {% empty %}
-                <tr><td colspan="9" class="text-center text-secondary">В очереди работ пусто</td></tr>
+                <tr><td colspan="9" class="text-center text-secondary">Нет заказ-нарядов в работе</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div></div>
+
+<div class="card"><div class="card-body">
+    <h5 class="mb-3">Акты: диагностика идёт</h5>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+            <tr>
+                <th>#</th>
+                <th>Номер</th>
+                <th>Клиент</th>
+                <th>Телефон</th>
+                <th>Устройство</th>
+                <th>Дата</th>
+                <th>Статус</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for a in acts %}
+                <tr class="order-row-in-progress">
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ a.act_number }}</td>
+                    <td>{{ a.client.name }}</td>
+                    <td><a href="tel:{{ a.client.phone }}">{{ a.client.phone }}</a></td>
+                    <td>{{ a.device_type }} {% if a.brand_model %}{{ a.brand_model }}{% endif %}</td>
+                    <td>{{ a.created_at|date:"d.m.Y H:i" }}</td>
+                    <td style="min-width: 240px;">
+                        <form method="post" action="{% url 'acceptance_set_status' a.id %}" class="d-flex gap-1">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{% url 'work_queue' %}">
+                            <select class="form-select form-select-sm" name="status">
+                                {% for value, label in act_statuses %}
+                                    <option value="{{ value }}" {% if a.status == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            <button class="btn btn-outline-light btn-sm" type="submit">OK</button>
+                        </form>
+                    </td>
+                    <td><a class="btn btn-outline-light btn-sm" href="{% url 'acceptance_detail' a.id %}">Открыть</a></td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="8" class="text-center text-secondary">Нет актов на диагностике</td></tr>
             {% endfor %}
             </tbody>
         </table>

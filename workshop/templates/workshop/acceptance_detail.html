@@ -5,8 +5,39 @@
         <div>
             <h4 class="mb-1">Акт {{ act.act_number }}</h4>
             <div class="small-muted">{{ act.created_at|date:"d.m.Y H:i" }}</div>
-            <div>Клиент: <a href="{% url 'client_detail' act.client.id %}">{{ act.client.name }}</a> {{ act.client.phone }}</div>
+            <div>Клиент: <a href="{% url 'client_detail' act.client.id %}">{{ act.client.name }}</a>
+                <a href="tel:{{ act.client.phone }}">{{ act.client.phone }}</a>
+            </div>
             {% if act.order %}<div>Заказ: <a href="{% url 'order_detail' act.order.id %}">{{ act.order.order_number }}</a></div>{% endif %}
+            <div class="mt-2">
+                <span class="badge {% if act.status == 'diagnostics' %}text-bg-purple{% elif act.status == 'diagnostics_done' %}text-bg-warning{% else %}text-bg-success{% endif %}">
+                    {{ act.get_status_display }}
+                </span>
+                {% if act.client_called_at %}
+                    <span class="small-muted ms-2">звонок {{ act.client_called_at|date:"d.m.Y H:i" }}</span>
+                {% endif %}
+            </div>
+            <form method="post" action="{% url 'acceptance_set_status' act.id %}" class="d-flex flex-wrap gap-2 align-items-center mt-3">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'acceptance_detail' act.id %}">
+                <label class="form-label mb-0 small-muted">Статус:</label>
+                <select class="form-select form-select-sm" name="status" style="width: auto;">
+                    {% for value, label in act_statuses %}
+                        <option value="{{ value }}" {% if act.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-violet btn-sm" type="submit">Сохранить статус</button>
+            </form>
+            {% if act.needs_client_call %}
+            <form method="post" action="{% url 'acceptance_mark_called' act.id %}" class="mt-2">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'acceptance_detail' act.id %}">
+                <button class="btn btn-warning btn-sm" type="submit"
+                        onclick="return confirm('Подтвердить звонок клиенту?');">
+                    Позвонил клиенту → Выполнена
+                </button>
+            </form>
+            {% endif %}
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <form method="post" action="{% url 'acceptance_print_direct' act.id %}" onsubmit="return confirm('Добавить акт в очередь печати (2 экз.)?');">{% csrf_token %}

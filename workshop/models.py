@@ -164,8 +164,15 @@ class DeviceType(models.TextChoices):
 
 class OrderStatus(models.TextChoices):
     ACTIVE = "active", "В работе"
-    DONE = "done", "Завершён"
+    READY_CALL = "ready_call", "Работа выполнена — позвонить"
+    DONE = "done", "Выполнена"
     CANCELLED = "cancelled", "Отменён"
+
+
+class AcceptanceActStatus(models.TextChoices):
+    DIAGNOSTICS = "diagnostics", "Диагностика идёт"
+    DIAGNOSTICS_DONE = "diagnostics_done", "Диагностика выполнена"
+    DONE = "done", "Выполнена"
 
 
 class PaymentMethod(models.TextChoices):
@@ -192,6 +199,7 @@ class Order(models.Model):
         default=OrderStatus.ACTIVE,
     )
     closed_at = models.DateTimeField("Закрыт", null=True, blank=True, db_index=True)
+    client_called_at = models.DateTimeField("Звонок клиенту", null=True, blank=True)
     device_type = models.CharField(
         "Устройство",
         max_length=32,
@@ -262,6 +270,10 @@ class Order(models.Model):
         return self.status == OrderStatus.ACTIVE
 
     @property
+    def needs_client_call(self) -> bool:
+        return self.status == OrderStatus.READY_CALL
+
+    @property
     def effective_closed_at(self):
         """Дата закрытия: closed_at или created_at для старых завершённых без даты."""
         if self.closed_at:
@@ -285,15 +297,38 @@ class Order(models.Model):
         return timezone.now() >= closed + debt_grace_period()
 
     def apply_status(self, status: str, *, save: bool = True) -> None:
-        """Update work status and closed_at timestamp."""
+        """Update work status and closed_at / call timestamps."""
+        # Работа сделана → сначала «позвонить», финальный «Выполнена» — после звонка.
+        if status == OrderStatus.DONE and self.status != OrderStatus.READY_CALL and not self.client_called_at:
+            status = OrderStatus.READY_CALL
+
         self.status = status
-        if status == OrderStatus.DONE:
+        if status in {OrderStatus.DONE, OrderStatus.READY_CALL}:
             if not self.closed_at:
                 self.closed_at = timezone.now()
         else:
             self.closed_at = None
+            self.client_called_at = None
+
+        if status == OrderStatus.DONE and not self.client_called_at:
+            self.client_called_at = timezone.now()
+        elif status != OrderStatus.DONE:
+            # ready_call / active / cancelled — звонок ещё не зафиксирован
+            if status != OrderStatus.READY_CALL:
+                self.client_called_at = None
+
         if save:
-            self.save(update_fields=["status", "closed_at"])
+            self.save(update_fields=["status", "closed_at", "client_called_at"])
+
+    def mark_client_called(self, *, save: bool = True) -> None:
+        """Оператор подтвердил звонок клиенту → статус «Выполнена»."""
+        self.status = OrderStatus.DONE
+        now = timezone.now()
+        if not self.closed_at:
+            self.closed_at = now
+        self.client_called_at = now
+        if save:
+            self.save(update_fields=["status", "closed_at", "client_called_at"])
 
     def recalculate_totals(self, save: bool = True) -> Decimal:
         subtotal = Decimal("0")
@@ -364,6 +399,15 @@ class AcceptanceAct(models.Model):
         on_delete=models.SET_NULL,
     )
     created_at = models.DateTimeField("Дата приёма", default=timezone.now)
+    status = models.CharField(
+        "Статус",
+        max_length=32,
+        choices=AcceptanceActStatus.choices,
+        default=AcceptanceActStatus.DIAGNOSTICS,
+        db_index=True,
+    )
+    client_called_at = models.DateTimeField("Звонок клиенту", null=True, blank=True)
+    finished_at = models.DateTimeField("Диагностика/работа завершена", null=True, blank=True)
     device_type = models.CharField(
         "Тип устройства",
         max_length=32,
@@ -390,6 +434,41 @@ class AcceptanceAct(models.Model):
 
     def __str__(self) -> str:
         return self.act_number
+
+    @property
+    def is_in_diagnostics(self) -> bool:
+        return self.status == AcceptanceActStatus.DIAGNOSTICS
+
+    @property
+    def needs_client_call(self) -> bool:
+        return self.status == AcceptanceActStatus.DIAGNOSTICS_DONE
+
+    def apply_status(self, status: str, *, save: bool = True) -> None:
+        if status == AcceptanceActStatus.DONE and self.status != AcceptanceActStatus.DIAGNOSTICS_DONE and not self.client_called_at:
+            status = AcceptanceActStatus.DIAGNOSTICS_DONE
+
+        self.status = status
+        if status in {AcceptanceActStatus.DIAGNOSTICS_DONE, AcceptanceActStatus.DONE}:
+            if not self.finished_at:
+                self.finished_at = timezone.now()
+        else:
+            self.finished_at = None
+            self.client_called_at = None
+
+        if status == AcceptanceActStatus.DONE and not self.client_called_at:
+            self.client_called_at = timezone.now()
+
+        if save:
+            self.save(update_fields=["status", "finished_at", "client_called_at"])
+
+    def mark_client_called(self, *, save: bool = True) -> None:
+        self.status = AcceptanceActStatus.DONE
+        now = timezone.now()
+        if not self.finished_at:
+            self.finished_at = now
+        self.client_called_at = now
+        if save:
+            self.save(update_fields=["status", "finished_at", "client_called_at"])
 
 
 class AuditLog(models.Model):

@@ -28,7 +28,7 @@
                     <td>{% if row.client %}{{ row.client.name }}{% else %}Без клиента{% endif %}</td>
                     <td>{% if row.client %}{{ row.client.phone }}{% endif %}</td>
                     <td>{{ row.created_at|date:"d.m.Y H:i" }}</td>
-                    <td><span class="badge {% if row.is_in_progress %}text-bg-purple{% elif row.status == 'done' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ row.get_status_display }}</span></td>
+                    <td><span class="badge {% if row.is_in_progress %}text-bg-purple{% elif row.status == 'ready_call' %}text-bg-warning{% elif row.status == 'done' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ row.get_status_display }}</span></td>
                     <td class="text-end">{{ row.total_sum|money }}</td>
                     <td>
                         {% if row.is_debtor %}

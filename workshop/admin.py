@@ -57,8 +57,9 @@ class OrderAdmin(admin.ModelAdmin):
 
 @admin.register(AcceptanceAct)
 class AcceptanceActAdmin(admin.ModelAdmin):
-    list_display = ("act_number", "client", "device_type", "created_at")
+    list_display = ("act_number", "client", "device_type", "status", "created_at")
     search_fields = ("act_number", "client__name", "brand_model")
+    list_filter = ("status", "device_type")
 
 
 @admin.register(AuditLog)
