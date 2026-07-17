@@ -152,7 +152,7 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "ORD-NEW0001")
         self.assertNotContains(r, "ORD-OLD0001")
         self.assertContains(r, "300,00")
-        self.assertContains(r, "16.06.2026")
+        self.assertContains(r, "10.07.2026")
 
     def test_orders_list_shows_payment_and_mytax_badges(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})

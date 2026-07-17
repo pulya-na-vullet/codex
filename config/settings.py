@@ -94,10 +94,11 @@ QUALITY_PHONE = "+7 (962) 550 - 78 - 32"
 COMPANY_ADDRESS = "р. Татарстан, д.Куюки, ул. 24 квартал дом 1"
 MASTER_SIGN = "Григорьев Д.В"
 
-# Костыль: учёт долгов только для заказов с этой даты (исторические заведены пачкой).
+# Костыль: учёт долгов только для заказов с этой даты.
+# Историю за полгода завели пачкой 09.07.2026 — их не считаем долгом.
 from datetime import date
 
-DEBT_TRACKING_START_DATE = date(2026, 6, 16)
+DEBT_TRACKING_START_DATE = date(2026, 7, 10)
 
 from django.contrib.messages import constants as message_constants
 
