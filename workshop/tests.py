@@ -235,3 +235,39 @@ class AuthAndPagesTests(TestCase):
         r = self.http.get("/statistics?period=year")
         self.assertContains(r, "Сравнение год к году")
         self.assertContains(r, "Разбивка по месяцам")
+
+    def test_print_actions_are_logged(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        client = Client.objects.create(name="Печать", phone="+79992223344")
+        order = Order.objects.create(order_number="ORD-PRINT1", client=client, total_sum=Decimal("100"))
+        from workshop.models import AcceptanceAct, DeviceType
+
+        act = AcceptanceAct.objects.create(
+            act_number="ACT-000001",
+            client=client,
+            declared_defect="Не включается",
+            device_type=DeviceType.PC,
+        )
+        r = self.http.get(f"/orders/{order.id}/print")
+        self.assertEqual(r.status_code, 200)
+        r = self.http.get(f"/acceptance/{act.id}/print")
+        self.assertEqual(r.status_code, 200)
+        from workshop.models import AuditLog
+
+        actions = set(AuditLog.objects.values_list("action", flat=True))
+        self.assertIn("order_print_view", actions)
+        self.assertIn("acceptance_print_view", actions)
+
+        from unittest.mock import patch
+
+        with patch("workshop.views._send_pdf_to_printer") as mock_print:
+            r = self.http.post(f"/orders/{order.id}/print-direct")
+            self.assertEqual(r.status_code, 302)
+            mock_print.assert_called_once()
+            self.assertEqual(mock_print.call_args.kwargs.get("copies") or mock_print.call_args[1].get("copies"), 2)
+            r = self.http.post(f"/acceptance/{act.id}/print-direct")
+            self.assertEqual(r.status_code, 302)
+            self.assertEqual(mock_print.call_count, 2)
+        actions = set(AuditLog.objects.values_list("action", flat=True))
+        self.assertIn("order_print", actions)
+        self.assertIn("acceptance_print", actions)

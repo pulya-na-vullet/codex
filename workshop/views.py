@@ -35,6 +35,44 @@ from workshop.services import build_service_catalog_tree, category_choices, ensu
 from workshop.utils import normalize_rf_phone
 
 
+PRINT_COPIES = 2
+
+
+def _send_pdf_to_printer(pdf_bytes: bytes, copies: int = PRINT_COPIES) -> None:
+    """Send PDF to the default printer. Always prints ``copies`` documents."""
+    copies = max(1, int(copies))
+    paths: list[str] = []
+    try:
+        for _ in range(copies):
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            tmp.write(pdf_bytes)
+            tmp.flush()
+            tmp.close()
+            paths.append(tmp.name)
+
+        if platform.system() == "Windows":
+            for idx, path in enumerate(paths):
+                os.startfile(path, "print")  # type: ignore[attr-defined]
+                if idx < len(paths) - 1:
+                    time.sleep(1.0)
+        else:
+            # One job with N copies when possible; fall back to repeated jobs.
+            try:
+                subprocess.run(["lp", "-n", str(copies), paths[0]], check=True)
+            except (FileNotFoundError, subprocess.CalledProcessError):
+                for path in paths:
+                    subprocess.run(["lp", path], check=True)
+    finally:
+        # On Windows the spooler needs the file briefly; delay cleanup.
+        if platform.system() == "Windows":
+            time.sleep(2.0)
+        for path in paths:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+
 def login_view(request: HttpRequest):
     next_url = request.GET.get("next") or request.POST.get("next") or "/"
     if request.session.get("workshop_authenticated"):
@@ -730,6 +768,13 @@ def audit_log_list(request: HttpRequest):
 
 def order_print(request: HttpRequest, order_id: int):
     order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
+    log_action(
+        request,
+        "order_print_view",
+        entity_type="order",
+        entity_id=order.id,
+        details=order.order_number,
+    )
     return render(
         request,
         "workshop/print_order.html",
@@ -747,6 +792,13 @@ def order_print(request: HttpRequest, order_id: int):
 def order_pdf(request: HttpRequest, order_id: int):
     order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
     pdf_bytes = build_order_pdf(order, list(order.lines.all()))
+    log_action(
+        request,
+        "order_pdf",
+        entity_type="order",
+        entity_id=order.id,
+        details=order.order_number,
+    )
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{order.order_number}.pdf"'
     return response
@@ -756,26 +808,25 @@ def order_pdf(request: HttpRequest, order_id: int):
 def order_print_direct(request: HttpRequest, order_id: int):
     order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
     pdf_bytes = build_order_pdf(order, list(order.lines.all()))
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     try:
-        tmp.write(pdf_bytes)
-        tmp.flush()
-        tmp.close()
-        if platform.system() == "Windows":
-            os.startfile(tmp.name, "print")  # type: ignore[attr-defined]
-        else:
-            subprocess.run(["lp", tmp.name], check=True)
-            try:
-                os.unlink(tmp.name)
-            except OSError:
-                pass
-        messages.success(request, "Документ отправлен на принтер")
+        _send_pdf_to_printer(pdf_bytes, copies=PRINT_COPIES)
+        log_action(
+            request,
+            "order_print",
+            entity_type="order",
+            entity_id=order.id,
+            details=f"{order.order_number} x{PRINT_COPIES}",
+        )
+        messages.success(request, f"Заказ-наряд отправлен на принтер ({PRINT_COPIES} экз.)")
     except Exception as err:
+        log_action(
+            request,
+            "order_print_error",
+            entity_type="order",
+            entity_id=order.id,
+            details=f"{order.order_number}: {err}",
+        )
         messages.error(request, f"Не удалось отправить документ на принтер: {err}")
-        try:
-            os.unlink(tmp.name)
-        except OSError:
-            pass
     return redirect("order_detail", order_id=order.id)
 
 
@@ -834,6 +885,13 @@ def acceptance_detail(request: HttpRequest, act_id: int):
 
 def acceptance_print(request: HttpRequest, act_id: int):
     act = get_object_or_404(AcceptanceAct.objects.select_related("client", "order"), pk=act_id)
+    log_action(
+        request,
+        "acceptance_print_view",
+        entity_type="acceptance",
+        entity_id=act.id,
+        details=act.act_number,
+    )
     return render(
         request,
         "workshop/print_acceptance.html",
@@ -850,6 +908,13 @@ def acceptance_print(request: HttpRequest, act_id: int):
 def acceptance_pdf(request: HttpRequest, act_id: int):
     act = get_object_or_404(AcceptanceAct.objects.select_related("client", "order"), pk=act_id)
     pdf_bytes = build_acceptance_act_pdf(act)
+    log_action(
+        request,
+        "acceptance_pdf",
+        entity_type="acceptance",
+        entity_id=act.id,
+        details=act.act_number,
+    )
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{act.act_number}.pdf"'
     return response
@@ -859,26 +924,25 @@ def acceptance_pdf(request: HttpRequest, act_id: int):
 def acceptance_print_direct(request: HttpRequest, act_id: int):
     act = get_object_or_404(AcceptanceAct.objects.select_related("client", "order"), pk=act_id)
     pdf_bytes = build_acceptance_act_pdf(act)
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     try:
-        tmp.write(pdf_bytes)
-        tmp.flush()
-        tmp.close()
-        if platform.system() == "Windows":
-            os.startfile(tmp.name, "print")  # type: ignore[attr-defined]
-        else:
-            subprocess.run(["lp", tmp.name], check=True)
-            try:
-                os.unlink(tmp.name)
-            except OSError:
-                pass
-        messages.success(request, "Акт отправлен на принтер")
+        _send_pdf_to_printer(pdf_bytes, copies=PRINT_COPIES)
+        log_action(
+            request,
+            "acceptance_print",
+            entity_type="acceptance",
+            entity_id=act.id,
+            details=f"{act.act_number} x{PRINT_COPIES}",
+        )
+        messages.success(request, f"Акт отправлен на принтер ({PRINT_COPIES} экз.)")
     except Exception as err:
+        log_action(
+            request,
+            "acceptance_print_error",
+            entity_type="acceptance",
+            entity_id=act.id,
+            details=f"{act.act_number}: {err}",
+        )
         messages.error(request, f"Не удалось отправить на принтер: {err}")
-        try:
-            os.unlink(tmp.name)
-        except OSError:
-            pass
     return redirect("acceptance_detail", act_id=act.id)
 
 
