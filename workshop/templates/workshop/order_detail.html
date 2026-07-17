@@ -1,0 +1,176 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="row g-3">
+    <div class="col-12 col-xl-8">
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="mb-1">Заказ {{ order.order_number }}</h5>
+                        <div class="small-muted">{{ order.created_at|date:"d.m.Y H:i" }}</div>
+                        <div class="small-muted">
+                            Клиент:
+                            {% if order.client %}
+                                <a href="{% url 'client_detail' order.client.id %}">{{ order.client.name }}</a>
+                                {{ order.client.phone }}
+                            {% else %}
+                                Без клиента
+                            {% endif %}
+                        </div>
+                        {% if client and client.is_regular %}
+                            <div class="mt-1">
+                                <span class="badge text-bg-success">Постоянный клиент</span>
+                                <span class="small-muted ms-1">скидка {{ order.discount_percent|floatformat:0 }}%</span>
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <form method="post" action="{% url 'order_print_direct' order.id %}" class="d-inline"
+                              onsubmit="return confirm('Отправить в печать на принтере?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-light btn-sm">Печать</button>
+                        </form>
+                        <a class="btn btn-outline-light btn-sm" target="_blank" href="{% url 'order_print' order.id %}">Просмотр</a>
+                        <a class="btn btn-outline-warning btn-sm" href="{% url 'order_pdf' order.id %}">Скачать PDF</a>
+                        <a class="btn btn-outline-light btn-sm" href="{% url 'acceptance_acts' %}?client_id={{ order.client_id }}&order_id={{ order.id }}">Акт приёма</a>
+                        <form method="post" action="{% url 'order_delete' order.id %}" onsubmit="return confirm('Удалить заказ?');">
+                            {% csrf_token %}
+                            <button class="btn btn-outline-danger btn-sm">Удалить заказ</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                        <tr>
+                            <th>Услуга</th>
+                            <th class="text-end">Цена</th>
+                            <th class="text-center">Кол-во</th>
+                            <th class="text-end">Сумма</th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for s in lines %}
+                            <tr>
+                                <td>{{ s.service_name }}</td>
+                                <td class="text-end">{{ s.unit_price }}</td>
+                                <td class="text-center">{{ s.quantity }}</td>
+                                <td class="text-end">{{ s.line_total }}</td>
+                                <td class="text-end">
+                                    <form method="post" action="{% url 'order_line_delete' order.id s.id %}">
+                                        {% csrf_token %}
+                                        <button class="btn btn-outline-danger btn-sm">Удалить</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="5" class="text-center text-secondary">Услуги пока не добавлены</td></tr>
+                        {% endfor %}
+                        </tbody>
+                        <tfoot>
+                        <tr>
+                            <th colspan="3" class="text-end">Сумма</th>
+                            <th class="text-end">{{ order.subtotal_sum }}</th>
+                            <th></th>
+                        </tr>
+                        {% if order.discount_percent %}
+                        <tr>
+                            <th colspan="3" class="text-end">Скидка постоянного клиента</th>
+                            <th class="text-end">{{ order.discount_percent|floatformat:0 }}%</th>
+                            <th></th>
+                        </tr>
+                        {% endif %}
+                        <tr>
+                            <th colspan="3" class="text-end">Итого</th>
+                            <th class="text-end">{{ order.total_sum }}</th>
+                            <th></th>
+                        </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h6 class="mb-3">Данные заказ-наряда</h6>
+                <form method="post" action="{% url 'order_update_meta' order.id %}" class="vstack gap-2">
+                    {% csrf_token %}
+                    <div>
+                        <label class="form-label">Устройство</label>
+                        <div class="d-flex flex-wrap gap-3">
+                            {% for device in device_types %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="device_type" id="device-{{ forloop.counter }}"
+                                           value="{{ device }}" {% if order.device_type == device %}checked{% endif %}>
+                                    <label class="form-check-label" for="device-{{ forloop.counter }}">{{ device }}</label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label">Дополнительная периферия</label>
+                        <input class="form-control" name="extra_periphery" value="{{ order.extra_periphery }}">
+                    </div>
+                    <div>
+                        <label class="form-label">Техническая информация/рекомендации</label>
+                        <textarea class="form-control" rows="4" name="technical_notes">{{ order.technical_notes }}</textarea>
+                        <div class="small-muted mt-1">Перенос строки (Enter) сохраняется и корректно переносится в PDF.</div>
+                    </div>
+                    <button class="btn btn-success mt-2" type="submit">Сохранить данные</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="mb-3">Добавить услугу</h6>
+                <form method="post" action="{% url 'order_add_service' order.id %}" class="vstack gap-2" id="add-service-form">
+                    {% csrf_token %}
+                    <div>
+                        <label class="form-label">Поиск услуги</label>
+                        <input class="form-control" type="search" id="service-search" placeholder="Начните вводить название...">
+                    </div>
+                    <div>
+                        <label class="form-label">Категории</label>
+                        <div class="service-tree" id="service-tree">
+                            {% include "workshop/_service_tree.html" with nodes=catalog_tree %}
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label">Количество</label>
+                        <input class="form-control" type="number" min="1" value="1" name="quantity">
+                    </div>
+                    <button class="btn btn-primary mt-2" type="submit">Добавить в заказ</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(() => {
+    const search = document.getElementById('service-search');
+    const tree = document.getElementById('service-tree');
+    if (!search || !tree) return;
+    const filterTree = () => {
+        const q = (search.value || '').trim().toLowerCase();
+        tree.querySelectorAll('.tree-service').forEach((item) => {
+            const hay = item.dataset.search || '';
+            item.classList.toggle('is-hidden', Boolean(q) && !hay.includes(q));
+        });
+        tree.querySelectorAll('.tree-node').forEach((node) => {
+            const anyService = node.querySelector('.tree-service:not(.is-hidden)');
+            node.classList.toggle('is-hidden', Boolean(q) && !anyService);
+            if (q && anyService) {
+                const details = node.querySelector(':scope > details');
+                if (details) details.open = true;
+            }
+        });
+    };
+    search.addEventListener('input', filterTree);
+})();
+</script>
+{% endblock %}

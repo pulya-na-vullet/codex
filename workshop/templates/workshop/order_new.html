@@ -1,0 +1,20 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="card mx-auto" style="max-width: 760px;"><div class="card-body">
+    <h5 class="mb-3">Новый заказ</h5>
+    <form method="post" class="vstack gap-2">{% csrf_token %}
+        <div>
+            <label class="form-label">Клиент</label>
+            <select class="form-select" name="client_id">
+                <option value="">Без клиента</option>
+                {% for c in clients %}
+                    <option value="{{ c.id }}" {% if selected_client_id == c.id %}selected{% endif %}>
+                        {{ c.name }} — {{ c.phone }}{% if c.is_regular %} (постоянный, -{{ c.discount_percent|floatformat:0 }}%){% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn btn-success mt-2" type="submit">Создать заказ</button>
+    </form>
+</div></div>
+{% endblock %}

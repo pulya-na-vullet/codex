@@ -1,0 +1,45 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="row g-3">
+    <div class="col-12 col-lg-7">
+        <div class="card"><div class="card-body">
+            <h5 class="mb-3">Каталог услуг</h5>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Название</th><th>Категория</th><th class="text-end">Цена</th><th class="text-center">Статус</th><th></th></tr></thead>
+                    <tbody>
+                    {% for s in services %}
+                        <tr>
+                            <td>{{ s.name }}</td>
+                            <td>{{ s.category.path_label }}</td>
+                            <td class="text-end">{{ s.price }}</td>
+                            <td class="text-center">{% if s.is_active %}Активна{% else %}Отключена{% endif %}</td>
+                            <td class="text-end">
+                                <form method="post" action="{% url 'service_delete' s.id %}" onsubmit="return confirm('Удалить услугу?');">{% csrf_token %}
+                                    <button class="btn btn-outline-danger btn-sm">Удалить</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% empty %}<tr><td colspan="5" class="text-center text-secondary">Услуг нет</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-12 col-lg-5">
+        <div class="card"><div class="card-body">
+            <h5 class="mb-3">Добавить услугу</h5>
+            <form method="post" class="vstack gap-2">{% csrf_token %}
+                <div><label class="form-label">Название</label><input class="form-control" name="name" required></div>
+                <div><label class="form-label">Цена</label><input class="form-control" name="price" required></div>
+                <div>
+                    <label class="form-label">Категория (вложенность через /)</label>
+                    <input class="form-control" name="category" list="categories-list" placeholder="Компьютеры / Ремонт">
+                    <datalist id="categories-list">{% for category in categories %}<option value="{{ category }}">{% endfor %}</datalist>
+                </div>
+                <button class="btn btn-success mt-2" type="submit">Сохранить услугу</button>
+            </form>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

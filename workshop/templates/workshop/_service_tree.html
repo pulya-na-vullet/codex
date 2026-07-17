@@ -1,0 +1,30 @@
+{% if nodes %}
+<ul class="tree-list">
+{% for node in nodes %}
+    <li class="tree-node" data-node-name="{{ node.name|lower }}">
+        <details open>
+            <summary class="tree-category">{{ node.name }}</summary>
+            {% if node.children %}
+                {% include "workshop/_service_tree.html" with nodes=node.children %}
+            {% endif %}
+            {% if node.services %}
+                <ul class="tree-services">
+                {% for s in node.services %}
+                    <li class="tree-service"
+                        data-service-name="{{ s.name }}"
+                        data-search="{{ s.name|lower }} {{ node.name|lower }}">
+                        <label class="service-option">
+                            <input type="radio" name="service_name" value="{{ s.name }}" required>
+                            <span>{{ s.name }} — {{ s.price|floatformat:2 }}</span>
+                        </label>
+                    </li>
+                {% endfor %}
+                </ul>
+            {% endif %}
+        </details>
+    </li>
+{% endfor %}
+</ul>
+{% else %}
+<div class="text-secondary">Каталог пуст</div>
+{% endif %}

@@ -1,0 +1,33 @@
+from django.urls import path
+
+from workshop import views
+
+urlpatterns = [
+    path("login", views.login_view, name="login"),
+    path("logout", views.logout_view, name="logout"),
+    path("", views.dashboard, name="dashboard"),
+    path("statistics", views.statistics, name="statistics"),
+    path("clients", views.clients, name="clients"),
+    path("clients/<int:client_id>", views.client_detail, name="client_detail"),
+    path("clients/<int:client_id>/delete", views.client_delete, name="client_delete"),
+    path("clients/export.xlsx", views.export_clients_excel, name="export_clients_excel"),
+    path("clients/import", views.import_clients_excel, name="import_clients_excel"),
+    path("services", views.services, name="services"),
+    path("services/<int:service_id>/delete", views.service_delete, name="service_delete"),
+    path("orders", views.orders_list, name="orders"),
+    path("orders/new", views.order_create, name="create_order"),
+    path("orders/<int:order_id>", views.order_detail, name="order_detail"),
+    path("orders/<int:order_id>/meta", views.order_update_meta, name="order_update_meta"),
+    path("orders/<int:order_id>/add-service", views.order_add_service, name="order_add_service"),
+    path("orders/<int:order_id>/line/<int:line_id>/delete", views.order_line_delete, name="order_line_delete"),
+    path("orders/<int:order_id>/delete", views.order_delete, name="order_delete"),
+    path("orders/<int:order_id>/print", views.order_print, name="order_print"),
+    path("orders/<int:order_id>/pdf", views.order_pdf, name="order_pdf"),
+    path("orders/<int:order_id>/print-direct", views.order_print_direct, name="order_print_direct"),
+    path("acceptance", views.acceptance_list_create, name="acceptance_acts"),
+    path("acceptance/<int:act_id>", views.acceptance_detail, name="acceptance_detail"),
+    path("acceptance/<int:act_id>/print", views.acceptance_print, name="acceptance_print"),
+    path("acceptance/<int:act_id>/pdf", views.acceptance_pdf, name="acceptance_pdf"),
+    path("acceptance/<int:act_id>/print-direct", views.acceptance_print_direct, name="acceptance_print_direct"),
+    path("acceptance/<int:act_id>/delete", views.acceptance_delete, name="acceptance_delete"),
+]

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Акт {{ act.act_number }}</title>
+<style>
+body{font-family:Arial,sans-serif;margin:20px;color:#111}
+.pre{white-space:pre-wrap}
+@media print{.actions{display:none}}
+</style></head><body>
+<div class="actions"><button onclick="history.back()">Назад</button></div>
+<h1>Акт приёма-передачи техники {{ act.act_number }}</h1>
+<div><strong>{{ company_name }}</strong>, тел.: {{ company_phone }}</div>
+<div>Адрес: {{ company_address }}</div><hr>
+<div>Дата: {{ act.created_at|date:"d.m.Y H:i" }}</div>
+<div>Клиент: {{ act.client.name }} {{ act.client.phone }}</div>
+{% if act.order %}<div>Заказ: {{ act.order.order_number }}</div>{% endif %}
+<div>Тип: {{ act.device_type }}</div>
+<div>Марка/модель: {{ act.brand_model|default:"-" }}</div>
+<div>S/N: {{ act.serial_number|default:"-" }}</div>
+<div>Пароль/PIN: {{ act.password_info|default:"-" }}</div>
+<p class="pre"><strong>Комплектация:</strong> {{ act.accessories|default:"-" }}</p>
+<p class="pre"><strong>Внешний вид:</strong> {{ act.appearance|default:"-" }}</p>
+<p class="pre"><strong>Заявленная неисправность:</strong> {{ act.declared_defect }}</p>
+<p class="pre"><strong>Примечания:</strong> {{ act.notes|default:"-" }}</p>
+<p>Клиент передаёт технику для диагностики/ремонта. Мастерская не отвечает за данные без резервной копии.</p>
+<p>Принял: _________________ / {{ master_sign }}</p>
+<p>Сдал: _________________ / __________________________</p>
+</body></html>

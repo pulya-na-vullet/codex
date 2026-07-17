@@ -1,0 +1,65 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="row g-3">
+    <div class="col-12 col-lg-7">
+        <div class="card"><div class="card-body">
+            <h5 class="mb-3">Акты приёма-передачи техники</h5>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead><tr><th>Номер</th><th>Дата</th><th>Клиент</th><th>Устройство</th><th></th></tr></thead>
+                    <tbody>
+                    {% for a in acts %}
+                        <tr>
+                            <td>{{ a.act_number }}</td>
+                            <td>{{ a.created_at|date:"d.m.Y H:i" }}</td>
+                            <td>{{ a.client.name }}</td>
+                            <td>{{ a.device_type }} {{ a.brand_model }}</td>
+                            <td><a class="btn btn-outline-light btn-sm" href="{% url 'acceptance_detail' a.id %}">Открыть</a></td>
+                        </tr>
+                    {% empty %}<tr><td colspan="5" class="text-center text-secondary">Актов нет</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-12 col-lg-5">
+        <div class="card"><div class="card-body">
+            <h5 class="mb-3">Новый акт приёма</h5>
+            <form method="post" class="vstack gap-2">{% csrf_token %}
+                <div>
+                    <label class="form-label">Клиент</label>
+                    <select class="form-select" name="client_id" required>
+                        <option value="">Выберите клиента</option>
+                        {% for c in clients %}
+                            <option value="{{ c.id }}" {% if request.GET.client_id == c.id|stringformat:'s' %}selected{% endif %}>{{ c.name }} — {{ c.phone }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Связанный заказ (необязательно)</label>
+                    <select class="form-select" name="order_id">
+                        <option value="">—</option>
+                        {% for o in orders %}
+                            <option value="{{ o.id }}" {% if request.GET.order_id == o.id|stringformat:'s' %}selected{% endif %}>{{ o.order_number }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Тип устройства</label>
+                    <select class="form-select" name="device_type">
+                        {% for d in device_types %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div><label class="form-label">Марка / модель</label><input class="form-control" name="brand_model"></div>
+                <div><label class="form-label">Серийный номер</label><input class="form-control" name="serial_number"></div>
+                <div><label class="form-label">Комплектация</label><textarea class="form-control" name="accessories" rows="2" placeholder="Зарядка, сумка..."></textarea></div>
+                <div><label class="form-label">Внешний вид / повреждения</label><textarea class="form-control" name="appearance" rows="2"></textarea></div>
+                <div><label class="form-label">Заявленная неисправность</label><textarea class="form-control" name="declared_defect" rows="3" required></textarea></div>
+                <div><label class="form-label">Пароль / PIN</label><input class="form-control" name="password_info"></div>
+                <div><label class="form-label">Примечания</label><textarea class="form-control" name="notes" rows="2"></textarea></div>
+                <button class="btn btn-success mt-2" type="submit">Создать акт</button>
+            </form>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+        <h4 class="mb-1">{{ client.name }}</h4>
+        <div class="small-muted">{{ client.phone }}</div>
+        {% if client.comment %}<div class="mt-1">{{ client.comment }}</div>{% endif %}
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-light btn-sm" href="{% url 'clients' %}">К списку</a>
+        <form method="post" action="{% url 'client_delete' client.id %}" onsubmit="return confirm('Удалить клиента?');">{% csrf_token %}
+            <button class="btn btn-outline-danger btn-sm">Удалить клиента</button>
+        </form>
+    </div>
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="small-muted">Обращений</div><div class="fs-3 fw-bold">{{ client.total_orders }}</div></div></div></div>
+    <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="small-muted">Принёс за всё время</div><div class="fs-3 fw-bold">{{ client.total_spent }}</div></div></div></div>
+    <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="small-muted">Статус</div><div class="fs-5 fw-bold">{% if client.is_regular %}Постоянный{% else %}Обычный{% endif %}</div></div></div></div>
+    <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="small-muted">Скидка</div><div class="fs-3 fw-bold">{{ client.discount_percent|floatformat:0 }}%</div></div></div></div>
+</div>
+<div class="card mb-3"><div class="card-body">
+    <div class="d-flex justify-content-between mb-3">
+        <h5 class="mb-0">История заказ-нарядов</h5>
+        <a class="btn btn-success btn-sm" href="{% url 'create_order' %}?client_id={{ client.id }}">Новый заказ</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm"><thead><tr><th>Номер</th><th>Дата</th><th class="text-end">До скидки</th><th class="text-center">Скидка</th><th class="text-end">Итого</th><th></th></tr></thead>
+        <tbody>
+        {% for o in orders %}
+            <tr>
+                <td>{{ o.order_number }}</td>
+                <td>{{ o.created_at|date:"d.m.Y H:i" }}</td>
+                <td class="text-end">{{ o.subtotal_sum }}</td>
+                <td class="text-center">{{ o.discount_percent|floatformat:0 }}%</td>
+                <td class="text-end">{{ o.total_sum }}</td>
+                <td><a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' o.id %}">Открыть</a></td>
+            </tr>
+        {% empty %}<tr><td colspan="6" class="text-center text-secondary">Заказов нет</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+</div></div>
+<div class="card"><div class="card-body">
+    <div class="d-flex justify-content-between mb-3">
+        <h5 class="mb-0">Акты приёма-передачи</h5>
+        <a class="btn btn-outline-light btn-sm" href="{% url 'acceptance_acts' %}?client_id={{ client.id }}">Новый акт</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm"><thead><tr><th>Номер</th><th>Дата</th><th>Устройство</th><th></th></tr></thead>
+        <tbody>
+        {% for a in acts %}
+            <tr>
+                <td>{{ a.act_number }}</td>
+                <td>{{ a.created_at|date:"d.m.Y H:i" }}</td>
+                <td>{{ a.device_type }} {{ a.brand_model }}</td>
+                <td><a class="btn btn-outline-light btn-sm" href="{% url 'acceptance_detail' a.id %}">Открыть</a></td>
+            </tr>
+        {% empty %}<tr><td colspan="4" class="text-center text-secondary">Актов нет</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+</div></div>
+{% endblock %}

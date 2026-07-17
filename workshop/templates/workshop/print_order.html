@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Печать {{ order.order_number }}</title>
+<style>
+body{font-family:Arial,sans-serif;margin:20px;color:#111}
+table{width:100%;border-collapse:collapse;margin-top:14px}
+th,td{border:1px solid #bbb;padding:8px} th{background:#f1f5f9;text-align:left}
+.num{text-align:right}.total{margin-top:12px;text-align:right;font-size:18px;font-weight:bold}
+.notes{white-space:pre-wrap}
+@media print{.actions{display:none}}
+</style></head><body>
+<div class="actions"><p>Предпросмотр. Для печати без заголовков браузера используйте кнопку «Печать» в заказе.</p>
+<button onclick="history.back()">Назад</button></div>
+<h1>Заказ-наряд {{ order.order_number }}</h1>
+<div><strong>{{ company_name }}</strong>, тел.: {{ company_phone }}</div>
+<div>Контроль качества: {{ quality_phone }}</div>
+<div>Адрес: {{ company_address }}</div><hr>
+<div>Клиент: {% if order.client %}{{ order.client.name }} {{ order.client.phone }}{% else %}Без клиента{% endif %}</div>
+<div>Дата: {{ order.created_at|date:"d.m.Y H:i" }}</div>
+<div>Устройство: {{ order.device_type }}</div>
+<div>Доп. периферия: {{ order.extra_periphery|default:"-" }}</div>
+<table><thead><tr><th>Услуга</th><th class="num">Цена</th><th class="num">Кол-во</th><th class="num">Сумма</th></tr></thead>
+<tbody>{% for s in lines %}<tr><td>{{ s.service_name }}</td><td class="num">{{ s.unit_price }}</td><td class="num">{{ s.quantity }}</td><td class="num">{{ s.line_total }}</td></tr>{% endfor %}</tbody></table>
+<div class="total">
+{% if order.discount_percent %}<div>Сумма: {{ order.subtotal_sum }}</div><div>Скидка: {{ order.discount_percent|floatformat:0 }}%</div>{% endif %}
+ИТОГО: {{ order.total_sum }}
+</div>
+<p><strong>Гарантия:</strong> 3 месяца на работы и новые детали.</p>
+<p class="notes"><strong>Техническая информация:</strong> {{ order.technical_notes|default:"-" }}</p>
+<p>Исполнитель: _________________ / Григорьев Д.В</p>
+<p>Заказчик:___________________ / __________________________ </p>
+</body></html>

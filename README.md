@@ -1,59 +1,51 @@
-# IT Workshop Order Manager
+# IT Workshop Order Manager (Django)
 
-Web-based order management system for an IT workshop.
+Система учёта заказ-нарядов ИТ-мастерской.
 
 ## Stack
 
-- Python 3
-- Flask (UI + routing)
-- SQLite (`orders.db`)
-- Jinja2 templates + Bootstrap 5
-- openpyxl (Excel import/export)
-- reportlab (PDF)
+- Python 3 + Django 5/6
+- SQLite (`db.sqlite3`) — нормализованные модели
+- Bootstrap 5, reportlab, openpyxl
 
-## Run (на компьютере в технической зоне)
+## Запуск
 
 ```bash
 python -m pip install -r requirements.txt
+python manage.py migrate
+python manage.py seed_catalog
+# если есть старая Flask-база:
+python manage.py import_legacy_db orders.db
 python app.py
 ```
 
-Или на Windows двойным кликом:
+Или Windows: `start_lan_server.bat`
 
-`start_lan_server.bat`
+Сервер: `0.0.0.0:8000`. Вход: `ITM` / `pass` (выход через 6 ч бездействия).
 
-Сервер слушает `0.0.0.0:8000` — доступен всем устройствам в той же Wi‑Fi/LAN сети.
+## Обновление версии без потери данных
 
-При запуске в консоли печатаются адреса вида:
+1. Остановить сервер.
+2. Скопировать **`db.sqlite3`** (это ваши данные) в новую папку программы.
+3. При наличии старого `orders.db` можно снова импортировать: `python manage.py import_legacy_db orders.db`.
+4. `python manage.py migrate` затем `python app.py`.
 
-`http://192.168.x.x:8000`
+Либо задайте постоянный путь:
 
-Именно этот адрес вводит менеджер в браузере на своём ПК в клиентской зоне.
+```bat
+set IT_MASTER_DB_PATH=C:\IT-Master\data\db.sqlite3
+python app.py
+```
 
-## Доступ менеджеру в локальной сети
+## Функции
 
-1. Компьютер с сервером и ПК менеджера подключены к **одной** Wi‑Fi сети.
-2. На серверном ПК запущен `python app.py` (окно не закрывать).
-3. Менеджер открывает в браузере адрес из консоли сервера, например `http://192.168.101.9:8000`.
-4. Вход: логин `ITM`, пароль `pass`. При отсутствии активности 6 часов — автоматический выход.
-5. Если страница не открывается на Windows — один раз запустите `start_lan_server.bat` **от имени администратора** (откроет порт 8000 в брандмауэре) или вручную разрешите входящие TCP 8000.
+- Клиенты (история, Excel, удаление, постоянный клиент и скидки 5/7/10%)
+- Услуги с деревом категорий + удаление
+- Заказ-наряды, печать/PDF на принтер техзоны
+- **Акт приёма-передачи техники** (создание, печать, PDF)
+- Статистика по месяцам и топ клиентов
+- LAN-доступ для менеджеров
 
-Печать на принтер технической зоны работает с серверного ПК (кнопка «Печать» отправляет PDF на принтер этого компьютера).
+## Нормализованная схема
 
-## Клиенты и скидки
-
-- Карточка клиента: история заказ-нарядов и сумма за всё время.
-- Постоянный клиент при **более чем 3** обращениях.
-- Скидка на заказ-наряды: **5%** (4+), **7%** (7+), **10%** (10+).
-
-- Dashboard (быстрые кнопки клиента/услуги + ссылка на статистику)
-- Orders / New Order / Order detail (дерево категорий услуг + поиск)
-- Clients (Excel import/export, RF phone validation)
-- Services
-- Statistics (месячная разбивка, топ-10 клиентов)
-
-## Notes
-
-- Existing legacy database migrations and merge import are handled in `database.py`.
-- The web interface is implemented in `webapp/`.
-- Host/port can be overridden: `IT_MASTER_HOST`, `IT_MASTER_PORT`.
+`Client` · `ServiceCategory` (parent) · `Service` · `Order` · `OrderLine` · `AcceptanceAct`

@@ -1,0 +1,32 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h4 class="mb-0">Статистика</h4>
+    <div class="btn-group">
+        <a class="btn btn-sm {% if period == 'week' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?period=week">Неделя</a>
+        <a class="btn btn-sm {% if period == 'month' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?period=month">Месяц</a>
+        <a class="btn btn-sm {% if period == 'year' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?period=year">Год</a>
+    </div>
+</div>
+<div class="row g-3 mb-4">
+    <div class="col-md-4"><div class="card"><div class="card-body"><div class="small-muted">Заказов</div><div class="fs-3 fw-bold">{{ stats.total_orders }}</div></div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body"><div class="small-muted">Выручка</div><div class="fs-3 fw-bold">{{ stats.total_sum }}</div></div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body"><div class="small-muted">Средний чек</div><div class="fs-3 fw-bold">{{ stats.avg_check|floatformat:2 }}</div></div></div></div>
+</div>
+<div class="row g-3">
+    <div class="col-xl-6"><div class="card h-100"><div class="card-body">
+        <h5 class="mb-3">Разбивка по месяцам</h5>
+        <div class="table-responsive"><table class="table table-sm">
+            <thead><tr><th>Месяц</th><th class="text-center">Заказов</th><th class="text-end">Выручка</th></tr></thead>
+            <tbody>{% for row in monthly %}<tr><td>{{ row.label }}</td><td class="text-center">{{ row.orders }}</td><td class="text-end">{{ row.revenue }}</td></tr>{% empty %}<tr><td colspan="3" class="text-center text-secondary">Нет данных</td></tr>{% endfor %}</tbody>
+        </table></div>
+    </div></div></div>
+    <div class="col-xl-6"><div class="card h-100"><div class="card-body">
+        <h5 class="mb-3">Топ-10 клиентов</h5>
+        <div class="table-responsive"><table class="table table-sm">
+            <thead><tr><th>#</th><th>Клиент</th><th>Телефон</th><th class="text-center">Заказов</th><th class="text-end">Потрачено</th></tr></thead>
+            <tbody>{% for c in top_clients %}<tr><td>{{ forloop.counter }}</td><td>{{ c.name }}</td><td>{{ c.phone }}</td><td class="text-center">{{ c.total_orders }}</td><td class="text-end">{{ c.total_spent }}</td></tr>{% empty %}<tr><td colspan="5" class="text-center text-secondary">Нет данных</td></tr>{% endfor %}</tbody>
+        </table></div>
+    </div></div></div>
+</div>
+{% endblock %}
