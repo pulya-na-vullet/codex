@@ -35,8 +35,22 @@
         .table tfoot th { background: #172033 !important; }
         .table tr.order-row-unpaid > * { background-color: rgba(220, 38, 38, 0.22) !important; }
         .table tr.order-row-paid-no-mytax > * { background-color: rgba(217, 119, 6, 0.22) !important; }
-        .table tr.order-row-complete > * { background-color: rgba(5, 150, 105, 0.18) !important; }
-        .table tr.service-inactive > * { opacity: 0.65; }
+        .table tr.order-row-in-progress > * { background-color: rgba(124, 58, 237, 0.18) !important; }
+        .btn-violet {
+            background: #7c3aed;
+            border-color: #7c3aed;
+            color: #fff;
+        }
+        .btn-violet:hover {
+            background: #6d28d9;
+            border-color: #6d28d9;
+            color: #fff;
+        }
+        .text-bg-purple { background-color: #7c3aed !important; color: #fff !important; }
+        .text-purple { color: #c4b5fd !important; }
+        .text-danger { color: #f87171 !important; }
+        .text-success { color: #34d399 !important; }
+
         .table-responsive { background: var(--bg-card-soft); border: 1px solid var(--border); border-radius: .5rem; padding: .35rem; }
         .text-secondary, .small-muted { color: var(--text-soft) !important; }
         .form-control, .form-select, textarea.form-control {
@@ -108,7 +122,8 @@
         <div class="navbar-nav flex-row gap-2 align-items-center flex-wrap">
             <a class="btn btn-outline-light btn-sm" href="{% url 'dashboard' %}">Главная</a>
             <a class="btn btn-outline-light btn-sm" href="{% url 'orders' %}">Заказы</a>
-            <a class="btn btn-outline-light btn-sm" href="{% url 'debtors' %}">Должники</a>
+            <a class="btn btn-violet btn-sm" href="{% url 'work_queue' %}">В работе</a>
+            <a class="btn btn-outline-warning btn-sm" href="{% url 'debtors' %}">Должники</a>
             <a class="btn btn-outline-light btn-sm" href="{% url 'clients' %}">Клиенты</a>
             <a class="btn btn-outline-light btn-sm" href="{% url 'services' %}">Услуги</a>
             <a class="btn btn-outline-light btn-sm" href="{% url 'acceptance_acts' %}">Акты приёма</a>

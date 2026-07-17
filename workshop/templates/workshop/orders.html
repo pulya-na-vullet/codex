@@ -14,6 +14,7 @@
                     <th>Клиент</th>
                     <th>Телефон</th>
                     <th>Дата</th>
+                    <th>Статус</th>
                     <th class="text-end">Сумма</th>
                     <th>Оплата</th>
                     <th>Мой налог</th>
@@ -22,11 +23,12 @@
             </thead>
             <tbody>
             {% for row in orders %}
-                <tr class="{% if row.is_debtor %}order-row-unpaid{% elif row.is_paid and not row.mytax_issued %}order-row-paid-no-mytax{% elif row.is_paid and row.mytax_issued %}order-row-complete{% endif %}">
+                <tr class="{% if row.is_debtor %}order-row-unpaid{% elif row.is_in_progress %}order-row-in-progress{% elif row.is_paid and not row.mytax_issued %}order-row-paid-no-mytax{% elif row.is_paid and row.mytax_issued %}order-row-complete{% endif %}">
                     <td>{{ row.order_number }}</td>
                     <td>{% if row.client %}{{ row.client.name }}{% else %}Без клиента{% endif %}</td>
                     <td>{% if row.client %}{{ row.client.phone }}{% endif %}</td>
                     <td>{{ row.created_at|date:"d.m.Y H:i" }}</td>
+                    <td><span class="badge {% if row.is_in_progress %}text-bg-purple{% elif row.status == 'done' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ row.get_status_display }}</span></td>
                     <td class="text-end">{{ row.total_sum|money }}</td>
                     <td>
                         {% if row.is_debtor %}
@@ -46,7 +48,7 @@
                     </td>
                     <td><a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' row.id %}">Открыть</a></td>
                 </tr>
-            {% empty %}<tr><td colspan="8" class="text-center text-secondary">Заказов пока нет</td></tr>{% endfor %}
+            {% empty %}<tr><td colspan="9" class="text-center text-secondary">Заказов пока нет</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>

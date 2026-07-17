@@ -128,7 +128,7 @@ class DeviceType(models.TextChoices):
 
 
 class OrderStatus(models.TextChoices):
-    ACTIVE = "active", "Активен"
+    ACTIVE = "active", "В работе"
     DONE = "done", "Завершён"
     CANCELLED = "cancelled", "Отменён"
 
@@ -222,12 +222,17 @@ class Order(models.Model):
         return self.payment_method in {PaymentMethod.CASH, PaymentMethod.TRANSFER}
 
     @property
+    def is_in_progress(self) -> bool:
+        return self.status == OrderStatus.ACTIVE
+
+    @property
     def is_debtor(self) -> bool:
         return (
             is_debt_tracking_active_for(self.created_at)
             and not self.is_paid
             and self.total_sum > 0
         )
+
     def recalculate_totals(self, save: bool = True) -> Decimal:
         subtotal = Decimal("0")
         for line in self.lines.all():

@@ -21,6 +21,7 @@ from workshop.models import (
     DeviceType,
     Order,
     OrderLine,
+    OrderStatus,
     PaymentMethod,
     Service,
     loyalty_discount_percent,
@@ -94,7 +95,15 @@ def statistics(request: HttpRequest):
     )
     total_sum = sum((o.total_sum for o in orders), Decimal("0"))
     total_orders = len(orders)
-    avg_check = (total_sum / total_orders) if total_orders else Decimal("0")
+    paid_sum = sum((o.total_sum for o in orders if o.is_paid), Decimal("0"))
+    paid_count = sum(1 for o in orders if o.is_paid)
+    debt_sum = sum((o.total_sum for o in orders if o.is_debtor), Decimal("0"))
+    debt_count = sum(1 for o in orders if o.is_debtor)
+    in_progress_sum = sum((o.total_sum for o in orders if o.is_in_progress), Decimal("0"))
+    in_progress_count = sum(1 for o in orders if o.is_in_progress)
+    # Справочная сумма трёх групп (пересечения возможны: «в работе» может быть и долгом).
+    breakdown_total = paid_sum + debt_sum + in_progress_sum
+    avg_check = (paid_sum / paid_count) if paid_count else Decimal("0")
 
     # Unique contacted clients (orders + acceptance acts)
     visitors_map: dict[int, dict] = {}
@@ -221,6 +230,13 @@ def statistics(request: HttpRequest):
                 "avg_check": avg_check,
                 "visitors_count": len(visitors),
                 "acts_count": len(acts),
+                "paid_sum": paid_sum,
+                "paid_count": paid_count,
+                "debt_sum": debt_sum,
+                "debt_count": debt_count,
+                "in_progress_sum": in_progress_sum,
+                "in_progress_count": in_progress_count,
+                "breakdown_total": breakdown_total,
             },
             "orders": orders,
             "visitors": visitors,
@@ -230,8 +246,52 @@ def statistics(request: HttpRequest):
             "max_day_visits": max_day_visits,
             "yoy": yoy,
             "weekday_labels": ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
+            "order_statuses": OrderStatus.choices,
         },
     )
+
+
+def work_queue(request: HttpRequest):
+    orders = (
+        Order.objects.select_related("client")
+        .filter(status=OrderStatus.ACTIVE)
+        .order_by("created_at", "id")
+    )
+    return render(
+        request,
+        "workshop/work_queue.html",
+        {
+            "orders": orders,
+            "order_statuses": OrderStatus.choices,
+            "count": orders.count(),
+        },
+    )
+
+
+@require_POST
+def order_set_status(request: HttpRequest, order_id: int):
+    order = get_object_or_404(Order, pk=order_id)
+    status = request.POST.get("status", "").strip()
+    if status not in dict(OrderStatus.choices):
+        messages.warning(request, "Некорректный статус")
+        return redirect(request.POST.get("next") or "work_queue")
+    old = order.status
+    order.status = status
+    order.save(update_fields=["status"])
+    log_action(
+        request,
+        "order_set_status",
+        entity_type="order",
+        entity_id=order.id,
+        details=f"{order.order_number}: {old} → {status}",
+    )
+    messages.success(request, f"Статус заказа {order.order_number}: {order.get_status_display()}")
+    next_url = request.POST.get("next") or ""
+    if next_url.startswith("/"):
+        return redirect(next_url)
+    if status == OrderStatus.ACTIVE:
+        return redirect("work_queue")
+    return redirect("order_detail", order_id=order.id)
 
 
 @require_http_methods(["GET", "POST"])
@@ -553,6 +613,7 @@ def order_detail(request: HttpRequest, order_id: int):
             "catalog_tree": build_service_catalog_tree(active_only=True),
             "device_types": [c[0] for c in DeviceType.choices],
             "payment_methods": PaymentMethod.choices,
+            "order_statuses": OrderStatus.choices,
         },
     )
 

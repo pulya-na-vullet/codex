@@ -1,0 +1,66 @@
+{% extends "workshop/base.html" %}
+{% load workshop_extras %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="mb-1">Очередь работ</h4>
+        <div class="small-muted">Заказ-наряды в статусе «В работе»: {{ count }}</div>
+    </div>
+    <a class="btn btn-success btn-sm" href="{% url 'create_order' %}">Новый заказ</a>
+</div>
+<div class="card"><div class="card-body">
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+            <tr>
+                <th>#</th>
+                <th>Номер</th>
+                <th>Клиент</th>
+                <th>Телефон</th>
+                <th>Дата</th>
+                <th class="text-end">Сумма</th>
+                <th>Оплата</th>
+                <th>Статус</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for o in orders %}
+                <tr class="{% if o.is_debtor %}order-row-unpaid{% else %}order-row-in-progress{% endif %}">
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ o.order_number }}</td>
+                    <td>{% if o.client %}{{ o.client.name }}{% else %}Без клиента{% endif %}</td>
+                    <td>{% if o.client %}{{ o.client.phone }}{% endif %}</td>
+                    <td>{{ o.created_at|date:"d.m.Y H:i" }}</td>
+                    <td class="text-end">{{ o.total_sum|money }}</td>
+                    <td>
+                        {% if o.is_debtor %}
+                            <span class="badge text-bg-danger">Долг</span>
+                        {% elif o.is_paid %}
+                            <span class="badge text-bg-success">{{ o.get_payment_method_display }}</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Не оплачен</span>
+                        {% endif %}
+                    </td>
+                    <td style="min-width: 180px;">
+                        <form method="post" action="{% url 'order_set_status' o.id %}" class="d-flex gap-1">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{% url 'work_queue' %}">
+                            <select class="form-select form-select-sm" name="status">
+                                {% for value, label in order_statuses %}
+                                    <option value="{{ value }}" {% if o.status == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            <button class="btn btn-outline-light btn-sm" type="submit">OK</button>
+                        </form>
+                    </td>
+                    <td><a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' o.id %}">Открыть</a></td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="9" class="text-center text-secondary">В очереди работ пусто</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div></div>
+{% endblock %}

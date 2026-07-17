@@ -236,6 +236,29 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Сравнение год к году")
         self.assertContains(r, "Разбивка по месяцам")
 
+    def test_work_queue_and_status(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        client = Client.objects.create(name="Очередь", phone="+79998887766")
+        order = Order.objects.create(
+            order_number="ORD-WORK01",
+            client=client,
+            total_sum=Decimal("500"),
+            status="active",
+        )
+        r = self.http.get("/work-queue")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "ORD-WORK01")
+        self.assertContains(r, "В работе")
+        r = self.http.post(f"/orders/{order.id}/status", {"status": "done", "next": "/work-queue"}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, "done")
+        self.assertContains(r, "В очереди работ пусто")
+        r = self.http.get("/statistics")
+        self.assertContains(r, "Оплачено")
+        self.assertContains(r, "Долги")
+        self.assertContains(r, "оплачено + долги + в работе")
+
     def test_print_actions_are_logged(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         client = Client.objects.create(name="Печать", phone="+79992223344")

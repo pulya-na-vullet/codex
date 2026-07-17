@@ -15,8 +15,8 @@
 
 <div class="row g-3 mb-4">
     <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">Заказов</div><div class="fs-3 fw-bold">{{ stats.total_orders }}</div></div></div></div>
-    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">Выручка</div><div class="fs-3 fw-bold">{{ stats.total_sum|money }}</div></div></div></div>
-    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">Средний чек</div><div class="fs-3 fw-bold">{{ stats.avg_check|money }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">Выручка (оплачено)</div><div class="fs-3 fw-bold">{{ stats.paid_sum|money }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">Средний чек (оплаченные)</div><div class="fs-3 fw-bold">{{ stats.avg_check|money }}</div></div></div></div>
     <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">Обратившихся клиентов</div><div class="fs-3 fw-bold">{{ stats.visitors_count }}</div></div></div></div>
 </div>
 
@@ -27,21 +27,50 @@
             <h5 class="mb-3">Выручка за неделю (детально)</h5>
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
-                    <thead><tr><th>Заказ</th><th>Клиент</th><th>Дата</th><th class="text-end">Сумма</th></tr></thead>
+                    <thead><tr><th>Заказ</th><th>Клиент</th><th>Дата</th><th>Статус</th><th class="text-end">Сумма</th></tr></thead>
                     <tbody>
                     {% for o in orders %}
-                        <tr>
+                        <tr class="{% if o.is_debtor %}order-row-unpaid{% elif o.is_in_progress %}order-row-in-progress{% endif %}">
                             <td><a href="{% url 'order_detail' o.id %}">{{ o.order_number }}</a></td>
                             <td>{% if o.client %}{{ o.client.name }}{% else %}Без клиента{% endif %}</td>
                             <td>{{ o.created_at|date:"d.m.Y H:i" }}</td>
-                            <td class="text-end">{{ o.total_sum|money }}</td>
+                            <td>
+                                <span class="badge {% if o.is_debtor %}text-bg-danger{% elif o.is_paid %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                                    {% if o.is_debtor %}Долг{% elif o.is_paid %}Оплачен{% else %}Не оплачен{% endif %}
+                                </span>
+                                {% if o.is_in_progress %}
+                                    <span class="badge text-bg-purple">В работе</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end {% if o.is_debtor %}text-danger fw-semibold{% endif %}">{{ o.total_sum|money }}</td>
                         </tr>
                     {% empty %}
-                        <tr><td colspan="4" class="text-center text-secondary">Заказов за неделю нет</td></tr>
+                        <tr><td colspan="5" class="text-center text-secondary">Заказов за неделю нет</td></tr>
                     {% endfor %}
                     </tbody>
                     {% if orders %}
-                    <tfoot><tr><th colspan="3">Итого</th><th class="text-end">{{ stats.total_sum|money }}</th></tr></tfoot>
+                    <tfoot>
+                        <tr>
+                            <th colspan="4">Оплачено ({{ stats.paid_count }})</th>
+                            <th class="text-end text-success">{{ stats.paid_sum|money }}</th>
+                        </tr>
+                        <tr>
+                            <th colspan="4">Долги ({{ stats.debt_count }})</th>
+                            <th class="text-end text-danger">{{ stats.debt_sum|money }}</th>
+                        </tr>
+                        <tr>
+                            <th colspan="4">В работе ({{ stats.in_progress_count }})</th>
+                            <th class="text-end text-purple">{{ stats.in_progress_sum|money }}</th>
+                        </tr>
+                        <tr>
+                            <th colspan="4">Итого: оплачено + долги + в работе</th>
+                            <th class="text-end">{{ stats.breakdown_total|money }}</th>
+                        </tr>
+                        <tr>
+                            <th colspan="4" class="small-muted fw-normal">Сумма всех заказ-нарядов периода (без двойного счёта)</th>
+                            <th class="text-end small-muted fw-normal">{{ stats.total_sum|money }}</th>
+                        </tr>
+                    </tfoot>
                     {% endif %}
                 </table>
             </div>
