@@ -10,14 +10,14 @@
         <div>Заказов: <strong>{{ count }}</strong></div>
         <div>Сумма долга: <strong>{{ total_debt|money }}</strong></div>
         <form method="post" action="{% url 'debtors_sms_all' %}" class="mt-2"
-              onsubmit="return confirm('Отправить SMS о долге всем должникам в списке?');">
+              onsubmit="return confirm('Отправить напоминание о долге всем в Max?');">
             {% csrf_token %}
             <button class="btn btn-warning btn-sm" type="submit" {% if not orders %}disabled{% endif %}>
-                Отправить SMS о долгах
+                Отправить в Max о долгах
             </button>
         </form>
-        {% if not sms_settings.enabled %}
-            <div class="small-muted mt-1">SMS выключены — включите в <a href="{% url 'admin_panel' %}">админ-панели</a></div>
+        {% if not msg_settings.enabled %}
+            <div class="small-muted mt-1">Рассылки выключены — включите в <a href="{% url 'admin_panel' %}">админ-панели</a></div>
         {% endif %}
     </div>
 </div>
@@ -29,6 +29,7 @@
                 <th>Номер</th>
                 <th>Клиент</th>
                 <th>Телефон</th>
+                <th>Max</th>
                 <th>Закрыт</th>
                 <th class="text-end">Сумма</th>
                 <th>Мой налог</th>
@@ -41,6 +42,13 @@
                     <td>{{ o.order_number }}</td>
                     <td>{% if o.client %}<a href="{% url 'client_detail' o.client.id %}">{{ o.client.name }}</a>{% else %}Без клиента{% endif %}</td>
                     <td>{% if o.client %}{{ o.client.phone }}{% endif %}</td>
+                    <td>
+                        {% if o.client and o.client.max_user_id %}
+                            <span class="badge text-bg-success">привязан</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">нет</span>
+                        {% endif %}
+                    </td>
                     <td>{% if o.effective_closed_at %}{{ o.effective_closed_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</td>
                     <td class="text-end">{{ o.total_sum|money }}</td>
                     <td>{% if o.mytax_issued %}выдан{% else %}нет{% endif %}</td>
@@ -48,9 +56,9 @@
                         <div class="d-inline-flex gap-1">
                             {% if o.client %}
                             <form method="post" action="{% url 'debtors_sms_one' o.id %}"
-                                  onsubmit="return confirm('Отправить SMS о долге клиенту {{ o.client.name }}?');">
+                                  onsubmit="return confirm('Отправить в Max напоминание клиенту {{ o.client.name }}?');">
                                 {% csrf_token %}
-                                <button class="btn btn-outline-warning btn-sm" type="submit">SMS</button>
+                                <button class="btn btn-outline-warning btn-sm" type="submit">Max</button>
                             </form>
                             {% endif %}
                             <a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' o.id %}">Открыть</a>
@@ -58,7 +66,7 @@
                     </td>
                 </tr>
             {% empty %}
-                <tr><td colspan="7" class="text-center text-secondary">Должников нет</td></tr>
+                <tr><td colspan="8" class="text-center text-secondary">Должников нет</td></tr>
             {% endfor %}
             </tbody>
         </table>

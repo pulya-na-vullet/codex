@@ -1,0 +1,598 @@
+"""Messaging via Max messenger (replaces SMS.ru)."""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+import threading
+import urllib.error
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass
+from typing import Any
+
+from django.conf import settings
+
+from workshop.models import Client, Order, SmsKind, SmsLog, SmsProvider, SmsSettings
+
+logger = logging.getLogger(__name__)
+
+PHONE_RE = re.compile(r"(?:\+7|8|7)\D*\d(?:\D*\d){9}")
+
+
+@dataclass
+class MessageResult:
+    success: bool
+    response: str = ""
+    simulated: bool = False
+
+
+def _digits_phone(phone: str) -> str:
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    if digits.startswith("8") and len(digits) == 11:
+        digits = "7" + digits[1:]
+    if len(digits) == 10:
+        digits = "7" + digits
+    return digits
+
+
+def normalize_ru_phone(phone: str) -> str:
+    return _digits_phone(phone)
+
+
+def format_phone_display(phone: str) -> str:
+    digits = normalize_ru_phone(phone)
+    if len(digits) == 11 and digits.startswith("7"):
+        return f"+7 ({digits[1:4]}) {digits[4:7]}-{digits[7:9]}-{digits[9:11]}"
+    return phone or ""
+
+
+def render_template(template: str, **kwargs) -> str:
+    text = template or ""
+    for key, value in kwargs.items():
+        text = text.replace("{" + key + "}", "" if value is None else str(value))
+    return text
+
+
+def debt_context(order: Order) -> dict:
+    client = order.client
+    return {
+        "name": client.name if client else "Клиент",
+        "phone": client.phone if client else "",
+        "order": order.order_number,
+        "sum": f"{order.total_sum:.2f}".replace(".", ","),
+        "company": getattr(settings, "COMPANY_NAME", "ИТ-мастерская"),
+        "company_phone": getattr(settings, "COMPANY_PHONE", ""),
+    }
+
+
+def marketing_context(client: Client) -> dict:
+    return {
+        "name": client.name,
+        "phone": client.phone,
+        "company": getattr(settings, "COMPANY_NAME", "ИТ-мастерская"),
+        "company_phone": getattr(settings, "COMPANY_PHONE", ""),
+    }
+
+
+def _api_base() -> str:
+    return getattr(settings, "MAX_API_BASE", "https://platform-api2.max.ru").rstrip("/")
+
+
+def _json_request(
+    method: str,
+    path: str,
+    *,
+    token: str,
+    query: dict[str, Any] | None = None,
+    body: dict[str, Any] | None = None,
+    timeout: int = 35,
+) -> dict[str, Any]:
+    query = query or {}
+    url = f"{_api_base()}{path}"
+    if query:
+        url = f"{url}?{urllib.parse.urlencode(query)}"
+    data = None
+    headers = {
+        "Authorization": token,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "WorkshopApp/1.0",
+    }
+    if body is not None:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        try:
+            payload = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            payload = {"raw": raw}
+        code = payload.get("code") or f"http_{exc.code}"
+        message = payload.get("message") or raw or str(exc)
+        raise RuntimeError(f"{code}: {message}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"network_error: {exc.reason}") from exc
+
+
+def send_max_message(
+    *,
+    token: str,
+    user_id: int | str,
+    text: str,
+    attachments: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"text": text}
+    if attachments:
+        body["attachments"] = attachments
+    return _json_request(
+        "POST",
+        "/messages",
+        token=token,
+        query={"user_id": int(user_id)},
+        body=body,
+    )
+
+
+def _contact_keyboard() -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "inline_keyboard",
+            "payload": {
+                "buttons": [
+                    [{"type": "request_contact", "text": "Поделиться контактом"}],
+                ]
+            },
+        }
+    ]
+
+
+def extract_phone_from_text(text: str) -> str | None:
+    match = PHONE_RE.search(text or "")
+    if not match:
+        return None
+    digits = normalize_ru_phone(match.group(0))
+    return digits if len(digits) == 11 and digits.startswith("7") else None
+
+
+def extract_phone_from_message(message: dict[str, Any]) -> str | None:
+    """Phone from plain text or request_contact attachment."""
+    body = message.get("body") or {}
+    text_phone = extract_phone_from_text(body.get("text") or "")
+    if text_phone:
+        return text_phone
+
+    for att in body.get("attachments") or message.get("attachments") or []:
+        if not isinstance(att, dict):
+            continue
+        payload = att.get("payload") or {}
+        max_info = payload.get("max_info") or {}
+        for key in ("phone", "phone_number", "contact_phone"):
+            value = max_info.get(key) or payload.get(key)
+            if value:
+                digits = normalize_ru_phone(str(value))
+                if len(digits) == 11 and digits.startswith("7"):
+                    return digits
+        vcf = payload.get("vcf_info") or ""
+        if vcf:
+            digits = extract_phone_from_text(str(vcf))
+            if digits:
+                return digits
+    return None
+
+
+def find_client_by_phone_digits(phone_digits: str) -> Client | None:
+    target = normalize_ru_phone(phone_digits)
+    for client in Client.objects.all().only("id", "phone", "max_user_id", "name"):
+        if normalize_ru_phone(client.phone) == target:
+            return client
+    return None
+
+
+def _log(
+    *,
+    kind: str,
+    phone: str,
+    text: str,
+    success: bool,
+    provider: str,
+    response: str,
+    client: Client | None = None,
+    order: Order | None = None,
+    username: str = "",
+) -> None:
+    SmsLog.objects.create(
+        kind=kind,
+        phone=phone or "",
+        text=text,
+        success=success,
+        provider=provider,
+        response=(response or "")[:2000],
+        client=client,
+        order=order,
+        username=username,
+    )
+
+
+def send_message(
+    *,
+    phone: str,
+    text: str,
+    kind: str,
+    client: Client | None = None,
+    order: Order | None = None,
+    username: str = "",
+    force: bool = False,
+) -> MessageResult:
+    cfg = SmsSettings.get_solo()
+    normalized = _digits_phone(phone)
+    phone_label = normalized or (phone or "")
+
+    if not (text or "").strip():
+        result = MessageResult(success=False, response="Пустой текст сообщения")
+        _log(
+            kind=kind,
+            phone=phone_label,
+            text=text or "",
+            success=False,
+            provider=cfg.provider,
+            response=result.response,
+            client=client,
+            order=order,
+            username=username,
+        )
+        return result
+
+    if not cfg.enabled and not force:
+        result = MessageResult(success=False, response="Рассылки отключены в админ-панели")
+        _log(
+            kind=kind,
+            phone=phone_label,
+            text=text,
+            success=False,
+            provider=cfg.provider,
+            response=result.response,
+            client=client,
+            order=order,
+            username=username,
+        )
+        return result
+
+    if kind == SmsKind.MARKETING and not cfg.marketing_enabled and not force:
+        result = MessageResult(success=False, response="Маркетинг отключён в админ-панели")
+        _log(
+            kind=kind,
+            phone=phone_label,
+            text=text,
+            success=False,
+            provider=cfg.provider,
+            response=result.response,
+            client=client,
+            order=order,
+            username=username,
+        )
+        return result
+
+    if cfg.provider == SmsProvider.LOG_ONLY:
+        result = MessageResult(
+            success=True,
+            response="Симуляция: сообщение записано в журнал (канал «Только журнал»)",
+            simulated=True,
+        )
+        _log(
+            kind=kind,
+            phone=phone_label,
+            text=text,
+            success=True,
+            provider=cfg.provider,
+            response=result.response,
+            client=client,
+            order=order,
+            username=username,
+        )
+        return result
+
+    # Max messenger
+    token = (cfg.bot_token or "").strip()
+    if not token:
+        result = MessageResult(success=False, response="Не указан токен бота Max")
+        _log(
+            kind=kind,
+            phone=phone_label,
+            text=text,
+            success=False,
+            provider=cfg.provider,
+            response=result.response,
+            client=client,
+            order=order,
+            username=username,
+        )
+        return result
+
+    max_user_id = (getattr(client, "max_user_id", None) or "").strip() if client else ""
+    if not max_user_id:
+        result = MessageResult(
+            success=False,
+            response="Клиент не привязан к Max (нет user_id). Пусть напишет боту свой телефон.",
+        )
+        _log(
+            kind=kind,
+            phone=phone_label,
+            text=text,
+            success=False,
+            provider=cfg.provider,
+            response=result.response,
+            client=client,
+            order=order,
+            username=username,
+        )
+        return result
+
+    try:
+        api_result = send_max_message(token=token, user_id=max_user_id, text=text)
+        mid = ""
+        if isinstance(api_result, dict):
+            msg = api_result.get("message") or api_result
+            if isinstance(msg, dict):
+                body = msg.get("body") or {}
+                mid = str(body.get("mid") or msg.get("message_id") or "")
+        result = MessageResult(
+            success=True,
+            response=f"Max ok user_id={max_user_id}" + (f" mid={mid}" if mid else ""),
+        )
+    except Exception as exc:
+        result = MessageResult(success=False, response=str(exc)[:2000])
+
+    _log(
+        kind=kind,
+        phone=phone_label or f"max:{max_user_id}",
+        text=text,
+        success=result.success,
+        provider=cfg.provider,
+        response=result.response,
+        client=client,
+        order=order,
+        username=username,
+    )
+    return result
+
+
+def send_debt_message_for_order(order: Order, *, username: str = "") -> MessageResult:
+    if not order.client:
+        return MessageResult(success=False, response="У заказа нет клиента")
+    if not order.is_debtor:
+        return MessageResult(success=False, response="Заказ не является долгом")
+    cfg = SmsSettings.get_solo()
+    text = render_template(cfg.debt_template, **debt_context(order))
+    return send_message(
+        phone=order.client.phone,
+        text=text,
+        kind=SmsKind.DEBT,
+        client=order.client,
+        order=order,
+        username=username,
+    )
+
+
+def send_marketing_message(client: Client, text: str, *, username: str = "") -> MessageResult:
+    if not client.allow_marketing_sms:
+        return MessageResult(success=False, response="Клиент отключил маркетинговые сообщения")
+    cfg = SmsSettings.get_solo()
+    rendered = render_template(text or cfg.marketing_default_text, **marketing_context(client))
+    return send_message(
+        phone=client.phone,
+        text=rendered,
+        kind=SmsKind.MARKETING,
+        client=client,
+        username=username,
+    )
+
+
+def process_max_update(update: dict[str, Any], settings_obj: SmsSettings | None = None) -> None:
+    """Link client by phone when they message the bot; reply with confirmation."""
+    if settings_obj is None:
+        settings_obj = SmsSettings.get_solo()
+
+    token = (settings_obj.bot_token or "").strip()
+    if not token:
+        return
+
+    update_type = update.get("update_type") or ""
+    message = update.get("message") or {}
+    sender = message.get("sender") or update.get("user") or {}
+    user_id = sender.get("user_id")
+    if user_id is None:
+        return
+    try:
+        user_id_int = int(user_id)
+    except (TypeError, ValueError):
+        return
+
+    text = (message.get("body") or {}).get("text") or ""
+    if update_type == "bot_started" or (
+        update_type == "message_created" and text.strip().lower() in {"/start", "start"}
+    ):
+        welcome = (settings_obj.welcome_text or "").strip() or (
+            "Здравствуйте! Отправьте номер телефона в формате +7XXXXXXXXXX "
+            "или нажмите «Поделиться контактом»."
+        )
+        try:
+            send_max_message(
+                token=token,
+                user_id=user_id_int,
+                text=welcome,
+                attachments=_contact_keyboard(),
+            )
+        except Exception:
+            logger.exception("Failed to send Max welcome to user_id=%s", user_id_int)
+        return
+
+    if update_type != "message_created":
+        return
+
+    phone_digits = extract_phone_from_message(message)
+    if not phone_digits:
+        try:
+            send_max_message(
+                token=token,
+                user_id=user_id_int,
+                text="Не распознал номер. Пришлите телефон +7XXXXXXXXXX или нажмите «Поделиться контактом».",
+                attachments=_contact_keyboard(),
+            )
+        except Exception:
+            logger.exception("Failed to send Max hint to user_id=%s", user_id_int)
+        return
+
+    client = find_client_by_phone_digits(phone_digits)
+    if client is None:
+        try:
+            send_max_message(
+                token=token,
+                user_id=user_id_int,
+                text=(
+                    f"Номер {format_phone_display(phone_digits)} не найден в базе мастерской. "
+                    "Обратитесь к администратору."
+                ),
+            )
+        except Exception:
+            logger.exception("Failed to send Max not-found to user_id=%s", user_id_int)
+        return
+
+    client.max_user_id = str(user_id_int)
+    client.save(update_fields=["max_user_id"])
+    try:
+        send_max_message(
+            token=token,
+            user_id=user_id_int,
+            text=f"Готово, {client.name}! Номер привязан. Теперь вы будете получать сообщения от мастерской.",
+        )
+    except Exception:
+        logger.exception("Failed to send Max link confirmation to user_id=%s", user_id_int)
+
+    _log(
+        kind=SmsKind.SYSTEM,
+        phone=client.phone,
+        text=f"Клиент привязал Max user_id={user_id_int}",
+        success=True,
+        provider=SmsProvider.MAX,
+        response=f"linked user_id={user_id_int}",
+        client=client,
+        username="max-bot",
+    )
+
+
+def process_updates_payload(payload: dict[str, Any] | list[Any]) -> None:
+    """Handle webhook body: single update, list, or {updates: [...]}."""
+    settings_obj = SmsSettings.get_solo()
+    updates: list[Any]
+    if isinstance(payload, list):
+        updates = payload
+    elif isinstance(payload, dict):
+        if "updates" in payload:
+            updates = payload.get("updates") or []
+        elif payload.get("update_type"):
+            updates = [payload]
+        else:
+            updates = []
+    else:
+        updates = []
+
+    for update in updates:
+        if isinstance(update, dict):
+            try:
+                process_max_update(update, settings_obj)
+            except Exception:
+                logger.exception("Failed to process Max update")
+
+
+def _max_long_poll_loop(stop_event: threading.Event) -> None:
+    from django.db import close_old_connections
+    from django.db.utils import OperationalError, ProgrammingError
+
+    marker: int | None = None
+    while not stop_event.is_set():
+        try:
+            close_old_connections()
+            settings_obj = SmsSettings.get_solo()
+            if (
+                not settings_obj.enabled
+                or settings_obj.provider != SmsProvider.MAX
+                or not settings_obj.long_poll_enabled
+                or not (settings_obj.bot_token or "").strip()
+            ):
+                stop_event.wait(3.0)
+                continue
+
+            token = settings_obj.bot_token.strip()
+            if marker is None and settings_obj.updates_marker is not None:
+                marker = int(settings_obj.updates_marker)
+
+            query: dict[str, Any] = {"limit": 100, "timeout": 25}
+            if marker is not None:
+                query["marker"] = marker
+
+            try:
+                payload = _json_request("GET", "/updates", token=token, query=query, timeout=35)
+            except Exception:
+                logger.exception("Max long-poll /updates failed")
+                stop_event.wait(5.0)
+                continue
+
+            updates = payload.get("updates") or []
+            new_marker = payload.get("marker")
+            for update in updates:
+                try:
+                    process_max_update(update, settings_obj)
+                except Exception:
+                    logger.exception("Failed to process Max update")
+            if new_marker is not None:
+                try:
+                    marker = int(new_marker)
+                except (TypeError, ValueError):
+                    marker = None
+                if marker is not None:
+                    SmsSettings.objects.filter(pk=settings_obj.pk).update(updates_marker=marker)
+        except (OperationalError, ProgrammingError):
+            logger.warning("Max long-poll: database not ready, retrying")
+            stop_event.wait(5.0)
+        except Exception:
+            logger.exception("Max long-poll worker crashed iteration")
+            stop_event.wait(5.0)
+
+
+_worker_stop: threading.Event | None = None
+_worker_thread: threading.Thread | None = None
+_worker_lock = threading.Lock()
+
+
+def start_max_long_poll_worker() -> None:
+    """Start background Max updates long-poller (LAN / no public webhook)."""
+    global _worker_stop, _worker_thread
+    if not getattr(settings, "MAX_LONG_POLL_WORKER", True):
+        return
+    with _worker_lock:
+        if _worker_thread is not None and _worker_thread.is_alive():
+            return
+        _worker_stop = threading.Event()
+        _worker_thread = threading.Thread(
+            target=_max_long_poll_loop,
+            args=(_worker_stop,),
+            name="max-long-poll-worker",
+            daemon=True,
+        )
+        _worker_thread.start()
+        logger.info("Max long-poll worker started")
+
+
+def stop_max_long_poll_worker() -> None:
+    global _worker_stop, _worker_thread
+    with _worker_lock:
+        if _worker_stop is not None:
+            _worker_stop.set()
+        _worker_thread = None
+        _worker_stop = None

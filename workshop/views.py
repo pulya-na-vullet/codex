@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
@@ -11,6 +12,7 @@ from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from workshop.audit import log_action
@@ -339,16 +341,20 @@ def client_detail(request: HttpRequest, client_id: int):
     client = get_object_or_404(Client, pk=client_id)
     if request.method == "POST":
         comment = request.POST.get("comment", "").strip()
+        max_user_id = request.POST.get("max_user_id", "").strip()
+        allow_marketing = request.POST.get("allow_marketing_sms") == "1"
         client.comment = comment
-        client.save(update_fields=["comment"])
+        client.max_user_id = max_user_id
+        client.allow_marketing_sms = allow_marketing
+        client.save(update_fields=["comment", "max_user_id", "allow_marketing_sms"])
         log_action(
             request,
-            "client_update_comment",
+            "client_update",
             entity_type="client",
             entity_id=client.id,
-            details=f"{client.name}: {comment[:120]}",
+            details=f"{client.name}: max={max_user_id or '-'} marketing={allow_marketing}",
         )
-        messages.success(request, "Комментарий сохранён")
+        messages.success(request, "Данные клиента сохранены")
         return redirect("client_detail", client_id=client.id)
 
     orders = client.orders.all()
@@ -358,6 +364,8 @@ def client_detail(request: HttpRequest, client_id: int):
         "name": client.name,
         "phone": client.phone,
         "comment": client.comment,
+        "max_user_id": client.max_user_id,
+        "allow_marketing_sms": client.allow_marketing_sms,
         "total_orders": client.total_orders,
         "total_spent": client.total_spent,
         "is_regular": client.is_regular,
@@ -760,7 +768,7 @@ def debtors_list(request: HttpRequest):
             "total_debt": total_debt,
             "count": len(orders),
             "debt_tracking_start": debt_tracking_start().date(),
-            "sms_settings": SmsSettings.get_solo(),
+            "msg_settings": SmsSettings.get_solo(),
         },
     )
 
@@ -768,7 +776,7 @@ def debtors_list(request: HttpRequest):
 @require_POST
 def debtors_sms_all(request: HttpRequest):
     from workshop.models import debtor_orders_queryset
-    from workshop.sms import send_debt_sms_for_order
+    from workshop.messaging import send_debt_message_for_order
 
     username = str(request.session.get("workshop_username") or "")
     orders = list(debtor_orders_queryset().select_related("client"))
@@ -777,64 +785,69 @@ def debtors_sms_all(request: HttpRequest):
         if not order.client_id:
             fail += 1
             continue
-        result = send_debt_sms_for_order(order, username=username)
+        result = send_debt_message_for_order(order, username=username)
         if result.success:
             ok += 1
         else:
             fail += 1
-    log_action(request, "sms_debt_bulk", entity_type="sms", details=f"ok={ok} fail={fail}")
+    log_action(request, "max_debt_bulk", entity_type="messaging", details=f"ok={ok} fail={fail}")
     if ok:
-        messages.success(request, f"SMS о долге: отправлено {ok}, ошибок {fail}")
+        messages.success(request, f"Max: отправлено {ok}, ошибок {fail}")
     else:
-        messages.warning(request, f"SMS не отправлены (ошибок: {fail}). Проверьте админ-панель SMS.")
+        messages.warning(request, f"Сообщения не отправлены (ошибок: {fail}). Проверьте админ-панель Max.")
     return redirect("debtors")
 
 
 @require_POST
 def debtors_sms_one(request: HttpRequest, order_id: int):
-    from workshop.sms import send_debt_sms_for_order
+    from workshop.messaging import send_debt_message_for_order
 
     order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
     username = str(request.session.get("workshop_username") or "")
-    result = send_debt_sms_for_order(order, username=username)
+    result = send_debt_message_for_order(order, username=username)
     log_action(
         request,
-        "sms_debt_one",
+        "max_debt_one",
         entity_type="order",
         entity_id=order.id,
         details=f"{order.order_number}: {result.response[:200]}",
     )
     if result.success:
         note = " (симуляция)" if result.simulated else ""
-        messages.success(request, f"SMS о долге отправлено{note}: {order.order_number}")
+        messages.success(request, f"Сообщение о долге отправлено в Max{note}: {order.order_number}")
     else:
-        messages.warning(request, f"Не удалось отправить SMS: {result.response}")
+        messages.warning(request, f"Не удалось отправить в Max: {result.response}")
     return redirect("debtors")
 
 
 @require_http_methods(["GET", "POST"])
 def admin_panel(request: HttpRequest):
-    from workshop.models import SmsProvider, SmsSettings
+    from workshop.models import SmsLog, SmsProvider, SmsSettings
+    from workshop.messaging import start_max_long_poll_worker
 
     cfg = SmsSettings.get_solo()
     if request.method == "POST":
         cfg.enabled = request.POST.get("enabled") == "1"
         cfg.marketing_enabled = request.POST.get("marketing_enabled") == "1"
+        cfg.long_poll_enabled = request.POST.get("long_poll_enabled") == "1"
         provider = request.POST.get("provider", SmsProvider.LOG_ONLY)
         if provider in dict(SmsProvider.choices):
             cfg.provider = provider
-        cfg.api_id = request.POST.get("api_id", "").strip()
-        cfg.sender = request.POST.get("sender", "").strip()
+        cfg.bot_token = request.POST.get("bot_token", "").strip()
+        cfg.bot_username = request.POST.get("bot_username", "").strip().lstrip("@")
+        cfg.bot_link = request.POST.get("bot_link", "").strip()
+        if not cfg.bot_link and cfg.bot_username:
+            cfg.bot_link = f"https://max.ru/{cfg.bot_username}"
+        cfg.welcome_text = request.POST.get("welcome_text", "").strip() or cfg.welcome_text
         cfg.debt_template = request.POST.get("debt_template", "").strip() or cfg.debt_template
         cfg.marketing_default_text = (
             request.POST.get("marketing_default_text", "").strip() or cfg.marketing_default_text
         )
         cfg.save()
-        log_action(request, "sms_settings_update", entity_type="sms", details=f"provider={cfg.provider}")
-        messages.success(request, "Настройки SMS сохранены")
+        start_max_long_poll_worker()
+        log_action(request, "max_settings_update", entity_type="messaging", details=f"provider={cfg.provider}")
+        messages.success(request, "Настройки Max сохранены")
         return redirect("admin_panel")
-
-    from workshop.models import SmsLog
 
     return render(
         request,
@@ -842,7 +855,7 @@ def admin_panel(request: HttpRequest):
         {
             "cfg": cfg,
             "providers": SmsProvider.choices,
-            "recent_sms": SmsLog.objects.select_related("client", "order")[:50],
+            "recent_messages": SmsLog.objects.select_related("client", "order")[:50],
         },
     )
 
@@ -850,7 +863,7 @@ def admin_panel(request: HttpRequest):
 @require_http_methods(["GET", "POST"])
 def marketing_sms(request: HttpRequest):
     from workshop.models import SmsSettings, debtor_orders_queryset
-    from workshop.sms import send_marketing_sms
+    from workshop.messaging import send_marketing_message
 
     cfg = SmsSettings.get_solo()
     debtor_client_ids = set(
@@ -878,16 +891,16 @@ def marketing_sms(request: HttpRequest):
             if not client:
                 fail += 1
                 continue
-            result = send_marketing_sms(client, text, username=username)
+            result = send_marketing_message(client, text, username=username)
             if result.success:
                 ok += 1
             else:
                 fail += 1
-        log_action(request, "sms_marketing_bulk", entity_type="sms", details=f"ok={ok} fail={fail}")
+        log_action(request, "max_marketing_bulk", entity_type="messaging", details=f"ok={ok} fail={fail}")
         if ok:
-            messages.success(request, f"Маркетинг SMS: отправлено {ok}, ошибок {fail}")
+            messages.success(request, f"Маркетинг Max: отправлено {ok}, ошибок {fail}")
         else:
-            messages.warning(request, f"SMS не отправлены (ошибок: {fail}). Проверьте админ-панель.")
+            messages.warning(request, f"Сообщения не отправлены (ошибок: {fail}). Нужен Max user_id у клиента.")
         return redirect("marketing_sms")
 
     return render(
@@ -899,6 +912,22 @@ def marketing_sms(request: HttpRequest):
             "default_text": cfg.marketing_default_text,
         },
     )
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def max_webhook(request: HttpRequest):
+    """Webhook endpoint for Max (if public HTTPS is available)."""
+    from workshop.messaging import process_updates_payload
+
+    if request.method == "GET":
+        return HttpResponse("max webhook ok")
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return HttpResponse("bad json", status=400)
+    process_updates_payload(payload)
+    return HttpResponse("ok")
 
 
 def audit_log_list(request: HttpRequest):

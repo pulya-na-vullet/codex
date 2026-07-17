@@ -315,9 +315,9 @@ class AuthAndPagesTests(TestCase):
         cfg.marketing_enabled = True
         cfg.provider = "log"
         cfg.save()
-        client = Client.objects.create(name="SMS Клиент", phone="+79991234567")
+        client = Client.objects.create(name="Max Клиент", phone="+79991234567", max_user_id="12345")
         order = Order.objects.create(
-            order_number="ORD-SMS0001",
+            order_number="ORD-MAX0001",
             client=client,
             total_sum=Decimal("1500"),
             status="done",
@@ -325,16 +325,53 @@ class AuthAndPagesTests(TestCase):
         )
         r = self.http.get("/admin-panel")
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Настройки SMS")
+        self.assertContains(r, "Канал Max")
         r = self.http.post(f"/debtors/{order.id}/sms")
         self.assertEqual(r.status_code, 302)
         self.assertTrue(SmsLog.objects.filter(kind="debt", success=True).exists())
         r = self.http.get("/marketing")
         self.assertEqual(r.status_code, 200)
-        other = Client.objects.create(name="Маркет", phone="+79997654321", allow_marketing_sms=True)
+        other = Client.objects.create(
+            name="Маркет",
+            phone="+79997654321",
+            allow_marketing_sms=True,
+            max_user_id="999",
+        )
         r = self.http.post("/marketing", {"text": "Привет, {name}!", "client_ids": [str(other.id)]})
         self.assertEqual(r.status_code, 302)
-        self.assertTrue(SmsLog.objects.filter(kind="marketing", success=True, phone="79997654321").exists())
+        self.assertTrue(SmsLog.objects.filter(kind="marketing", success=True).exists())
+        r = self.http.get("/max/webhook")
+        self.assertEqual(r.status_code, 200)
+
+    def test_max_webhook_links_client_by_phone(self):
+        from unittest.mock import patch
+
+        from workshop.models import SmsSettings
+
+        cfg = SmsSettings.get_solo()
+        cfg.enabled = True
+        cfg.provider = "max"
+        cfg.bot_token = "test-token"
+        cfg.save()
+        client = Client.objects.create(name="Привязка", phone="+79991112233")
+        payload = {
+            "update_type": "message_created",
+            "message": {
+                "sender": {"user_id": 777001},
+                "body": {"text": "Мой номер +7 (999) 111-22-33"},
+            },
+        }
+        with patch("workshop.messaging.send_max_message") as mock_send:
+            mock_send.return_value = {"message": {"body": {"mid": "mid1"}}}
+            r = self.http.post(
+                "/max/webhook",
+                data=__import__("json").dumps(payload),
+                content_type="application/json",
+            )
+        self.assertEqual(r.status_code, 200)
+        client.refresh_from_db()
+        self.assertEqual(client.max_user_id, "777001")
+        mock_send.assert_called()
 
     def test_print_actions_are_logged(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})

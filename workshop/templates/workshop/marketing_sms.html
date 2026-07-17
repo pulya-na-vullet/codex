@@ -2,7 +2,7 @@
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
-        <h4 class="mb-0">Маркетинг SMS</h4>
+        <h4 class="mb-0">Маркетинг Max</h4>
         <div class="small-muted">Рассылка клиентам, которые сейчас не в списке должников</div>
     </div>
     <a class="btn btn-outline-light btn-sm" href="{% url 'admin_panel' %}">Админ-панель</a>
@@ -10,12 +10,16 @@
 
 {% if not cfg.enabled or not cfg.marketing_enabled %}
 <div class="alert alert-warning py-2">
-    Маркетинг SMS сейчас недоступен:
-    {% if not cfg.enabled %}отправка SMS выключена{% endif %}
+    Маркетинг сейчас недоступен:
+    {% if not cfg.enabled %}рассылки выключены{% endif %}
     {% if not cfg.enabled and not cfg.marketing_enabled %}; {% endif %}
     {% if not cfg.marketing_enabled %}маркетинг выключен{% endif %}.
     Включите в <a href="{% url 'admin_panel' %}">админ-панели</a>.
 </div>
+{% endif %}
+
+{% if cfg.bot_link %}
+<div class="alert alert-primary py-2">Клиенты без Max: пусть напишут боту <a href="{{ cfg.bot_link }}" target="_blank">{{ cfg.bot_link }}</a> и пришлют свой телефон.</div>
 {% endif %}
 
 <form method="post">{% csrf_token %}
@@ -26,7 +30,7 @@
                 <textarea class="form-control" name="text" rows="8" required>{{ default_text }}</textarea>
                 <div class="small-muted mt-2">Плейсхолдеры: {name} {phone} {company} {company_phone}</div>
                 <button class="btn btn-primary mt-3" type="submit"
-                        onclick="return confirm('Отправить SMS выбранным клиентам?');"
+                        onclick="return confirm('Отправить в Max выбранным клиентам?');"
                         {% if not clients %}disabled{% endif %}>
                     Отправить выбранным
                 </button>
@@ -40,16 +44,17 @@
                 </div>
                 <div class="table-responsive" style="max-height: 520px; overflow: auto;">
                     <table class="table table-sm align-middle">
-                        <thead><tr><th></th><th>Имя</th><th>Телефон</th></tr></thead>
+                        <thead><tr><th></th><th>Имя</th><th>Телефон</th><th>Max</th></tr></thead>
                         <tbody>
                         {% for c in clients %}
                             <tr>
-                                <td><input class="form-check-input client-check" type="checkbox" name="client_ids" value="{{ c.id }}"></td>
+                                <td><input class="form-check-input client-check" type="checkbox" name="client_ids" value="{{ c.id }}" {% if not c.max_user_id %}disabled{% endif %}></td>
                                 <td>{{ c.name }}</td>
                                 <td>{{ c.phone }}</td>
+                                <td>{% if c.max_user_id %}<span class="badge text-bg-success">ok</span>{% else %}<span class="badge text-bg-secondary">нет</span>{% endif %}</td>
                             </tr>
                         {% empty %}
-                            <tr><td colspan="3" class="text-center text-secondary">Нет подходящих клиентов</td></tr>
+                            <tr><td colspan="4" class="text-center text-secondary">Нет подходящих клиентов</td></tr>
                         {% endfor %}
                         </tbody>
                     </table>
@@ -65,7 +70,7 @@
     let all = false;
     btn.addEventListener('click', () => {
         all = !all;
-        document.querySelectorAll('.client-check').forEach((el) => { el.checked = all; });
+        document.querySelectorAll('.client-check:not(:disabled)').forEach((el) => { el.checked = all; });
         btn.textContent = all ? 'Снять всех' : 'Выбрать всех';
     });
 })();

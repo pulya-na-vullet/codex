@@ -55,7 +55,15 @@ class Client(models.Model):
     name = models.CharField("Имя", max_length=200)
     phone = models.CharField("Телефон", max_length=20, unique=True)
     comment = models.TextField("Комментарий", blank=True, default="")
-    allow_marketing_sms = models.BooleanField("Можно слать рекламу SMS", default=True)
+    allow_marketing_sms = models.BooleanField("Можно слать маркетинг в Max", default=True)
+    max_user_id = models.CharField(
+        "Max user_id",
+        max_length=64,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="ID пользователя в Max после того, как он написал боту",
+    )
     created_at = models.DateTimeField("Создан", default=timezone.now)
 
     class Meta:
@@ -441,44 +449,66 @@ class PrintJob(models.Model):
 
 class SmsProvider(models.TextChoices):
     LOG_ONLY = "log", "Только журнал (тест)"
-    SMSRU = "smsru", "SMS.ru"
+    MAX = "max", "Max мессенджер"
 
 
 class SmsSettings(models.Model):
-    """Singleton-настройки SMS (одна запись)."""
+    """Singleton-настройки рассылок через Max."""
 
-    enabled = models.BooleanField("SMS включены", default=False)
+    enabled = models.BooleanField("Рассылки включены", default=False)
     provider = models.CharField(
-        "Провайдер",
+        "Канал",
         max_length=20,
         choices=SmsProvider.choices,
         default=SmsProvider.LOG_ONLY,
     )
-    api_id = models.CharField("API ID / ключ", max_length=255, blank=True, default="")
-    sender = models.CharField("Имя отправителя", max_length=32, blank=True, default="")
+    bot_token = models.CharField("Токен бота Max", max_length=255, blank=True, default="")
+    bot_username = models.CharField("Username бота", max_length=64, blank=True, default="")
+    bot_link = models.CharField(
+        "Ссылка на бота",
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Например https://max.ru/your_bot — покажите клиентам для подписки",
+    )
+    welcome_text = models.TextField(
+        "Приветствие бота",
+        blank=True,
+        default=(
+            "Здравствуйте! Это бот ИТ-мастерской.\n"
+            "Отправьте свой номер телефона в формате +79991234567 — "
+            "привяжем ваш профиль для уведомлений о заказах и долгах."
+        ),
+    )
     debt_template = models.TextField(
-        "Шаблон SMS о долге",
+        "Шаблон сообщения о долге",
         default=(
             "{name}, по заказ-наряду {order} задолженность {sum} руб. "
             "Просим оплатить. {company}, {company_phone}"
         ),
         help_text="Плейсхолдеры: {name} {phone} {order} {sum} {company} {company_phone}",
     )
-    marketing_enabled = models.BooleanField("Маркетинг SMS включён", default=False)
+    marketing_enabled = models.BooleanField("Маркетинг включён", default=False)
     marketing_default_text = models.TextField(
         "Текст маркетинга по умолчанию",
         blank=True,
         default="Здравствуйте, {name}! Спецпредложение от {company}. Тел. {company_phone}",
         help_text="Плейсхолдеры: {name} {phone} {company} {company_phone}",
     )
+    long_poll_enabled = models.BooleanField(
+        "Long Poll бота (для LAN без публичного HTTPS)",
+        default=True,
+        help_text="Фоновый опрос Max API: привязка клиентов по телефону из чата с ботом",
+    )
+    updates_marker = models.BigIntegerField("Маркер long poll", null=True, blank=True)
     updated_at = models.DateTimeField("Обновлено", auto_now=True)
 
     class Meta:
-        verbose_name = "Настройки SMS"
-        verbose_name_plural = "Настройки SMS"
+        verbose_name = "Настройки Max-рассылок"
+        verbose_name_plural = "Настройки Max-рассылок"
 
     def __str__(self) -> str:
-        return f"SMS ({self.get_provider_display()})"
+        return f"Max ({self.get_provider_display()})"
 
     @classmethod
     def get_solo(cls) -> "SmsSettings":
@@ -492,15 +522,16 @@ class SmsKind(models.TextChoices):
     DEBT = "debt", "Долг"
     MARKETING = "marketing", "Маркетинг"
     TEST = "test", "Тест"
+    SYSTEM = "system", "Системное"
 
 
 class SmsLog(models.Model):
     created_at = models.DateTimeField("Когда", default=timezone.now, db_index=True)
     kind = models.CharField("Тип", max_length=20, choices=SmsKind.choices, default=SmsKind.DEBT)
-    phone = models.CharField("Телефон", max_length=20)
+    phone = models.CharField("Телефон / Max ID", max_length=64)
     text = models.TextField("Текст")
     success = models.BooleanField("Успех", default=False)
-    provider = models.CharField("Провайдер", max_length=20, blank=True, default="")
+    provider = models.CharField("Канал", max_length=20, blank=True, default="")
     response = models.TextField("Ответ/ошибка", blank=True, default="")
     client = models.ForeignKey(
         Client,
@@ -522,8 +553,8 @@ class SmsLog(models.Model):
 
     class Meta:
         ordering = ["-id"]
-        verbose_name = "SMS лог"
-        verbose_name_plural = "SMS логи"
+        verbose_name = "Лог сообщений"
+        verbose_name_plural = "Лог сообщений"
 
     def __str__(self) -> str:
         return f"{self.created_at:%d.%m.%Y %H:%M} {self.phone} {self.kind}"

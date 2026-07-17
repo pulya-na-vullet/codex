@@ -21,8 +21,9 @@ class OrderLineInline(admin.TabularInline):
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
-    list_display = ("name", "phone", "created_at")
-    search_fields = ("name", "phone", "comment")
+    list_display = ("name", "phone", "max_user_id", "allow_marketing_sms", "created_at")
+    search_fields = ("name", "phone", "comment", "max_user_id")
+    list_filter = ("allow_marketing_sms",)
 
 
 @admin.register(ServiceCategory)
@@ -85,7 +86,7 @@ class PrintJobAdmin(admin.ModelAdmin):
 
 @admin.register(SmsSettings)
 class SmsSettingsAdmin(admin.ModelAdmin):
-    list_display = ("provider", "enabled", "marketing_enabled", "updated_at")
+    list_display = ("provider", "enabled", "marketing_enabled", "long_poll_enabled", "updated_at")
 
 
 @admin.register(SmsLog)

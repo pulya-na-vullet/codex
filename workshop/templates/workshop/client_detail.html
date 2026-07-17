@@ -14,11 +14,23 @@
     </div>
 </div>
 <div class="card mb-3"><div class="card-body">
-    <h5 class="mb-3">Комментарий</h5>
+    <h5 class="mb-3">Комментарий и Max</h5>
     <form method="post" class="vstack gap-2">{% csrf_token %}
-        <textarea class="form-control" name="comment" rows="3" placeholder="Заметка по клиенту...">{{ client.comment }}</textarea>
         <div>
-            <button class="btn btn-success btn-sm" type="submit">Сохранить комментарий</button>
+            <label class="form-label">Комментарий</label>
+            <textarea class="form-control" name="comment" rows="3" placeholder="Заметка по клиенту...">{{ client.comment }}</textarea>
+        </div>
+        <div>
+            <label class="form-label">Max user_id</label>
+            <input class="form-control" name="max_user_id" value="{{ client.max_user_id }}" placeholder="Заполнится, когда клиент напишет боту">
+            <div class="small-muted mt-1">Можно вписать вручную для теста</div>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="allow_marketing_sms" value="1" id="allow-mkt" {% if client.allow_marketing_sms %}checked{% endif %}>
+            <label class="form-check-label" for="allow-mkt">Можно слать маркетинг в Max</label>
+        </div>
+        <div>
+            <button class="btn btn-success btn-sm" type="submit">Сохранить</button>
         </div>
     </form>
 </div></div>

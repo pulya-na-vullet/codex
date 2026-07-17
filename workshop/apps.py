@@ -7,11 +7,22 @@ class WorkshopConfig(AppConfig):
     verbose_name = "ИТ-мастерская"
 
     def ready(self):
-        # Start background print queue worker with the web process.
+        import sys
+
+        # Avoid DB/network workers during migrate/test/shell bootstrap.
+        skip_cmds = {"migrate", "makemigrations", "test", "collectstatic", "shell", "check"}
+        if any(cmd in sys.argv for cmd in skip_cmds):
+            return
+
         try:
             from workshop.printing import start_print_worker
 
             start_print_worker()
         except Exception:
-            # Avoid breaking migrate/checks if DB is not ready yet.
+            pass
+        try:
+            from workshop.messaging import start_max_long_poll_worker
+
+            start_max_long_poll_worker()
+        except Exception:
             pass

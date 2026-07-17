@@ -32,6 +32,7 @@ urlpatterns = [
     path("debtors/<int:order_id>/sms", views.debtors_sms_one, name="debtors_sms_one"),
     path("marketing", views.marketing_sms, name="marketing_sms"),
     path("admin-panel", views.admin_panel, name="admin_panel"),
+    path("max/webhook", views.max_webhook, name="max_webhook"),
     path("work-queue", views.work_queue, name="work_queue"),
     path("orders/<int:order_id>/status", views.order_set_status, name="order_set_status"),
     path("audit-log", views.audit_log_list, name="audit_log"),
