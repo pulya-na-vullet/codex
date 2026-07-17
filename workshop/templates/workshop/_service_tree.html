@@ -1,3 +1,4 @@
+{% load workshop_extras %}
 {% if nodes %}
 <ul class="tree-list">
 {% for node in nodes %}
@@ -15,7 +16,7 @@
                         data-search="{{ s.name|lower }} {{ node.name|lower }}">
                         <label class="service-option">
                             <input type="radio" name="service_name" value="{{ s.name }}" required>
-                            <span>{{ s.name }} — {{ s.price|floatformat:2 }}</span>
+                            <span>{{ s.name }} — {{ s.price|money }}</span>
                         </label>
                     </li>
                 {% endfor %}

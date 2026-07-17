@@ -17,12 +17,15 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from workshop.audit import log_action
 from workshop.models import (
     AcceptanceAct,
+    AuditLog,
     Client,
     DeviceType,
     Order,
     OrderLine,
+    PaymentMethod,
     Service,
     loyalty_discount_percent,
     next_numbered,
@@ -44,6 +47,7 @@ def login_view(request: HttpRequest):
             request.session["workshop_authenticated"] = True
             request.session["workshop_username"] = username
             request.session["workshop_last_active"] = time.time()
+            log_action(request, "login", details=f"user={username}")
             messages.success(request, "Вход выполнен")
             return redirect(next_url)
         messages.error(request, "Неверный логин или пароль")
@@ -52,6 +56,7 @@ def login_view(request: HttpRequest):
 
 @require_http_methods(["GET", "POST"])
 def logout_view(request: HttpRequest):
+    log_action(request, "logout")
     request.session.flush()
     messages.success(request, "Вы вышли из системы")
     return redirect("login")
@@ -128,6 +133,7 @@ def clients(request: HttpRequest):
             messages.warning(request, "Клиент с таким телефоном уже существует")
         else:
             Client.objects.create(name=name, phone=normalized, comment=comment)
+            log_action(request, "client_create", entity_type="client", details=f"{name} {normalized}")
             messages.success(request, "Клиент успешно добавлен")
         return redirect("clients")
 
@@ -184,7 +190,9 @@ def client_delete(request: HttpRequest, client_id: int):
             "Нельзя удалить клиента: есть связанные заказ-наряды или акты. Сначала удалите их.",
         )
         return redirect("client_detail", client_id=client_id)
+    details = f"{client.name} {client.phone}"
     client.delete()
+    log_action(request, "client_delete", entity_type="client", entity_id=client_id, details=details)
     messages.success(request, "Клиент удалён")
     return redirect("clients")
 
@@ -278,6 +286,7 @@ def services(request: HttpRequest):
             else:
                 cat = ensure_category_path(category)
                 Service.objects.create(name=name, price=price, category=cat, is_active=True)
+                log_action(request, "service_create", entity_type="service", details=f"{name}={price}")
                 messages.success(request, "Услуга добавлена")
         return redirect("services")
 
@@ -294,8 +303,9 @@ def services(request: HttpRequest):
 @require_POST
 def service_delete(request: HttpRequest, service_id: int):
     service = get_object_or_404(Service, pk=service_id)
-    # Soft-safe: allow delete; order lines keep snapshot via SET_NULL on service FK
+    details = service.name
     service.delete()
+    log_action(request, "service_delete", entity_type="service", entity_id=service_id, details=details)
     messages.success(request, "Услуга удалена")
     return redirect("services")
 
@@ -325,6 +335,13 @@ def order_create(request: HttpRequest):
         if client:
             order.discount_percent = loyalty_discount_percent(client.total_orders)
             order.save(update_fields=["discount_percent"])
+        log_action(
+            request,
+            "order_create",
+            entity_type="order",
+            entity_id=order.id,
+            details=order.order_number,
+        )
         messages.success(request, "Заказ создан")
         return redirect("order_detail", order_id=order.id)
 
@@ -370,6 +387,7 @@ def order_detail(request: HttpRequest, order_id: int):
             "lines": order.lines.all(),
             "catalog_tree": build_service_catalog_tree(active_only=True),
             "device_types": [c[0] for c in DeviceType.choices],
+            "payment_methods": PaymentMethod.choices,
         },
     )
 
@@ -385,6 +403,7 @@ def order_update_meta(request: HttpRequest, order_id: int):
     # Preserve real newlines from textarea (including Shift+Enter as \n)
     order.technical_notes = (request.POST.get("technical_notes", "") or "").replace("\r\n", "\n").replace("\r", "\n")
     order.save(update_fields=["device_type", "extra_periphery", "technical_notes"])
+    log_action(request, "order_update_meta", entity_type="order", entity_id=order.id, details=order.order_number)
     messages.success(request, "Данные заказ-наряда сохранены")
     return redirect("order_detail", order_id=order.id)
 
@@ -409,6 +428,13 @@ def order_add_service(request: HttpRequest, order_id: int):
         quantity=qty,
     )
     order.recalculate_totals()
+    log_action(
+        request,
+        "order_add_service",
+        entity_type="order",
+        entity_id=order.id,
+        details=f"{order.order_number}: {service.name} x{qty}",
+    )
     messages.success(request, "Услуга добавлена в заказ")
     return redirect("order_detail", order_id=order.id)
 
@@ -418,6 +444,7 @@ def order_line_delete(request: HttpRequest, order_id: int, line_id: int):
     order = get_object_or_404(Order, pk=order_id)
     OrderLine.objects.filter(pk=line_id, order=order).delete()
     order.recalculate_totals()
+    log_action(request, "order_line_delete", entity_type="order", entity_id=order.id, details=f"line={line_id}")
     messages.success(request, "Строка удалена")
     return redirect("order_detail", order_id=order.id)
 
@@ -425,9 +452,101 @@ def order_line_delete(request: HttpRequest, order_id: int, line_id: int):
 @require_POST
 def order_delete(request: HttpRequest, order_id: int):
     order = get_object_or_404(Order, pk=order_id)
+    details = order.order_number
     order.delete()
+    log_action(request, "order_delete", entity_type="order", entity_id=order_id, details=details)
     messages.success(request, "Заказ удалён")
     return redirect("orders")
+
+
+@require_POST
+def order_set_payment(request: HttpRequest, order_id: int):
+    order = get_object_or_404(Order, pk=order_id)
+    method = request.POST.get("payment_method", PaymentMethod.UNPAID)
+    if method not in dict(PaymentMethod.choices):
+        messages.warning(request, "Некорректный способ оплаты")
+        return redirect("order_detail", order_id=order.id)
+
+    note = request.POST.get("payment_note", "").strip()
+    receipt = request.FILES.get("payment_receipt")
+
+    if method == PaymentMethod.TRANSFER and not receipt and not order.payment_receipt:
+        messages.warning(request, "Для оплаты переводом приложите скриншот чека")
+        return redirect("order_detail", order_id=order.id)
+
+    order.payment_method = method
+    order.payment_note = note
+    if method == PaymentMethod.UNPAID:
+        order.payment_at = None
+        if "clear_receipt" in request.POST:
+            order.payment_receipt = None
+    else:
+        order.payment_at = timezone.now()
+        if receipt:
+            order.payment_receipt = receipt
+    order.save()
+    log_action(
+        request,
+        "order_payment",
+        entity_type="order",
+        entity_id=order.id,
+        details=f"{order.order_number} method={method}",
+    )
+    messages.success(request, "Статус оплаты сохранён")
+    return redirect("order_detail", order_id=order.id)
+
+
+@require_POST
+def order_set_mytax(request: HttpRequest, order_id: int):
+    order = get_object_or_404(Order, pk=order_id)
+    issued = request.POST.get("mytax_issued") == "1"
+    receipt = request.FILES.get("mytax_receipt")
+    order.mytax_issued = issued
+    if issued:
+        order.mytax_at = timezone.now()
+        if receipt:
+            order.mytax_receipt = receipt
+    else:
+        order.mytax_at = None
+        if "clear_mytax_receipt" in request.POST:
+            order.mytax_receipt = None
+    order.save()
+    log_action(
+        request,
+        "order_mytax",
+        entity_type="order",
+        entity_id=order.id,
+        details=f"{order.order_number} issued={issued}",
+    )
+    messages.success(request, "Статус чека «Мой налог» сохранён")
+    return redirect("order_detail", order_id=order.id)
+
+
+def debtors_list(request: HttpRequest):
+    orders = (
+        Order.objects.select_related("client")
+        .filter(payment_method=PaymentMethod.UNPAID, total_sum__gt=0)
+        .order_by("-id")
+    )
+    total_debt = sum((o.total_sum for o in orders), Decimal("0"))
+    return render(
+        request,
+        "workshop/debtors.html",
+        {"orders": orders, "total_debt": total_debt, "count": len(orders)},
+    )
+
+
+def audit_log_list(request: HttpRequest):
+    q = request.GET.get("q", "").strip()
+    logs = AuditLog.objects.all()
+    if q:
+        logs = logs.filter(
+            Q(username__icontains=q)
+            | Q(action__icontains=q)
+            | Q(details__icontains=q)
+            | Q(entity_id__icontains=q)
+        )
+    return render(request, "workshop/audit_log.html", {"logs": logs[:300], "query": q})
 
 
 def order_print(request: HttpRequest, order_id: int):
@@ -514,6 +633,7 @@ def acceptance_list_create(request: HttpRequest):
             notes=request.POST.get("notes", "").strip(),
         )
         messages.success(request, f"Акт {act.act_number} создан")
+        log_action(request, "acceptance_create", entity_type="acceptance", entity_id=act.id, details=act.act_number)
         return redirect("acceptance_detail", act_id=act.id)
 
     return render(
@@ -586,6 +706,8 @@ def acceptance_print_direct(request: HttpRequest, act_id: int):
 @require_POST
 def acceptance_delete(request: HttpRequest, act_id: int):
     act = get_object_or_404(AcceptanceAct, pk=act_id)
+    details = act.act_number
     act.delete()
+    log_action(request, "acceptance_delete", entity_type="acceptance", entity_id=act_id, details=details)
     messages.success(request, "Акт удалён")
     return redirect("acceptance_acts")

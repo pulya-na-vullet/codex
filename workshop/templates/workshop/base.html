@@ -71,10 +71,12 @@
         <div class="navbar-nav flex-row gap-2 align-items-center flex-wrap">
             <a class="btn btn-outline-light btn-sm" href="{% url 'dashboard' %}">Главная</a>
             <a class="btn btn-outline-light btn-sm" href="{% url 'orders' %}">Заказы</a>
+            <a class="btn btn-outline-light btn-sm" href="{% url 'debtors' %}">Должники</a>
             <a class="btn btn-outline-light btn-sm" href="{% url 'clients' %}">Клиенты</a>
             <a class="btn btn-outline-light btn-sm" href="{% url 'services' %}">Услуги</a>
             <a class="btn btn-outline-light btn-sm" href="{% url 'acceptance_acts' %}">Акты приёма</a>
             <a class="btn btn-outline-light btn-sm" href="{% url 'statistics' %}">Статистика</a>
+            <a class="btn btn-outline-light btn-sm" href="{% url 'audit_log' %}">Журнал</a>
             <a class="btn btn-success btn-sm" href="{% url 'create_order' %}">Новый заказ</a>
             <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}
                 <button class="btn btn-outline-warning btn-sm" type="submit">Выйти</button>

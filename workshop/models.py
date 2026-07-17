@@ -29,7 +29,7 @@ class Client(models.Model):
     @property
     def total_spent(self) -> Decimal:
         total = self.orders.aggregate(s=Sum("total_sum"))["s"]
-        return total or Decimal("0")
+        return (total or Decimal("0")).quantize(Decimal("0.01"))
 
     @property
     def is_regular(self) -> bool:
@@ -116,6 +116,12 @@ class OrderStatus(models.TextChoices):
     CANCELLED = "cancelled", "Отменён"
 
 
+class PaymentMethod(models.TextChoices):
+    UNPAID = "unpaid", "Не оплачен"
+    CASH = "cash", "Наличные"
+    TRANSFER = "transfer", "Перевод (чек)"
+
+
 class Order(models.Model):
     order_number = models.CharField("Номер", max_length=32, unique=True)
     client = models.ForeignKey(
@@ -160,6 +166,32 @@ class Order(models.Model):
         default=Decimal("0"),
     )
 
+    # Оплата клиентом
+    payment_method = models.CharField(
+        "Способ оплаты",
+        max_length=20,
+        choices=PaymentMethod.choices,
+        default=PaymentMethod.UNPAID,
+    )
+    payment_at = models.DateTimeField("Дата оплаты", null=True, blank=True)
+    payment_receipt = models.FileField(
+        "Скриншот чека (перевод)",
+        upload_to="payment_receipts/%Y/%m/",
+        blank=True,
+        null=True,
+    )
+    payment_note = models.CharField("Комментарий к оплате", max_length=255, blank=True, default="")
+
+    # Чек в «Мой налог» (самозанятый)
+    mytax_issued = models.BooleanField("Чек Мой налог выдан", default=False)
+    mytax_at = models.DateTimeField("Дата чека Мой налог", null=True, blank=True)
+    mytax_receipt = models.FileField(
+        "Скриншот чека Мой налог",
+        upload_to="mytax_receipts/%Y/%m/",
+        blank=True,
+        null=True,
+    )
+
     class Meta:
         ordering = ["-id"]
         verbose_name = "Заказ-наряд"
@@ -167,6 +199,14 @@ class Order(models.Model):
 
     def __str__(self) -> str:
         return self.order_number
+
+    @property
+    def is_paid(self) -> bool:
+        return self.payment_method in {PaymentMethod.CASH, PaymentMethod.TRANSFER}
+
+    @property
+    def is_debtor(self) -> bool:
+        return not self.is_paid and self.total_sum > 0
 
     def recalculate_totals(self, save: bool = True) -> Decimal:
         subtotal = Decimal("0")
@@ -263,6 +303,24 @@ class AcceptanceAct(models.Model):
 
     def __str__(self) -> str:
         return self.act_number
+
+
+class AuditLog(models.Model):
+    created_at = models.DateTimeField("Когда", default=timezone.now, db_index=True)
+    username = models.CharField("Пользователь", max_length=64, blank=True, default="")
+    action = models.CharField("Действие", max_length=64)
+    entity_type = models.CharField("Сущность", max_length=64, blank=True, default="")
+    entity_id = models.CharField("ID сущности", max_length=64, blank=True, default="")
+    details = models.TextField("Детали", blank=True, default="")
+    ip_address = models.GenericIPAddressField("IP", null=True, blank=True)
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "Запись журнала"
+        verbose_name_plural = "Журнал действий"
+
+    def __str__(self) -> str:
+        return f"{self.created_at:%d.%m.%Y %H:%M} {self.username} {self.action}"
 
 
 def loyalty_discount_percent(orders_count: int) -> Decimal:

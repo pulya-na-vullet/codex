@@ -1,10 +1,13 @@
 {% extends "workshop/base.html" %}
+{% load workshop_extras %}
 {% block content %}
 <div class="d-flex flex-wrap gap-2 mb-4">
     <a class="btn btn-success" href="{% url 'clients' %}">Добавить нового клиента</a>
     <a class="btn btn-primary" href="{% url 'services' %}">Добавить новую услугу</a>
     <a class="btn btn-outline-light" href="{% url 'acceptance_acts' %}">Акт приёма техники</a>
+    <a class="btn btn-outline-warning" href="{% url 'debtors' %}">Должники</a>
     <a class="btn btn-outline-light" href="{% url 'statistics' %}">Статистика</a>
+    <a class="btn btn-outline-light" href="{% url 'audit_log' %}">Журнал</a>
     <a class="btn btn-outline-light" href="{% url 'create_order' %}">Новый заказ</a>
 </div>
 {% if lan_urls %}
@@ -28,7 +31,7 @@
                     <td>{% if row.client %}{{ row.client.name }}{% else %}Без клиента{% endif %}</td>
                     <td>{% if row.client %}{{ row.client.phone }}{% endif %}</td>
                     <td>{{ row.created_at|date:"d.m.Y H:i" }}</td>
-                    <td class="text-end">{{ row.total_sum }}</td>
+                    <td class="text-end">{{ row.total_sum|money }}</td>
                     <td><a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' row.id %}">Открыть</a></td>
                 </tr>
             {% empty %}

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from workshop.models import AcceptanceAct, Client, Order, OrderLine, Service, ServiceCategory
+from workshop.models import AcceptanceAct, AuditLog, Client, Order, OrderLine, Service, ServiceCategory
 
 
 class OrderLineInline(admin.TabularInline):
@@ -29,8 +29,17 @@ class ServiceAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ("order_number", "client", "created_at", "total_sum", "status")
+    list_display = (
+        "order_number",
+        "client",
+        "created_at",
+        "total_sum",
+        "payment_method",
+        "mytax_issued",
+        "status",
+    )
     search_fields = ("order_number", "client__name", "client__phone")
+    list_filter = ("payment_method", "mytax_issued", "status")
     inlines = [OrderLineInline]
 
 
@@ -38,3 +47,10 @@ class OrderAdmin(admin.ModelAdmin):
 class AcceptanceActAdmin(admin.ModelAdmin):
     list_display = ("act_number", "client", "device_type", "created_at")
     search_fields = ("act_number", "client__name", "brand_model")
+
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "username", "action", "entity_type", "entity_id", "ip_address")
+    search_fields = ("username", "action", "details", "entity_id")
+    list_filter = ("action", "entity_type")

@@ -1,4 +1,5 @@
 {% extends "workshop/base.html" %}
+{% load workshop_extras %}
 {% block content %}
 <div class="row g-3">
     <div class="col-12 col-xl-8">
@@ -23,6 +24,18 @@
                                 <span class="small-muted ms-1">скидка {{ order.discount_percent|floatformat:0 }}%</span>
                             </div>
                         {% endif %}
+                        <div class="mt-2 d-flex flex-wrap gap-2">
+                            {% if order.is_paid %}
+                                <span class="badge text-bg-success">Оплачен: {{ order.get_payment_method_display }}{% if order.payment_at %} ({{ order.payment_at|date:"d.m.Y H:i" }}){% endif %}</span>
+                            {% else %}
+                                <span class="badge text-bg-danger">Не оплачен</span>
+                            {% endif %}
+                            {% if order.mytax_issued %}
+                                <span class="badge text-bg-primary">Мой налог{% if order.mytax_at %} {{ order.mytax_at|date:"d.m.Y H:i" }}{% endif %}</span>
+                            {% else %}
+                                <span class="badge text-bg-secondary">Чек Мой налог не выдан</span>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="d-flex gap-2 flex-wrap">
                         <form method="post" action="{% url 'order_print_direct' order.id %}" class="d-inline"
@@ -54,9 +67,9 @@
                         {% for s in lines %}
                             <tr>
                                 <td>{{ s.service_name }}</td>
-                                <td class="text-end">{{ s.unit_price }}</td>
+                                <td class="text-end">{{ s.unit_price|money }}</td>
                                 <td class="text-center">{{ s.quantity }}</td>
-                                <td class="text-end">{{ s.line_total }}</td>
+                                <td class="text-end">{{ s.line_total|money }}</td>
                                 <td class="text-end">
                                     <form method="post" action="{% url 'order_line_delete' order.id s.id %}">
                                         {% csrf_token %}
@@ -71,7 +84,7 @@
                         <tfoot>
                         <tr>
                             <th colspan="3" class="text-end">Сумма</th>
-                            <th class="text-end">{{ order.subtotal_sum }}</th>
+                            <th class="text-end">{{ order.subtotal_sum|money }}</th>
                             <th></th>
                         </tr>
                         {% if order.discount_percent %}
@@ -83,7 +96,7 @@
                         {% endif %}
                         <tr>
                             <th colspan="3" class="text-end">Итого</th>
-                            <th class="text-end">{{ order.total_sum }}</th>
+                            <th class="text-end">{{ order.total_sum|money }}</th>
                             <th></th>
                         </tr>
                         </tfoot>
@@ -92,7 +105,7 @@
             </div>
         </div>
 
-        <div class="card">
+        <div class="card mb-3">
             <div class="card-body">
                 <h6 class="mb-3">Данные заказ-наряда</h6>
                 <form method="post" action="{% url 'order_update_meta' order.id %}" class="vstack gap-2">
@@ -119,6 +132,63 @@
                         <div class="small-muted mt-1">Перенос строки (Enter) сохраняется и корректно переносится в PDF.</div>
                     </div>
                     <button class="btn btn-success mt-2" type="submit">Сохранить данные</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="mb-3">Оплата</h6>
+                <form method="post" action="{% url 'order_set_payment' order.id %}" enctype="multipart/form-data" class="vstack gap-2">
+                    {% csrf_token %}
+                    <div>
+                        <label class="form-label">Факт оплаты</label>
+                        <select class="form-select" name="payment_method" id="payment-method">
+                            {% for value, label in payment_methods %}
+                                <option value="{{ value }}" {% if order.payment_method == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">Скриншот чека (для перевода)</label>
+                        <input class="form-control" type="file" name="payment_receipt" accept="image/*,.pdf">
+                        {% if order.payment_receipt %}
+                            <div class="small-muted mt-1">Текущий файл: <a href="{{ order.payment_receipt.url }}" target="_blank">открыть</a></div>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <label class="form-label">Комментарий</label>
+                        <input class="form-control" name="payment_note" value="{{ order.payment_note }}">
+                    </div>
+                    {% if order.payment_at %}
+                        <div class="small-muted">Дата фиксации оплаты: {{ order.payment_at|date:"d.m.Y H:i" }}</div>
+                    {% endif %}
+                    <button class="btn btn-success" type="submit">Сохранить оплату</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="mb-3">Чек «Мой налог»</h6>
+                <form method="post" action="{% url 'order_set_mytax' order.id %}" enctype="multipart/form-data" class="vstack gap-2">
+                    {% csrf_token %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="mytax_issued" value="1" id="mytax-issued"
+                               {% if order.mytax_issued %}checked{% endif %}>
+                        <label class="form-check-label" for="mytax-issued">Чек через приложение «Мой налог» выдан</label>
+                    </div>
+                    <div>
+                        <label class="form-label">Скриншот чека (необязательно)</label>
+                        <input class="form-control" type="file" name="mytax_receipt" accept="image/*,.pdf">
+                        {% if order.mytax_receipt %}
+                            <div class="small-muted mt-1">Текущий файл: <a href="{{ order.mytax_receipt.url }}" target="_blank">открыть</a></div>
+                        {% endif %}
+                    </div>
+                    {% if order.mytax_at %}
+                        <div class="small-muted">Дата фиксации: {{ order.mytax_at|date:"d.m.Y H:i" }}</div>
+                    {% endif %}
+                    <button class="btn btn-primary" type="submit">Сохранить статус «Мой налог»</button>
                 </form>
             </div>
         </div>

@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from django.test import Client as HttpClient, TestCase, override_settings
 
-from workshop.models import Client, Order, OrderLine, Service, loyalty_discount_percent
+from workshop.models import Client, Order, OrderLine, PaymentMethod, Service, loyalty_discount_percent
 from workshop.pdf import build_order_pdf
 from workshop.services import ensure_category_path
 from workshop.utils import normalize_rf_phone
@@ -22,6 +22,13 @@ class UtilsTests(TestCase):
         self.assertEqual(loyalty_discount_percent(4), Decimal("5"))
         self.assertEqual(loyalty_discount_percent(7), Decimal("7"))
         self.assertEqual(loyalty_discount_percent(10), Decimal("10"))
+
+    def test_money_filter(self):
+        from workshop.templatetags.workshop_extras import money
+
+        self.assertEqual(money(0), "0,00")
+        self.assertEqual(money(Decimal("117.6")), "117,60")
+        self.assertEqual(money("117.600000000000"), "117,60")
 
 
 class OrderLogicTests(TestCase):
@@ -93,3 +100,29 @@ class AuthAndPagesTests(TestCase):
         r = self.http.post(f"/clients/{client.id}/delete")
         self.assertEqual(r.status_code, 302)
         self.assertFalse(Client.objects.filter(pk=client.id).exists())
+
+    def test_payment_and_debtors(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        cat = ensure_category_path(("Тест",))
+        service = Service.objects.create(name="Оплата тест", price=Decimal("500"), category=cat)
+        client = Client.objects.create(name="Должник", phone="+79993334455")
+        order = Order.objects.create(order_number="ORD-777777", client=client, total_sum=Decimal("500"))
+        OrderLine.objects.create(order=order, service=service, service_name=service.name, unit_price=Decimal("500"), quantity=1)
+        order.recalculate_totals()
+        r = self.http.get("/debtors")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "ORD-777777")
+        r = self.http.post(f"/orders/{order.id}/payment", {"payment_method": "cash"})
+        self.assertEqual(r.status_code, 302)
+        order.refresh_from_db()
+        self.assertEqual(order.payment_method, PaymentMethod.CASH)
+        self.assertIsNotNone(order.payment_at)
+        r = self.http.get("/debtors")
+        self.assertNotContains(r, "ORD-777777")
+        r = self.http.post(f"/orders/{order.id}/mytax", {"mytax_issued": "1"})
+        order.refresh_from_db()
+        self.assertTrue(order.mytax_issued)
+        self.assertIsNotNone(order.mytax_at)
+        r = self.http.get("/audit-log")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "order_payment")
