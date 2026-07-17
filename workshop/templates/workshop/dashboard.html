@@ -1,26 +1,12 @@
 {% extends "workshop/base.html" %}
 {% block content %}
-<div class="d-flex flex-wrap gap-2 mb-4">
-    <a class="btn btn-success" href="{% url 'clients' %}">Добавить нового клиента</a>
-    <a class="btn btn-primary" href="{% url 'services' %}">Добавить новую услугу</a>
-    <a class="btn btn-outline-light" href="{% url 'acceptance_acts' %}">Акт приёма техники</a>
-    <a class="btn btn-outline-warning" href="{% url 'debtors' %}">Должники</a>
-    <a class="btn btn-violet" href="{% url 'work_queue' %}">В работе</a>
-    <a class="btn btn-outline-light" href="{% url 'marketing_sms' %}">Маркетинг Max</a>
-    <a class="btn btn-outline-light" href="{% url 'admin_panel' %}">Админ-панель</a>
-    <a class="btn btn-outline-light" href="{% url 'statistics' %}">Статистика</a>
-    <a class="btn btn-outline-light" href="{% url 'audit_log' %}">Журнал</a>
-    <a class="btn btn-outline-light" href="{% url 'create_order' %}">Новый заказ</a>
-</div>
-{% if lan_urls %}
-<div class="alert alert-primary py-2 mb-4" role="alert">
-    Доступ из локальной сети:
-    {% for url in lan_urls %}<strong class="ms-1">{{ url }}</strong>{% if not loop.last %},{% endif %}{% endfor %}
-</div>
-{% endif %}
-
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h5 class="mb-0">Сейчас в работе</h5>
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+    <div>
+        <h4 class="mb-1">Сейчас в работе</h4>
+        {% if lan_urls %}
+        <div class="small-muted">LAN: {% for url in lan_urls %}<a class="text-decoration-none" href="{{ url }}">{{ url }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</div>
+        {% endif %}
+    </div>
     <a class="btn btn-violet btn-sm" href="{% url 'work_queue' %}">Открыть очередь</a>
 </div>
 <div class="row g-3">
