@@ -343,6 +343,43 @@ class AuditLog(models.Model):
         return f"{self.created_at:%d.%m.%Y %H:%M} {self.username} {self.action}"
 
 
+class PrintJobStatus(models.TextChoices):
+    PENDING = "pending", "В очереди"
+    PRINTING = "printing", "Печатается"
+    DONE = "done", "Готово"
+    FAILED = "failed", "Ошибка"
+
+
+class PrintJob(models.Model):
+    created_at = models.DateTimeField("Создано", default=timezone.now, db_index=True)
+    started_at = models.DateTimeField("Начато", null=True, blank=True)
+    finished_at = models.DateTimeField("Завершено", null=True, blank=True)
+    status = models.CharField(
+        "Статус",
+        max_length=20,
+        choices=PrintJobStatus.choices,
+        default=PrintJobStatus.PENDING,
+        db_index=True,
+    )
+    file_path = models.CharField("Файл", max_length=500)
+    title = models.CharField("Документ", max_length=255)
+    doc_type = models.CharField("Тип", max_length=32, blank=True, default="")
+    entity_type = models.CharField("Сущность", max_length=64, blank=True, default="")
+    entity_id = models.CharField("ID сущности", max_length=64, blank=True, default="")
+    copy_index = models.PositiveSmallIntegerField("Экземпляр", default=1)
+    copies_total = models.PositiveSmallIntegerField("Всего экз.", default=2)
+    username = models.CharField("Пользователь", max_length=64, blank=True, default="")
+    error = models.TextField("Ошибка", blank=True, default="")
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Задание печати"
+        verbose_name_plural = "Очередь печати"
+
+    def __str__(self) -> str:
+        return f"#{self.id} {self.title} ({self.copy_index}/{self.copies_total}) {self.status}"
+
+
 def loyalty_discount_percent(orders_count: int) -> Decimal:
     count = int(orders_count or 0)
     if count >= 10:

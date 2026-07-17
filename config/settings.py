@@ -16,7 +16,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "workshop",
+    "workshop.apps.WorkshopConfig",
 ]
 
 MIDDLEWARE = [
@@ -93,6 +93,12 @@ COMPANY_PHONE = "+7 (918) 802 - 87 - 67"
 QUALITY_PHONE = "+7 (962) 550 - 78 - 32"
 COMPANY_ADDRESS = "р. Татарстан, д.Куюки, ул. 24 квартал дом 1"
 MASTER_SIGN = "Григорьев Д.В"
+
+# Печать: очередь + число экземпляров по умолчанию
+PRINT_COPIES = 2
+PRINT_WORKER_ENABLED = os.getenv("IT_MASTER_PRINT_WORKER", "1") == "1"
+PRINT_FALLBACK_WAIT_SEC = float(os.getenv("IT_MASTER_PRINT_FALLBACK_WAIT", "8"))
+PRINT_JOB_TIMEOUT_SEC = float(os.getenv("IT_MASTER_PRINT_TIMEOUT", "600"))
 
 # Костыль: учёт долгов только для заказов с этой даты.
 # Историю за полгода завели пачкой 09.07.2026 — их не считаем долгом.

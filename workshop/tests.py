@@ -73,7 +73,7 @@ class OrderLogicTests(TestCase):
         self.assertTrue(pdf.startswith(b"%PDF"))
 
 
-@override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass")
+@override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
 class AuthAndPagesTests(TestCase):
     def setUp(self):
         self.http = HttpClient()
@@ -240,7 +240,7 @@ class AuthAndPagesTests(TestCase):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         client = Client.objects.create(name="Печать", phone="+79992223344")
         order = Order.objects.create(order_number="ORD-PRINT1", client=client, total_sum=Decimal("100"))
-        from workshop.models import AcceptanceAct, DeviceType
+        from workshop.models import AcceptanceAct, AuditLog, DeviceType, PrintJob, PrintJobStatus
 
         act = AcceptanceAct.objects.create(
             act_number="ACT-000001",
@@ -252,22 +252,39 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         r = self.http.get(f"/acceptance/{act.id}/print")
         self.assertEqual(r.status_code, 200)
-        from workshop.models import AuditLog
-
         actions = set(AuditLog.objects.values_list("action", flat=True))
         self.assertIn("order_print_view", actions)
         self.assertIn("acceptance_print_view", actions)
 
         from unittest.mock import patch
 
-        with patch("workshop.views._send_pdf_to_printer") as mock_print:
+        with patch("workshop.printing._submit_pdf_and_wait"):
             r = self.http.post(f"/orders/{order.id}/print-direct")
             self.assertEqual(r.status_code, 302)
-            mock_print.assert_called_once()
-            self.assertEqual(mock_print.call_args.kwargs.get("copies") or mock_print.call_args[1].get("copies"), 2)
             r = self.http.post(f"/acceptance/{act.id}/print-direct")
             self.assertEqual(r.status_code, 302)
-            self.assertEqual(mock_print.call_count, 2)
+
+        self.assertEqual(PrintJob.objects.count(), 4)  # 2 docs x 2 copies
+        self.assertEqual(PrintJob.objects.filter(doc_type="order").count(), 2)
+        self.assertEqual(PrintJob.objects.filter(doc_type="acceptance").count(), 2)
         actions = set(AuditLog.objects.values_list("action", flat=True))
-        self.assertIn("order_print", actions)
-        self.assertIn("acceptance_print", actions)
+        self.assertIn("order_print_queued", actions)
+        self.assertIn("acceptance_print_queued", actions)
+
+        # Process queue synchronously for the test.
+        from workshop.printing import _claim_next_job, _process_job
+
+        with patch("workshop.printing._submit_pdf_and_wait") as mock_submit:
+            processed = 0
+            while True:
+                job = _claim_next_job()
+                if not job:
+                    break
+                _process_job(job)
+                processed += 1
+            self.assertEqual(processed, 4)
+            self.assertEqual(mock_submit.call_count, 4)
+        self.assertEqual(PrintJob.objects.filter(status=PrintJobStatus.DONE).count(), 4)
+        actions = set(AuditLog.objects.values_list("action", flat=True))
+        self.assertIn("order_print_done", actions)
+        self.assertIn("acceptance_print_done", actions)

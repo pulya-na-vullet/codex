@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from workshop.models import AcceptanceAct, AuditLog, Client, Order, OrderLine, Service, ServiceCategory
+from workshop.models import AcceptanceAct, AuditLog, Client, Order, OrderLine, PrintJob, Service, ServiceCategory
 
 
 class OrderLineInline(admin.TabularInline):
@@ -54,3 +54,19 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_display = ("created_at", "username", "action", "entity_type", "entity_id", "ip_address")
     search_fields = ("username", "action", "details", "entity_id")
     list_filter = ("action", "entity_type")
+
+
+@admin.register(PrintJob)
+class PrintJobAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "created_at",
+        "title",
+        "copy_index",
+        "copies_total",
+        "status",
+        "username",
+        "finished_at",
+    )
+    list_filter = ("status", "doc_type")
+    search_fields = ("title", "entity_id", "username", "error")

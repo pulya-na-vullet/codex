@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import os
-import platform
-import subprocess
-import tempfile
 import time
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
@@ -31,46 +27,9 @@ from workshop.models import (
     next_numbered,
 )
 from workshop.pdf import build_acceptance_act_pdf, build_order_pdf
+from workshop.printing import PRINT_COPIES, enqueue_pdf_print
 from workshop.services import build_service_catalog_tree, category_choices, ensure_category_path
 from workshop.utils import normalize_rf_phone
-
-
-PRINT_COPIES = 2
-
-
-def _send_pdf_to_printer(pdf_bytes: bytes, copies: int = PRINT_COPIES) -> None:
-    """Send PDF to the default printer. Always prints ``copies`` documents."""
-    copies = max(1, int(copies))
-    paths: list[str] = []
-    try:
-        for _ in range(copies):
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-            tmp.write(pdf_bytes)
-            tmp.flush()
-            tmp.close()
-            paths.append(tmp.name)
-
-        if platform.system() == "Windows":
-            for idx, path in enumerate(paths):
-                os.startfile(path, "print")  # type: ignore[attr-defined]
-                if idx < len(paths) - 1:
-                    time.sleep(1.0)
-        else:
-            # One job with N copies when possible; fall back to repeated jobs.
-            try:
-                subprocess.run(["lp", "-n", str(copies), paths[0]], check=True)
-            except (FileNotFoundError, subprocess.CalledProcessError):
-                for path in paths:
-                    subprocess.run(["lp", path], check=True)
-    finally:
-        # On Windows the spooler needs the file briefly; delay cleanup.
-        if platform.system() == "Windows":
-            time.sleep(2.0)
-        for path in paths:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
 
 
 def login_view(request: HttpRequest):
@@ -808,25 +767,21 @@ def order_pdf(request: HttpRequest, order_id: int):
 def order_print_direct(request: HttpRequest, order_id: int):
     order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
     pdf_bytes = build_order_pdf(order, list(order.lines.all()))
-    try:
-        _send_pdf_to_printer(pdf_bytes, copies=PRINT_COPIES)
-        log_action(
-            request,
-            "order_print",
-            entity_type="order",
-            entity_id=order.id,
-            details=f"{order.order_number} x{PRINT_COPIES}",
-        )
-        messages.success(request, f"Заказ-наряд отправлен на принтер ({PRINT_COPIES} экз.)")
-    except Exception as err:
-        log_action(
-            request,
-            "order_print_error",
-            entity_type="order",
-            entity_id=order.id,
-            details=f"{order.order_number}: {err}",
-        )
-        messages.error(request, f"Не удалось отправить документ на принтер: {err}")
+    username = str(request.session.get("workshop_username") or "")
+    jobs = enqueue_pdf_print(
+        pdf_bytes=pdf_bytes,
+        title=order.order_number,
+        doc_type="order",
+        entity_type="order",
+        entity_id=order.id,
+        username=username,
+        copies=PRINT_COPIES,
+        request=request,
+    )
+    messages.success(
+        request,
+        f"Заказ-наряд добавлен в очередь печати ({PRINT_COPIES} экз., задания {[j.id for j in jobs]})",
+    )
     return redirect("order_detail", order_id=order.id)
 
 
@@ -924,25 +879,21 @@ def acceptance_pdf(request: HttpRequest, act_id: int):
 def acceptance_print_direct(request: HttpRequest, act_id: int):
     act = get_object_or_404(AcceptanceAct.objects.select_related("client", "order"), pk=act_id)
     pdf_bytes = build_acceptance_act_pdf(act)
-    try:
-        _send_pdf_to_printer(pdf_bytes, copies=PRINT_COPIES)
-        log_action(
-            request,
-            "acceptance_print",
-            entity_type="acceptance",
-            entity_id=act.id,
-            details=f"{act.act_number} x{PRINT_COPIES}",
-        )
-        messages.success(request, f"Акт отправлен на принтер ({PRINT_COPIES} экз.)")
-    except Exception as err:
-        log_action(
-            request,
-            "acceptance_print_error",
-            entity_type="acceptance",
-            entity_id=act.id,
-            details=f"{act.act_number}: {err}",
-        )
-        messages.error(request, f"Не удалось отправить на принтер: {err}")
+    username = str(request.session.get("workshop_username") or "")
+    jobs = enqueue_pdf_print(
+        pdf_bytes=pdf_bytes,
+        title=act.act_number,
+        doc_type="acceptance",
+        entity_type="acceptance",
+        entity_id=act.id,
+        username=username,
+        copies=PRINT_COPIES,
+        request=request,
+    )
+    messages.success(
+        request,
+        f"Акт добавлен в очередь печати ({PRINT_COPIES} экз., задания {[j.id for j in jobs]})",
+    )
     return redirect("acceptance_detail", act_id=act.id)
 
 
