@@ -1,6 +1,17 @@
 from django.contrib import admin
 
-from workshop.models import AcceptanceAct, AuditLog, Client, Order, OrderLine, PrintJob, Service, ServiceCategory
+from workshop.models import (
+    AcceptanceAct,
+    AuditLog,
+    Client,
+    Order,
+    OrderLine,
+    PrintJob,
+    Service,
+    ServiceCategory,
+    SmsLog,
+    SmsSettings,
+)
 
 
 class OrderLineInline(admin.TabularInline):
@@ -70,3 +81,15 @@ class PrintJobAdmin(admin.ModelAdmin):
     )
     list_filter = ("status", "doc_type")
     search_fields = ("title", "entity_id", "username", "error")
+
+
+@admin.register(SmsSettings)
+class SmsSettingsAdmin(admin.ModelAdmin):
+    list_display = ("provider", "enabled", "marketing_enabled", "updated_at")
+
+
+@admin.register(SmsLog)
+class SmsLogAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "kind", "phone", "success", "provider", "username")
+    list_filter = ("kind", "success", "provider")
+    search_fields = ("phone", "text", "response")

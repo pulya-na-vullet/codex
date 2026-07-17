@@ -55,6 +55,7 @@ class Client(models.Model):
     name = models.CharField("Имя", max_length=200)
     phone = models.CharField("Телефон", max_length=20, unique=True)
     comment = models.TextField("Комментарий", blank=True, default="")
+    allow_marketing_sms = models.BooleanField("Можно слать рекламу SMS", default=True)
     created_at = models.DateTimeField("Создан", default=timezone.now)
 
     class Meta:
@@ -436,6 +437,96 @@ class PrintJob(models.Model):
 
     def __str__(self) -> str:
         return f"#{self.id} {self.title} ({self.copy_index}/{self.copies_total}) {self.status}"
+
+
+class SmsProvider(models.TextChoices):
+    LOG_ONLY = "log", "Только журнал (тест)"
+    SMSRU = "smsru", "SMS.ru"
+
+
+class SmsSettings(models.Model):
+    """Singleton-настройки SMS (одна запись)."""
+
+    enabled = models.BooleanField("SMS включены", default=False)
+    provider = models.CharField(
+        "Провайдер",
+        max_length=20,
+        choices=SmsProvider.choices,
+        default=SmsProvider.LOG_ONLY,
+    )
+    api_id = models.CharField("API ID / ключ", max_length=255, blank=True, default="")
+    sender = models.CharField("Имя отправителя", max_length=32, blank=True, default="")
+    debt_template = models.TextField(
+        "Шаблон SMS о долге",
+        default=(
+            "{name}, по заказ-наряду {order} задолженность {sum} руб. "
+            "Просим оплатить. {company}, {company_phone}"
+        ),
+        help_text="Плейсхолдеры: {name} {phone} {order} {sum} {company} {company_phone}",
+    )
+    marketing_enabled = models.BooleanField("Маркетинг SMS включён", default=False)
+    marketing_default_text = models.TextField(
+        "Текст маркетинга по умолчанию",
+        blank=True,
+        default="Здравствуйте, {name}! Спецпредложение от {company}. Тел. {company_phone}",
+        help_text="Плейсхолдеры: {name} {phone} {company} {company_phone}",
+    )
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        verbose_name = "Настройки SMS"
+        verbose_name_plural = "Настройки SMS"
+
+    def __str__(self) -> str:
+        return f"SMS ({self.get_provider_display()})"
+
+    @classmethod
+    def get_solo(cls) -> "SmsSettings":
+        obj = cls.objects.first()
+        if obj:
+            return obj
+        return cls.objects.create()
+
+
+class SmsKind(models.TextChoices):
+    DEBT = "debt", "Долг"
+    MARKETING = "marketing", "Маркетинг"
+    TEST = "test", "Тест"
+
+
+class SmsLog(models.Model):
+    created_at = models.DateTimeField("Когда", default=timezone.now, db_index=True)
+    kind = models.CharField("Тип", max_length=20, choices=SmsKind.choices, default=SmsKind.DEBT)
+    phone = models.CharField("Телефон", max_length=20)
+    text = models.TextField("Текст")
+    success = models.BooleanField("Успех", default=False)
+    provider = models.CharField("Провайдер", max_length=20, blank=True, default="")
+    response = models.TextField("Ответ/ошибка", blank=True, default="")
+    client = models.ForeignKey(
+        Client,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="sms_logs",
+        verbose_name="Клиент",
+    )
+    order = models.ForeignKey(
+        "Order",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="sms_logs",
+        verbose_name="Заказ",
+    )
+    username = models.CharField("Кто отправил", max_length=64, blank=True, default="")
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "SMS лог"
+        verbose_name_plural = "SMS логи"
+
+    def __str__(self) -> str:
+        return f"{self.created_at:%d.%m.%Y %H:%M} {self.phone} {self.kind}"
 
 
 def loyalty_discount_percent(orders_count: int) -> Decimal:

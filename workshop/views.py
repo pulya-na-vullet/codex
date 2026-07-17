@@ -748,7 +748,7 @@ def order_set_mytax(request: HttpRequest, order_id: int):
 
 
 def debtors_list(request: HttpRequest):
-    from workshop.models import debt_tracking_start, debtor_orders_queryset
+    from workshop.models import SmsSettings, debt_tracking_start, debtor_orders_queryset
 
     orders = list(debtor_orders_queryset().select_related("client").order_by("-debt_closed_at", "-id"))
     total_debt = sum((o.total_sum for o in orders), Decimal("0"))
@@ -760,6 +760,143 @@ def debtors_list(request: HttpRequest):
             "total_debt": total_debt,
             "count": len(orders),
             "debt_tracking_start": debt_tracking_start().date(),
+            "sms_settings": SmsSettings.get_solo(),
+        },
+    )
+
+
+@require_POST
+def debtors_sms_all(request: HttpRequest):
+    from workshop.models import debtor_orders_queryset
+    from workshop.sms import send_debt_sms_for_order
+
+    username = str(request.session.get("workshop_username") or "")
+    orders = list(debtor_orders_queryset().select_related("client"))
+    ok = fail = 0
+    for order in orders:
+        if not order.client_id:
+            fail += 1
+            continue
+        result = send_debt_sms_for_order(order, username=username)
+        if result.success:
+            ok += 1
+        else:
+            fail += 1
+    log_action(request, "sms_debt_bulk", entity_type="sms", details=f"ok={ok} fail={fail}")
+    if ok:
+        messages.success(request, f"SMS о долге: отправлено {ok}, ошибок {fail}")
+    else:
+        messages.warning(request, f"SMS не отправлены (ошибок: {fail}). Проверьте админ-панель SMS.")
+    return redirect("debtors")
+
+
+@require_POST
+def debtors_sms_one(request: HttpRequest, order_id: int):
+    from workshop.sms import send_debt_sms_for_order
+
+    order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
+    username = str(request.session.get("workshop_username") or "")
+    result = send_debt_sms_for_order(order, username=username)
+    log_action(
+        request,
+        "sms_debt_one",
+        entity_type="order",
+        entity_id=order.id,
+        details=f"{order.order_number}: {result.response[:200]}",
+    )
+    if result.success:
+        note = " (симуляция)" if result.simulated else ""
+        messages.success(request, f"SMS о долге отправлено{note}: {order.order_number}")
+    else:
+        messages.warning(request, f"Не удалось отправить SMS: {result.response}")
+    return redirect("debtors")
+
+
+@require_http_methods(["GET", "POST"])
+def admin_panel(request: HttpRequest):
+    from workshop.models import SmsProvider, SmsSettings
+
+    cfg = SmsSettings.get_solo()
+    if request.method == "POST":
+        cfg.enabled = request.POST.get("enabled") == "1"
+        cfg.marketing_enabled = request.POST.get("marketing_enabled") == "1"
+        provider = request.POST.get("provider", SmsProvider.LOG_ONLY)
+        if provider in dict(SmsProvider.choices):
+            cfg.provider = provider
+        cfg.api_id = request.POST.get("api_id", "").strip()
+        cfg.sender = request.POST.get("sender", "").strip()
+        cfg.debt_template = request.POST.get("debt_template", "").strip() or cfg.debt_template
+        cfg.marketing_default_text = (
+            request.POST.get("marketing_default_text", "").strip() or cfg.marketing_default_text
+        )
+        cfg.save()
+        log_action(request, "sms_settings_update", entity_type="sms", details=f"provider={cfg.provider}")
+        messages.success(request, "Настройки SMS сохранены")
+        return redirect("admin_panel")
+
+    from workshop.models import SmsLog
+
+    return render(
+        request,
+        "workshop/admin_panel.html",
+        {
+            "cfg": cfg,
+            "providers": SmsProvider.choices,
+            "recent_sms": SmsLog.objects.select_related("client", "order")[:50],
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def marketing_sms(request: HttpRequest):
+    from workshop.models import SmsSettings, debtor_orders_queryset
+    from workshop.sms import send_marketing_sms
+
+    cfg = SmsSettings.get_solo()
+    debtor_client_ids = set(
+        debtor_orders_queryset().exclude(client_id=None).values_list("client_id", flat=True)
+    )
+    clients = list(
+        Client.objects.exclude(id__in=debtor_client_ids)
+        .filter(allow_marketing_sms=True)
+        .order_by("name")
+    )
+
+    if request.method == "POST":
+        text = request.POST.get("text", "").strip()
+        selected = request.POST.getlist("client_ids")
+        username = str(request.session.get("workshop_username") or "")
+        if not text:
+            messages.warning(request, "Введите текст сообщения")
+            return redirect("marketing_sms")
+        if not selected:
+            messages.warning(request, "Выберите хотя бы одного клиента")
+            return redirect("marketing_sms")
+        ok = fail = 0
+        for cid in selected:
+            client = Client.objects.filter(pk=cid).first()
+            if not client:
+                fail += 1
+                continue
+            result = send_marketing_sms(client, text, username=username)
+            if result.success:
+                ok += 1
+            else:
+                fail += 1
+        log_action(request, "sms_marketing_bulk", entity_type="sms", details=f"ok={ok} fail={fail}")
+        if ok:
+            messages.success(request, f"Маркетинг SMS: отправлено {ok}, ошибок {fail}")
+        else:
+            messages.warning(request, f"SMS не отправлены (ошибок: {fail}). Проверьте админ-панель.")
+        return redirect("marketing_sms")
+
+    return render(
+        request,
+        "workshop/marketing_sms.html",
+        {
+            "clients": clients,
+            "cfg": cfg,
+            "default_text": cfg.marketing_default_text,
         },
     )
 

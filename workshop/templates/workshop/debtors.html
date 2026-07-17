@@ -1,7 +1,7 @@
 {% extends "workshop/base.html" %}
 {% load workshop_extras %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
         <h4 class="mb-1">Должники</h4>
         <div class="small-muted">Закрытые заказ-наряды без оплаты спустя 1 день после закрытия (учёт с {{ debt_tracking_start|date:"d.m.Y" }})</div>
@@ -9,6 +9,16 @@
     <div class="text-end">
         <div>Заказов: <strong>{{ count }}</strong></div>
         <div>Сумма долга: <strong>{{ total_debt|money }}</strong></div>
+        <form method="post" action="{% url 'debtors_sms_all' %}" class="mt-2"
+              onsubmit="return confirm('Отправить SMS о долге всем должникам в списке?');">
+            {% csrf_token %}
+            <button class="btn btn-warning btn-sm" type="submit" {% if not orders %}disabled{% endif %}>
+                Отправить SMS о долгах
+            </button>
+        </form>
+        {% if not sms_settings.enabled %}
+            <div class="small-muted mt-1">SMS выключены — включите в <a href="{% url 'admin_panel' %}">админ-панели</a></div>
+        {% endif %}
     </div>
 </div>
 <div class="card"><div class="card-body">
@@ -34,7 +44,18 @@
                     <td>{% if o.effective_closed_at %}{{ o.effective_closed_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</td>
                     <td class="text-end">{{ o.total_sum|money }}</td>
                     <td>{% if o.mytax_issued %}выдан{% else %}нет{% endif %}</td>
-                    <td><a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' o.id %}">Открыть</a></td>
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-1">
+                            {% if o.client %}
+                            <form method="post" action="{% url 'debtors_sms_one' o.id %}"
+                                  onsubmit="return confirm('Отправить SMS о долге клиенту {{ o.client.name }}?');">
+                                {% csrf_token %}
+                                <button class="btn btn-outline-warning btn-sm" type="submit">SMS</button>
+                            </form>
+                            {% endif %}
+                            <a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' o.id %}">Открыть</a>
+                        </div>
+                    </td>
                 </tr>
             {% empty %}
                 <tr><td colspan="7" class="text-center text-secondary">Должников нет</td></tr>

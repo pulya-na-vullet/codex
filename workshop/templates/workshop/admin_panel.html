@@ -1,0 +1,81 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="mb-0">Админ-панель</h4>
+        <div class="small-muted">Настройки SMS и служебные параметры</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-light btn-sm" href="{% url 'marketing_sms' %}">Маркетинг SMS</a>
+        <a class="btn btn-outline-warning btn-sm" href="{% url 'debtors' %}">Должники</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card"><div class="card-body">
+            <h5 class="mb-3">Настройки SMS</h5>
+            <form method="post" class="vstack gap-3">{% csrf_token %}
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="enabled" value="1" id="sms-enabled" {% if cfg.enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="sms-enabled">Включить отправку SMS</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="marketing_enabled" value="1" id="sms-marketing" {% if cfg.marketing_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="sms-marketing">Разрешить маркетинговые SMS</label>
+                </div>
+                <div>
+                    <label class="form-label">Провайдер</label>
+                    <select class="form-select" name="provider">
+                        {% for value, label in providers %}
+                            <option value="{{ value }}" {% if cfg.provider == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="small-muted mt-1">«Только журнал» — безопасный тест без реальной отправки. Для боя выберите SMS.ru и укажите API ID.</div>
+                </div>
+                <div>
+                    <label class="form-label">API ID (SMS.ru)</label>
+                    <input class="form-control" name="api_id" value="{{ cfg.api_id }}" autocomplete="off">
+                </div>
+                <div>
+                    <label class="form-label">Имя отправителя (если согласовано у провайдера)</label>
+                    <input class="form-control" name="sender" value="{{ cfg.sender }}" maxlength="32">
+                </div>
+                <div>
+                    <label class="form-label">Шаблон SMS о долге</label>
+                    <textarea class="form-control" name="debt_template" rows="4">{{ cfg.debt_template }}</textarea>
+                    <div class="small-muted mt-1">Плейсхолдеры: {name} {phone} {order} {sum} {company} {company_phone}</div>
+                </div>
+                <div>
+                    <label class="form-label">Текст маркетинга по умолчанию</label>
+                    <textarea class="form-control" name="marketing_default_text" rows="3">{{ cfg.marketing_default_text }}</textarea>
+                    <div class="small-muted mt-1">Плейсхолдеры: {name} {phone} {company} {company_phone}</div>
+                </div>
+                <button class="btn btn-success" type="submit">Сохранить настройки</button>
+            </form>
+        </div></div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card"><div class="card-body">
+            <h5 class="mb-3">Последние SMS</h5>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Когда</th><th>Тип</th><th>Телефон</th><th>Статус</th></tr></thead>
+                    <tbody>
+                    {% for s in recent_sms %}
+                        <tr>
+                            <td>{{ s.created_at|date:"d.m H:i" }}</td>
+                            <td>{{ s.get_kind_display }}</td>
+                            <td>{{ s.phone }}</td>
+                            <td>{% if s.success %}<span class="text-success">ok</span>{% else %}<span class="text-danger">err</span>{% endif %}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="4" class="text-center text-secondary">Пока пусто</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

@@ -306,6 +306,36 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Долги")
         self.assertContains(r, "оплачено + долги + в работе")
 
+    def test_sms_admin_and_debt_send(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        from workshop.models import SmsLog, SmsSettings
+
+        cfg = SmsSettings.get_solo()
+        cfg.enabled = True
+        cfg.marketing_enabled = True
+        cfg.provider = "log"
+        cfg.save()
+        client = Client.objects.create(name="SMS Клиент", phone="+79991234567")
+        order = Order.objects.create(
+            order_number="ORD-SMS0001",
+            client=client,
+            total_sum=Decimal("1500"),
+            status="done",
+            closed_at=timezone.now() - timedelta(days=2),
+        )
+        r = self.http.get("/admin-panel")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Настройки SMS")
+        r = self.http.post(f"/debtors/{order.id}/sms")
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(SmsLog.objects.filter(kind="debt", success=True).exists())
+        r = self.http.get("/marketing")
+        self.assertEqual(r.status_code, 200)
+        other = Client.objects.create(name="Маркет", phone="+79997654321", allow_marketing_sms=True)
+        r = self.http.post("/marketing", {"text": "Привет, {name}!", "client_ids": [str(other.id)]})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(SmsLog.objects.filter(kind="marketing", success=True, phone="79997654321").exists())
+
     def test_print_actions_are_logged(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         client = Client.objects.create(name="Печать", phone="+79992223344")
