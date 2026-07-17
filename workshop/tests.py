@@ -6,7 +6,6 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.test import Client as HttpClient, TestCase, override_settings
-from django.utils import timezone
 
 from workshop.models import Client, Order, OrderLine, PaymentMethod, Service, debt_tracking_start, loyalty_discount_percent
 from workshop.pdf import build_order_pdf
