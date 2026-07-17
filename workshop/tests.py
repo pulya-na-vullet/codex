@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import os
 import tempfile
+from datetime import timedelta
 from decimal import Decimal
 
 from django.test import Client as HttpClient, TestCase, override_settings
+from django.utils import timezone
 
-from workshop.models import Client, Order, OrderLine, PaymentMethod, Service, loyalty_discount_percent
+from workshop.models import Client, Order, OrderLine, PaymentMethod, Service, debt_tracking_start, loyalty_discount_percent
 from workshop.pdf import build_order_pdf
 from workshop.services import ensure_category_path
 from workshop.utils import normalize_rf_phone
@@ -126,6 +128,32 @@ class AuthAndPagesTests(TestCase):
         r = self.http.get("/audit-log")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "order_payment")
+
+    def test_debtors_ignore_orders_before_cutoff(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        client = Client.objects.create(name="Старый", phone="+79995556677")
+        old = Order.objects.create(
+            order_number="ORD-OLD0001",
+            client=client,
+            total_sum=Decimal("900"),
+            payment_method=PaymentMethod.UNPAID,
+            created_at=debt_tracking_start() - timedelta(days=1),
+        )
+        new = Order.objects.create(
+            order_number="ORD-NEW0001",
+            client=client,
+            total_sum=Decimal("300"),
+            payment_method=PaymentMethod.UNPAID,
+            created_at=debt_tracking_start() + timedelta(hours=1),
+        )
+        self.assertFalse(old.is_debtor)
+        self.assertTrue(new.is_debtor)
+        r = self.http.get("/debtors")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "ORD-NEW0001")
+        self.assertNotContains(r, "ORD-OLD0001")
+        self.assertContains(r, "300,00")
+        self.assertContains(r, "16.06.2026")
 
     def test_orders_list_shows_payment_and_mytax_badges(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})

@@ -540,16 +540,27 @@ def order_set_mytax(request: HttpRequest, order_id: int):
 
 
 def debtors_list(request: HttpRequest):
-    orders = (
+    from workshop.models import debt_tracking_start
+
+    orders = list(
         Order.objects.select_related("client")
-        .filter(payment_method=PaymentMethod.UNPAID, total_sum__gt=0)
+        .filter(
+            payment_method=PaymentMethod.UNPAID,
+            total_sum__gt=0,
+            created_at__gte=debt_tracking_start(),
+        )
         .order_by("-id")
     )
     total_debt = sum((o.total_sum for o in orders), Decimal("0"))
     return render(
         request,
         "workshop/debtors.html",
-        {"orders": orders, "total_debt": total_debt, "count": len(orders)},
+        {
+            "orders": orders,
+            "total_debt": total_debt,
+            "count": len(orders),
+            "debt_tracking_start": debt_tracking_start().date(),
+        },
     )
 
 

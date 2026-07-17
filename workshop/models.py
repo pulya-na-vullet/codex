@@ -1,11 +1,28 @@
 from __future__ import annotations
 
+from datetime import date, datetime, time
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Count, Sum
 from django.utils import timezone
+
+
+def debt_tracking_start() -> datetime:
+    """Заказы раньше этой даты не считаются долгом (массовый импорт истории)."""
+    start_date = getattr(settings, "DEBT_TRACKING_START_DATE", date(2026, 6, 16))
+    return timezone.make_aware(
+        datetime.combine(start_date, time.min),
+        timezone.get_current_timezone(),
+    )
+
+
+def is_debt_tracking_active_for(created_at) -> bool:
+    if created_at is None:
+        return False
+    return created_at >= debt_tracking_start()
 
 
 class Client(models.Model):
@@ -206,8 +223,11 @@ class Order(models.Model):
 
     @property
     def is_debtor(self) -> bool:
-        return not self.is_paid and self.total_sum > 0
-
+        return (
+            is_debt_tracking_active_for(self.created_at)
+            and not self.is_paid
+            and self.total_sum > 0
+        )
     def recalculate_totals(self, save: bool = True) -> Decimal:
         subtotal = Decimal("0")
         for line in self.lines.all():

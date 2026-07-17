@@ -4,7 +4,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h4 class="mb-1">Должники</h4>
-        <div class="small-muted">Заказы без факта оплаты наличными или переводом</div>
+        <div class="small-muted">Неоплаченные заказы с {{ debt_tracking_start|date:"d.m.Y" }} (раньше этой даты учёт долгов не ведётся)</div>
     </div>
     <div class="text-end">
         <div>Заказов: <strong>{{ count }}</strong></div>
