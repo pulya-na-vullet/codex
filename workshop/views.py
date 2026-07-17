@@ -644,6 +644,60 @@ def orders_list(request: HttpRequest):
     )
 
 
+@require_GET
+def orders_export_excel(request: HttpRequest):
+    try:
+        from openpyxl import Workbook
+    except ImportError:
+        messages.warning(request, "Установите openpyxl: pip install openpyxl")
+        return redirect("orders")
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Заказы"
+    ws.append(
+        [
+            "Номер",
+            "Клиент",
+            "Телефон",
+            "Дата",
+            "Статус",
+            "Сумма",
+            "Оплата",
+            "Мой налог",
+            "Закрыт",
+            "Звонок клиенту",
+        ]
+    )
+    for order in Order.objects.select_related("client").order_by("-id"):
+        ws.append(
+            [
+                order.order_number,
+                order.client.name if order.client else "",
+                order.client.phone if order.client else "",
+                timezone.localtime(order.created_at).strftime("%d.%m.%Y %H:%M") if order.created_at else "",
+                order.get_status_display(),
+                float(order.total_sum or 0),
+                order.get_payment_method_display(),
+                "да" if order.mytax_issued else "нет",
+                timezone.localtime(order.closed_at).strftime("%d.%m.%Y %H:%M") if order.closed_at else "",
+                timezone.localtime(order.client_called_at).strftime("%d.%m.%Y %H:%M") if order.client_called_at else "",
+            ]
+        )
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    stamp = timezone.localdate().isoformat()
+    filename = f"orders + {stamp}.xlsx"
+    response = HttpResponse(
+        buf.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    log_action(request, "orders_export_excel", entity_type="order", details=filename)
+    return response
+
+
 @require_http_methods(["GET", "POST"])
 def order_create(request: HttpRequest):
     if request.method == "POST":
@@ -1035,6 +1089,42 @@ def audit_log_list(request: HttpRequest):
             | Q(entity_id__icontains=q)
         )
     return render(request, "workshop/audit_log.html", {"logs": logs[:300], "query": q})
+
+
+@require_GET
+def audit_log_export(request: HttpRequest):
+    q = request.GET.get("q", "").strip()
+    logs = AuditLog.objects.all().order_by("-id")
+    if q:
+        logs = logs.filter(
+            Q(username__icontains=q)
+            | Q(action__icontains=q)
+            | Q(details__icontains=q)
+            | Q(entity_id__icontains=q)
+        )
+    lines: list[str] = []
+    for log in logs[:20000]:
+        when = timezone.localtime(log.created_at).strftime("%Y-%m-%d %H:%M:%S") if log.created_at else ""
+        lines.append(
+            "\t".join(
+                [
+                    when,
+                    log.username or "",
+                    log.action or "",
+                    log.entity_type or "",
+                    str(log.entity_id or ""),
+                    (log.details or "").replace("\n", " ").replace("\r", " "),
+                    log.ip_address or "-",
+                ]
+            )
+        )
+    stamp = timezone.localdate().isoformat()
+    filename = f"log+{stamp}.log"
+    content = "when\tuser\taction\tentity\tid\tdetails\tip\n" + "\n".join(lines) + ("\n" if lines else "")
+    response = HttpResponse(content, content_type="text/plain; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    log_action(request, "audit_log_export", entity_type="audit", details=filename)
+    return response
 
 
 def order_print(request: HttpRequest, order_id: int):

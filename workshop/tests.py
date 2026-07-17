@@ -235,6 +235,30 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Наличные")
         self.assertContains(r, "Чек выдан")
         self.assertContains(r, "Нет чека")
+        self.assertContains(r, "Выгрузить Excel")
+        r = self.http.get("/orders/export.xlsx")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            r["Content-Type"],
+        )
+        self.assertIn("orders +", r["Content-Disposition"])
+        self.assertTrue(r.content[:2] == b"PK")  # zip/xlsx
+
+    def test_audit_log_export(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        from workshop.models import AuditLog
+
+        AuditLog.objects.create(username="ITM", action="test_action", details="demo")
+        r = self.http.get("/audit-log")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Выгрузить .log")
+        self.assertContains(r, "panel-scroll")
+        r = self.http.get("/audit-log/export.log")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/plain", r["Content-Type"])
+        self.assertIn("log+", r["Content-Disposition"])
+        self.assertIn(b"test_action", r.content)
 
     def test_service_toggle_active_hides_from_order_catalog(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})

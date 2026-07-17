@@ -52,6 +52,48 @@
         .text-success { color: #34d399 !important; }
 
         .table-responsive { background: var(--bg-card-soft); border: 1px solid var(--border); border-radius: .5rem; padding: .35rem; }
+        .panel-scroll {
+            max-height: calc(100vh - 11rem);
+            overflow: auto;
+        }
+        .panel-scroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+        .acceptance-create-card {
+            max-height: calc(100vh - 7.5rem);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .acceptance-create-card .card-body {
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .acceptance-create-form {
+            gap: .45rem !important;
+            overflow: auto;
+            min-height: 0;
+            flex: 1 1 auto;
+        }
+        .acceptance-create-form .form-label {
+            margin-bottom: .15rem;
+            font-size: .8rem;
+        }
+        .acceptance-create-form .form-control,
+        .acceptance-create-form .form-select {
+            padding-top: .25rem;
+            padding-bottom: .25rem;
+            min-height: calc(1.5em + .5rem + 2px);
+            font-size: .875rem;
+        }
+        .acceptance-create-form textarea.form-control {
+            min-height: 2.1rem;
+            resize: vertical;
+        }
         .text-secondary, .small-muted { color: var(--text-soft) !important; }
         .form-control, .form-select, textarea.form-control {
             background: #0b1220; color: var(--text-main); border: 1px solid var(--border);
