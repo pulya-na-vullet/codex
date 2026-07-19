@@ -502,12 +502,21 @@ class AuthAndPagesTests(TestCase):
             allow_marketing_sms=True,
             max_user_id="998",
         )
+        # Один адресат — обычная строка, без «Масс-рассылка».
+        r = self.http.post("/marketing", {"text": "Привет, {name}!", "client_ids": [str(other.id)]})
+        self.assertEqual(r.status_code, 302)
+        r = self.http.get("/marketing")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Маркет")
+        self.assertContains(r, "Привет, Маркет!")
+        self.assertNotContains(r, "Масс-рассылка")
+
         r = self.http.post(
             "/marketing",
             {"text": "Привет, {name}!", "client_ids": [str(other.id), str(second.id)]},
         )
         self.assertEqual(r.status_code, 302)
-        self.assertEqual(SmsLog.objects.filter(kind="marketing", success=True).count(), 2)
+        self.assertEqual(SmsLog.objects.filter(kind="marketing", success=True).count(), 3)
         from workshop.models import MarketingBlast
 
         blast = MarketingBlast.objects.latest("id")
@@ -523,7 +532,7 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Маркет")
         self.assertContains(r, "Маркет2")
         self.assertContains(r, "QR-код")
-        # Одна строка на всю рассылку, а не по строке на клиента.
+        # Одна строка масс-рассылки + одна одиночная.
         self.assertEqual(r.content.decode().count("Масс-рассылка"), 1)
         r = self.http.get("/marketing/bot-qr.png")
         self.assertEqual(r.status_code, 200)
@@ -532,7 +541,7 @@ class AuthAndPagesTests(TestCase):
         r = self.http.post(f"/marketing/blasts/{blast.id}/delete")
         self.assertEqual(r.status_code, 302)
         self.assertFalse(MarketingBlast.objects.filter(pk=blast.id).exists())
-        self.assertFalse(SmsLog.objects.filter(kind="marketing").exists())
+        self.assertEqual(SmsLog.objects.filter(kind="marketing").count(), 1)
         r = self.http.get("/max/webhook")
         self.assertEqual(r.status_code, 200)
 

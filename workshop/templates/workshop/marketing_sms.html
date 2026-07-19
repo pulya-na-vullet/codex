@@ -56,6 +56,7 @@
                         <thead><tr><th style="width: 4.5rem;">Когда</th><th>Сообщение</th><th style="width: 7.5rem;"></th></tr></thead>
                         <tbody>
                         {% for b in recent_blasts %}
+                            {% if b.recipients_count > 1 %}
                             <tr>
                                 <td class="small align-top">{{ b.created_at|date:"d.m H:i" }}</td>
                                 <td class="small">
@@ -97,6 +98,21 @@
                                             onclick="return confirm('Удалить всю рассылку из очереди?');">Удалить</button>
                                 </td>
                             </tr>
+                            {% else %}
+                            {% with log=b.logs.all.0 %}
+                            <tr>
+                                <td class="small align-top">{{ b.created_at|date:"d.m H:i" }}</td>
+                                <td class="small">
+                                    <div class="fw-semibold">{% if log.client %}{{ log.client.name }}{% else %}{{ log.phone }}{% endif %}</div>
+                                    <div class="marketing-msg-text" title="{% if log %}{{ log.text }}{% else %}{{ b.template_text }}{% endif %}">{% if log %}{{ log.text }}{% else %}{{ b.template_text }}{% endif %}</div>
+                                </td>
+                                <td class="text-end align-top">
+                                    <button form="delete-blast-{{ b.id }}" class="btn btn-outline-danger btn-sm" type="submit"
+                                            onclick="return confirm('Удалить сообщение из очереди?');">Удалить</button>
+                                </td>
+                            </tr>
+                            {% endwith %}
+                            {% endif %}
                         {% empty %}
                             <tr><td colspan="3" class="text-center text-secondary">Пока пусто</td></tr>
                         {% endfor %}
