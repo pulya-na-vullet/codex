@@ -398,6 +398,42 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Долги")
         self.assertContains(r, "оплачено + долги + в работе")
 
+    def test_max_status_notifications_for_linked_client(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        from workshop.models import AcceptanceAct, AcceptanceActStatus, DeviceType, SmsKind, SmsLog, SmsSettings
+
+        cfg = SmsSettings.get_solo()
+        cfg.enabled = True
+        cfg.provider = "log"
+        cfg.save()
+        client = Client.objects.create(name="Уведомления", phone="+79990001100", max_user_id="555001")
+        order = Order.objects.create(
+            order_number="ORD-NOTIFY1",
+            client=client,
+            total_sum=Decimal("700"),
+            status="ready_call",
+        )
+        act = AcceptanceAct.objects.create(
+            act_number="ACT-NOTIFY1",
+            client=client,
+            device_type=DeviceType.PC,
+            declared_defect="Тест",
+            status=AcceptanceActStatus.DIAGNOSTICS,
+        )
+        r = self.http.post(f"/orders/{order.id}/mark-called", {"next": "/work-queue"})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(
+            SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client, success=True, text__icontains="ORD-NOTIFY1").exists()
+        )
+        r = self.http.post(
+            f"/acceptance/{act.id}/status",
+            {"status": "diagnostics_done", "next": "/work-queue"},
+        )
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(
+            SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client, success=True, text__icontains="ACT-NOTIFY1").exists()
+        )
+
     def test_sms_admin_and_debt_send(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         from workshop.models import SmsLog, SmsSettings

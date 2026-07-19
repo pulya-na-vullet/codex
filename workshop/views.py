@@ -306,13 +306,17 @@ def work_queue(request: HttpRequest):
 
 @require_POST
 def order_set_status(request: HttpRequest, order_id: int):
-    order = get_object_or_404(Order, pk=order_id)
+    from workshop.messaging import maybe_notify_order_done
+
+    order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
     status = request.POST.get("status", "").strip()
     if status not in dict(OrderStatus.choices):
         messages.warning(request, "Некорректный статус")
         return redirect(request.POST.get("next") or "work_queue")
     old = order.status
+    username = str(request.session.get("workshop_username") or "")
     order.apply_status(status)
+    maybe_notify_order_done(order, old_status=old, username=username)
     log_action(
         request,
         "order_set_status",
@@ -331,8 +335,13 @@ def order_set_status(request: HttpRequest, order_id: int):
 
 @require_POST
 def order_mark_called(request: HttpRequest, order_id: int):
-    order = get_object_or_404(Order, pk=order_id)
+    from workshop.messaging import maybe_notify_order_done
+
+    order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
+    old = order.status
+    username = str(request.session.get("workshop_username") or "")
     order.mark_client_called()
+    maybe_notify_order_done(order, old_status=old, username=username)
     log_action(
         request,
         "order_client_called",
@@ -349,13 +358,17 @@ def order_mark_called(request: HttpRequest, order_id: int):
 
 @require_POST
 def acceptance_set_status(request: HttpRequest, act_id: int):
-    act = get_object_or_404(AcceptanceAct, pk=act_id)
+    from workshop.messaging import maybe_notify_diagnostics_done
+
+    act = get_object_or_404(AcceptanceAct.objects.select_related("client"), pk=act_id)
     status = request.POST.get("status", "").strip()
     if status not in dict(AcceptanceActStatus.choices):
         messages.warning(request, "Некорректный статус акта")
         return redirect(request.POST.get("next") or "work_queue")
     old = act.status
+    username = str(request.session.get("workshop_username") or "")
     act.apply_status(status)
+    maybe_notify_diagnostics_done(act, old_status=old, username=username)
     log_action(
         request,
         "acceptance_set_status",
@@ -1036,6 +1049,12 @@ def admin_panel(request: HttpRequest):
             cfg.bot_link = f"https://max.ru/{cfg.bot_username}"
         cfg.welcome_text = request.POST.get("welcome_text", "").strip() or cfg.welcome_text
         cfg.debt_template = request.POST.get("debt_template", "").strip() or cfg.debt_template
+        cfg.order_done_template = (
+            request.POST.get("order_done_template", "").strip() or cfg.order_done_template
+        )
+        cfg.diagnostics_done_template = (
+            request.POST.get("diagnostics_done_template", "").strip() or cfg.diagnostics_done_template
+        )
         cfg.marketing_default_text = (
             request.POST.get("marketing_default_text", "").strip() or cfg.marketing_default_text
         )

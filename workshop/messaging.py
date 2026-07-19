@@ -393,6 +393,73 @@ def send_marketing_message(client: Client, text: str, *, username: str = "") -> 
     )
 
 
+def _client_linked_to_max(client: Client | None) -> bool:
+    return bool(client and (client.max_user_id or "").strip())
+
+
+def send_order_done_message(order: Order, *, username: str = "") -> MessageResult:
+    """Notify client in Max when order becomes «Выполнена»."""
+    client = order.client
+    if not _client_linked_to_max(client):
+        return MessageResult(success=False, response="Клиент не привязан к Max")
+    cfg = SmsSettings.get_solo()
+    text = render_template(cfg.order_done_template, **debt_context(order))
+    return send_message(
+        phone=client.phone,
+        text=text,
+        kind=SmsKind.SYSTEM,
+        client=client,
+        order=order,
+        username=username or "status-bot",
+    )
+
+
+def send_diagnostics_done_message(act, *, username: str = "") -> MessageResult:
+    """Notify client in Max when acceptance act diagnostics is done."""
+    client = getattr(act, "client", None)
+    if not _client_linked_to_max(client):
+        return MessageResult(success=False, response="Клиент не привязан к Max")
+    cfg = SmsSettings.get_solo()
+    ctx = {
+        "name": client.name,
+        "phone": client.phone,
+        "act": act.act_number,
+        "device": f"{act.device_type} {act.brand_model or ''}".strip(),
+        "company": getattr(settings, "COMPANY_NAME", "ИТ-мастерская"),
+        "company_phone": getattr(settings, "COMPANY_PHONE", ""),
+    }
+    text = render_template(cfg.diagnostics_done_template, **ctx)
+    return send_message(
+        phone=client.phone,
+        text=text,
+        kind=SmsKind.SYSTEM,
+        client=client,
+        username=username or "status-bot",
+    )
+
+
+def maybe_notify_order_done(order: Order, *, old_status: str, username: str = "") -> None:
+    from workshop.models import OrderStatus
+
+    if order.status != OrderStatus.DONE or old_status == OrderStatus.DONE:
+        return
+    try:
+        send_order_done_message(order, username=username)
+    except Exception:
+        logger.exception("Failed Max notify for order done %s", order.order_number)
+
+
+def maybe_notify_diagnostics_done(act, *, old_status: str, username: str = "") -> None:
+    from workshop.models import AcceptanceActStatus
+
+    if act.status != AcceptanceActStatus.DIAGNOSTICS_DONE or old_status == AcceptanceActStatus.DIAGNOSTICS_DONE:
+        return
+    try:
+        send_diagnostics_done_message(act, username=username)
+    except Exception:
+        logger.exception("Failed Max notify for diagnostics done %s", act.act_number)
+
+
 def process_max_update(update: dict[str, Any], settings_obj: SmsSettings | None = None) -> None:
     """Link client by phone when they message the bot; reply with confirmation."""
     if settings_obj is None:

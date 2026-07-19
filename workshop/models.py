@@ -606,6 +606,22 @@ class SmsSettings(models.Model):
         ),
         help_text="Плейсхолдеры: {name} {phone} {order} {sum} {company} {company_phone}",
     )
+    order_done_template = models.TextField(
+        "Шаблон: заказ выполнен",
+        default=(
+            "{name}, заказ-наряд {order} выполнен. Сумма: {sum} руб. "
+            "Ждём вас. {company}, {company_phone}"
+        ),
+        help_text="Плейсхолдеры: {name} {phone} {order} {sum} {company} {company_phone}",
+    )
+    diagnostics_done_template = models.TextField(
+        "Шаблон: диагностика выполнена",
+        default=(
+            "{name}, диагностика по акту {act} выполнена. "
+            "Устройство: {device}. {company}, {company_phone}"
+        ),
+        help_text="Плейсхолдеры: {name} {phone} {act} {device} {company} {company_phone}",
+    )
     marketing_enabled = models.BooleanField("Маркетинг включён", default=False)
     marketing_default_text = models.TextField(
         "Текст маркетинга по умолчанию",
