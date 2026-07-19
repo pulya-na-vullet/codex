@@ -11,6 +11,7 @@ from workshop.models import (
     ServiceCategory,
     SmsLog,
     SmsSettings,
+    YandexAiSettings,
 )
 
 
@@ -95,3 +96,8 @@ class SmsLogAdmin(admin.ModelAdmin):
     list_display = ("created_at", "kind", "phone", "success", "provider", "username")
     list_filter = ("kind", "success", "provider")
     search_fields = ("phone", "text", "response")
+
+
+@admin.register(YandexAiSettings)
+class YandexAiSettingsAdmin(admin.ModelAdmin):
+    list_display = ("enabled", "folder_id", "model_name", "report_hour_msk", "last_report_date", "updated_at")

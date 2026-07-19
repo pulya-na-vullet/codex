@@ -970,11 +970,47 @@ def debtors_sms_one(request: HttpRequest, order_id: int):
 
 @require_http_methods(["GET", "POST"])
 def admin_panel(request: HttpRequest):
-    from workshop.models import SmsLog, SmsProvider, SmsSettings
+    from workshop.models import SmsLog, SmsProvider, SmsSettings, YandexAiSettings
     from workshop.messaging import start_max_long_poll_worker
+    from workshop.yandex_ai import run_daily_ai_report, start_ai_report_scheduler
 
     cfg = SmsSettings.get_solo()
+    ai_cfg = YandexAiSettings.get_solo()
+
     if request.method == "POST":
+        section = request.POST.get("section", "max").strip()
+        if section == "ai_report_now":
+            result = run_daily_ai_report(force=True)
+            log_action(
+                request,
+                "ai_report_manual",
+                entity_type="ai",
+                details=f"ok={result.get('ok')} source={result.get('source')} {result.get('detail')}",
+            )
+            if result.get("ok"):
+                messages.success(request, f"AI-отчёт отправлен ({result.get('source')})")
+            else:
+                messages.warning(request, f"AI-отчёт не отправлен: {result.get('detail')}")
+            return redirect("admin_panel")
+
+        if section == "ai":
+            ai_cfg.enabled = request.POST.get("ai_enabled") == "1"
+            ai_cfg.api_key = request.POST.get("api_key", "").strip()
+            ai_cfg.folder_id = request.POST.get("folder_id", "").strip()
+            ai_cfg.model_name = request.POST.get("model_name", "").strip() or "yandexgpt-lite"
+            ai_cfg.admin_phone = request.POST.get("admin_phone", "").strip()
+            ai_cfg.admin_max_user_id = request.POST.get("admin_max_user_id", "").strip()
+            try:
+                hour = int(request.POST.get("report_hour_msk", "20") or 20)
+            except ValueError:
+                hour = 20
+            ai_cfg.report_hour_msk = max(0, min(23, hour))
+            ai_cfg.save()
+            start_ai_report_scheduler()
+            log_action(request, "ai_settings_update", entity_type="ai", details=f"enabled={ai_cfg.enabled}")
+            messages.success(request, "Настройки Яндекс ИИ сохранены")
+            return redirect("admin_panel")
+
         cfg.enabled = request.POST.get("enabled") == "1"
         cfg.marketing_enabled = request.POST.get("marketing_enabled") == "1"
         cfg.long_poll_enabled = request.POST.get("long_poll_enabled") == "1"
@@ -1002,6 +1038,7 @@ def admin_panel(request: HttpRequest):
         "workshop/admin_panel.html",
         {
             "cfg": cfg,
+            "ai_cfg": ai_cfg,
             "providers": SmsProvider.choices,
             "recent_messages": SmsLog.objects.select_related("client", "order")[:50],
         },

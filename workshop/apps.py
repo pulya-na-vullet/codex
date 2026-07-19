@@ -26,3 +26,9 @@ class WorkshopConfig(AppConfig):
             start_max_long_poll_worker()
         except Exception:
             pass
+        try:
+            from workshop.yandex_ai import start_ai_report_scheduler
+
+            start_ai_report_scheduler()
+        except Exception:
+            pass

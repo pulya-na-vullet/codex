@@ -399,6 +399,36 @@ class AuthAndPagesTests(TestCase):
         r = self.http.get("/admin-panel")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Канал Max")
+        self.assertContains(r, "Яндекс ИИ")
+        r = self.http.post(
+            "/admin-panel",
+            {
+                "section": "ai",
+                "ai_enabled": "1",
+                "api_key": "",
+                "folder_id": "b1gtest",
+                "model_name": "yandexgpt-lite",
+                "admin_phone": "+79991234567",
+                "admin_max_user_id": "12345",
+                "report_hour_msk": "20",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        from workshop.models import YandexAiSettings
+        from workshop.yandex_ai import build_fallback_report, collect_day_facts, generate_day_report
+
+        ai = YandexAiSettings.get_solo()
+        self.assertTrue(ai.enabled)
+        self.assertEqual(ai.folder_id, "b1gtest")
+        self.assertEqual(ai.report_hour_msk, 20)
+        facts = collect_day_facts()
+        report = build_fallback_report(facts)
+        self.assertIn("День:", report)
+        self.assertIn("Выручка:", report)
+        self.assertIn("Аномалии работы:", report)
+        text, source = generate_day_report(use_ai=False)
+        self.assertEqual(source, "fallback")
+        self.assertIn("День:", text)
         r = self.http.post(f"/debtors/{order.id}/sms")
         self.assertEqual(r.status_code, 302)
         self.assertTrue(SmsLog.objects.filter(kind="debt", success=True).exists())

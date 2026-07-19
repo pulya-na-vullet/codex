@@ -597,6 +597,59 @@ class SmsSettings(models.Model):
         return cls.objects.create()
 
 
+class YandexAiSettings(models.Model):
+    """Singleton-настройки Яндекс GPT для ежедневного отчёта администратору."""
+
+    enabled = models.BooleanField("Ежедневный AI-отчёт включён", default=False)
+    api_key = models.CharField("API-ключ Yandex Cloud", max_length=255, blank=True, default="")
+    folder_id = models.CharField("Folder ID каталога", max_length=64, blank=True, default="")
+    model_name = models.CharField(
+        "Модель",
+        max_length=64,
+        blank=True,
+        default="yandexgpt-lite",
+        help_text="Например yandexgpt-lite или yandexgpt",
+    )
+    admin_phone = models.CharField(
+        "Телефон администратора",
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Клиент с этим телефоном должен быть привязан к Max",
+    )
+    admin_max_user_id = models.CharField(
+        "Max user_id администратора",
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="Можно указать напрямую, если телефон ещё не привязан",
+    )
+    report_hour_msk = models.PositiveSmallIntegerField(
+        "Час отправки (МСК)",
+        default=20,
+        help_text="Отчёт уходит в начале этого часа по Москве",
+    )
+    last_report_date = models.DateField("Дата последнего отчёта", null=True, blank=True)
+    last_report_at = models.DateTimeField("Когда отправляли", null=True, blank=True)
+    last_report_text = models.TextField("Текст последнего отчёта", blank=True, default="")
+    last_report_error = models.TextField("Ошибка последней отправки", blank=True, default="")
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        verbose_name = "Настройки Яндекс ИИ"
+        verbose_name_plural = "Настройки Яндекс ИИ"
+
+    def __str__(self) -> str:
+        return "Yandex AI report"
+
+    @classmethod
+    def get_solo(cls) -> "YandexAiSettings":
+        obj = cls.objects.first()
+        if obj:
+            return obj
+        return cls.objects.create()
+
+
 class SmsKind(models.TextChoices):
     DEBT = "debt", "Долг"
     MARKETING = "marketing", "Маркетинг"

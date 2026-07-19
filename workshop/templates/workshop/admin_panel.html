@@ -3,7 +3,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
         <h4 class="mb-0">Админ-панель</h4>
-        <div class="small-muted">Настройки Max-рассылок</div>
+        <div class="small-muted">Max-рассылки и Яндекс ИИ</div>
     </div>
     <div class="d-flex gap-2">
         <a class="btn btn-outline-light btn-sm" href="{% url 'marketing_sms' %}">Маркетинг</a>
@@ -16,6 +16,7 @@
         <div class="card"><div class="card-body">
             <h5 class="mb-3">Канал Max</h5>
             <form method="post" class="vstack gap-3">{% csrf_token %}
+                <input type="hidden" name="section" value="max">
                 <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" name="enabled" value="1" id="msg-enabled" {% if cfg.enabled %}checked{% endif %}>
                     <label class="form-check-label" for="msg-enabled">Включить рассылки</label>
@@ -69,8 +70,71 @@
                     <textarea class="form-control" name="marketing_default_text" rows="3">{{ cfg.marketing_default_text }}</textarea>
                     <div class="small-muted mt-1">Плейсхолдеры: {name} {phone} {company} {company_phone}</div>
                 </div>
-                <button class="btn btn-success" type="submit">Сохранить настройки</button>
+                <button class="btn btn-success" type="submit">Сохранить настройки Max</button>
             </form>
+        </div></div>
+
+        <div class="card mt-3"><div class="card-body">
+            <h5 class="mb-3">Яндекс ИИ — ежедневный отчёт</h5>
+            <div class="small-muted mb-3">
+                В 20:00 МСК (или в указанный час) ИИ анализирует журнал за текущий день и присылает отчёт администратору в Max.
+            </div>
+            <form method="post" class="vstack gap-3">{% csrf_token %}
+                <input type="hidden" name="section" value="ai">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="ai_enabled" value="1" id="ai-enabled" {% if ai_cfg.enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="ai-enabled">Включить ежедневный AI-отчёт</label>
+                </div>
+                <div>
+                    <label class="form-label">API-ключ Yandex Cloud</label>
+                    <input class="form-control" name="api_key" value="{{ ai_cfg.api_key }}" autocomplete="off">
+                    <div class="small-muted mt-1">Сервисный аккаунт → создать API-ключ с ролью `ai.languageModels.user`</div>
+                </div>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Folder ID</label>
+                        <input class="form-control" name="folder_id" value="{{ ai_cfg.folder_id }}" placeholder="b1g...">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Модель</label>
+                        <input class="form-control" name="model_name" value="{{ ai_cfg.model_name }}" placeholder="yandexgpt-lite">
+                    </div>
+                </div>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Телефон администратора</label>
+                        <input class="form-control" name="admin_phone" value="{{ ai_cfg.admin_phone }}" placeholder="+79991234567">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Max user_id администратора</label>
+                        <input class="form-control" name="admin_max_user_id" value="{{ ai_cfg.admin_max_user_id }}" placeholder="если известен">
+                    </div>
+                </div>
+                <div style="max-width: 180px;">
+                    <label class="form-label">Час отправки (МСК)</label>
+                    <input class="form-control" type="number" min="0" max="23" name="report_hour_msk" value="{{ ai_cfg.report_hour_msk }}">
+                </div>
+                <button class="btn btn-success" type="submit">Сохранить Яндекс ИИ</button>
+            </form>
+            <form method="post" class="mt-3">{% csrf_token %}
+                <input type="hidden" name="section" value="ai_report_now">
+                <button class="btn btn-outline-warning btn-sm" type="submit"
+                        onclick="return confirm('Сформировать отчёт за сегодня и отправить админу в Max?');">
+                    Отправить отчёт сейчас
+                </button>
+            </form>
+            {% if ai_cfg.last_report_at %}
+                <div class="small-muted mt-3">
+                    Последний отчёт: {{ ai_cfg.last_report_at|date:"d.m.Y H:i" }}
+                    {% if ai_cfg.last_report_date %} (день {{ ai_cfg.last_report_date|date:"d.m.Y" }}){% endif %}
+                </div>
+            {% endif %}
+            {% if ai_cfg.last_report_error %}
+                <div class="alert alert-danger py-2 mt-2 mb-0">Ошибка: {{ ai_cfg.last_report_error }}</div>
+            {% endif %}
+            {% if ai_cfg.last_report_text %}
+                <pre class="mt-2 mb-0 p-2 small" style="white-space:pre-wrap;background:#0b1220;border:1px solid #334155;border-radius:.4rem;max-height:220px;overflow:auto;">{{ ai_cfg.last_report_text }}</pre>
+            {% endif %}
         </div></div>
     </div>
     <div class="col-lg-5">
@@ -81,6 +145,16 @@
                 <li>Клиент открывает ссылку на бота и пишет номер телефона</li>
                 <li>Система привязывает Max user_id к карточке клиента</li>
                 <li>После этого можно слать долги и маркетинг</li>
+            </ol>
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h5 class="mb-2">Как включить AI-отчёт</h5>
+            <ol class="small mb-0">
+                <li>В Yandex Cloud создайте каталог и сервисный аккаунт</li>
+                <li>Выдайте роль `ai.languageModels.user`, создайте API-ключ</li>
+                <li>Вставьте API-ключ и Folder ID слева</li>
+                <li>Укажите телефон/Max user_id администратора (он должен написать боту)</li>
+                <li>В 20:00 МСК отчёт уйдёт в Max автоматически</li>
             </ol>
         </div></div>
         <div class="card"><div class="card-body">

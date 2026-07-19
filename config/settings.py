@@ -107,6 +107,7 @@ from datetime import date
 DEBT_TRACKING_START_DATE = date(2026, 7, 10)
 MAX_API_BASE = os.getenv("IT_MASTER_MAX_API", "https://platform-api2.max.ru")
 MAX_LONG_POLL_WORKER = os.getenv("IT_MASTER_MAX_LONG_POLL", "1") == "1"
+YANDEX_AI_SCHEDULER = os.getenv("IT_MASTER_YANDEX_AI_SCHEDULER", "1") == "1"
 
 from django.contrib.messages import constants as message_constants
 
