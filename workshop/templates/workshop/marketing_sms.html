@@ -22,12 +22,12 @@
 <div class="alert alert-primary py-2">Клиенты без Max: пусть напишут боту <a href="{{ cfg.bot_link }}" target="_blank">{{ cfg.bot_link }}</a> и пришлют свой телефон.</div>
 {% endif %}
 
-<form method="post">{% csrf_token %}
+<form method="post" id="marketing-send-form">{% csrf_token %}
     <div class="row g-3">
-        <div class="col-lg-5">
+        <div class="col-lg-4">
             <div class="card h-100"><div class="card-body">
                 <h5 class="mb-3">Текст сообщения</h5>
-                <textarea class="form-control" name="text" rows="8" required>{{ default_text }}</textarea>
+                <textarea class="form-control" name="text" rows="10" required>{{ default_text }}</textarea>
                 <div class="small-muted mt-2">Плейсхолдеры: {name} {phone} {company} {company_phone}</div>
                 <button class="btn btn-primary mt-3" type="submit"
                         onclick="return confirm('Отправить в Max выбранным клиентам?');"
@@ -36,25 +36,91 @@
                 </button>
             </div></div>
         </div>
-        <div class="col-lg-7">
+
+        <div class="col-lg-4">
             <div class="card h-100"><div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-3">Очередь последних рассылок</h5>
+                <div class="small-muted mb-2">Последние 10 маркетинговых сообщений</div>
+                <div class="table-responsive" style="max-height: 420px; overflow: auto;">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead><tr><th>Когда</th><th>Кому</th><th></th></tr></thead>
+                        <tbody>
+                        {% for m in recent_messages %}
+                            <tr>
+                                <td class="small">{{ m.created_at|date:"d.m H:i" }}</td>
+                                <td class="small">
+                                    {% if m.client %}{{ m.client.name }}{% else %}{{ m.phone }}{% endif %}
+                                    <div class="small-muted text-truncate" style="max-width: 160px;" title="{{ m.text }}">{{ m.text }}</div>
+                                    {% if m.success %}<span class="badge text-bg-success">ok</span>{% else %}<span class="badge text-bg-danger">err</span>{% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <button form="delete-msg-{{ m.id }}" class="btn btn-outline-danger btn-sm" type="submit"
+                                            onclick="return confirm('Удалить сообщение из очереди?');">Удалить</button>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="3" class="text-center text-secondary">Пока пусто</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div></div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card h-100"><div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                     <h5 class="mb-0">Клиенты ({{ clients|length }})</h5>
                     <button type="button" class="btn btn-outline-light btn-sm" id="toggle-all">Выбрать всех</button>
                 </div>
-                <div class="table-responsive" style="max-height: 520px; overflow: auto;">
+                <div class="input-group input-group-sm mb-2">
+                    <input class="form-control" type="search" name="q" form="marketing-filter" value="{{ query }}" placeholder="Поиск имени / телефона">
+                    <button class="btn btn-outline-light" type="submit" form="marketing-filter">Найти</button>
+                </div>
+                <div class="table-responsive" style="max-height: 420px; overflow: auto;">
                     <table class="table table-sm align-middle">
-                        <thead><tr><th></th><th>Имя</th><th>Телефон</th><th>Max</th></tr></thead>
+                        <thead>
+                        <tr>
+                            <th></th>
+                            <th>
+                                <a class="text-decoration-none" href="?q={{ query|urlencode }}&sort={% if sort == 'name' %}-name{% else %}name{% endif %}">
+                                    Имя{% if sort == 'name' %} ↑{% elif sort == '-name' %} ↓{% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a class="text-decoration-none" href="?q={{ query|urlencode }}&sort={% if sort == 'date' %}-date{% else %}date{% endif %}">
+                                    Дата{% if sort == 'date' %} ↑{% elif sort == '-date' %} ↓{% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a class="text-decoration-none" href="?q={{ query|urlencode }}&sort={% if sort == 'max' %}-max{% else %}max{% endif %}">
+                                    Max{% if sort == 'max' %} ↓{% elif sort == '-max' %} ↑{% endif %}
+                                </a>
+                            </th>
+                            <th>
+                                <a class="text-decoration-none" href="?q={{ query|urlencode }}&sort={% if sort == 'regular' %}-regular{% else %}regular{% endif %}">
+                                    Статус{% if sort == 'regular' %} ↓{% elif sort == '-regular' %} ↑{% endif %}
+                                </a>
+                            </th>
+                        </tr>
+                        </thead>
                         <tbody>
                         {% for c in clients %}
                             <tr>
                                 <td><input class="form-check-input client-check" type="checkbox" name="client_ids" value="{{ c.id }}" {% if not c.max_user_id %}disabled{% endif %}></td>
-                                <td>{{ c.name }}</td>
-                                <td>{{ c.phone }}</td>
+                                <td>{{ c.name }}<div class="small-muted">{{ c.phone }}</div></td>
+                                <td class="small">{{ c.created_at|date:"d.m.Y" }}</td>
                                 <td>{% if c.max_user_id %}<span class="badge text-bg-success">ok</span>{% else %}<span class="badge text-bg-secondary">нет</span>{% endif %}</td>
+                                <td>
+                                    {% if c.orders_count >= 3 %}
+                                        <span class="badge text-bg-success">постоянный</span>
+                                    {% else %}
+                                        <span class="badge text-bg-secondary">обычный</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                         {% empty %}
-                            <tr><td colspan="4" class="text-center text-secondary">Нет подходящих клиентов</td></tr>
+                            <tr><td colspan="5" class="text-center text-secondary">Нет подходящих клиентов</td></tr>
                         {% endfor %}
                         </tbody>
                     </table>
@@ -63,6 +129,14 @@
         </div>
     </div>
 </form>
+
+<form id="marketing-filter" method="get" class="d-none">
+    <input type="hidden" name="sort" value="{{ sort }}">
+</form>
+{% for m in recent_messages %}
+<form id="delete-msg-{{ m.id }}" method="post" action="{% url 'marketing_message_delete' m.id %}" class="d-none">{% csrf_token %}</form>
+{% endfor %}
+
 <script>
 (() => {
     const btn = document.getElementById('toggle-all');

@@ -1078,17 +1078,14 @@ def admin_panel(request: HttpRequest):
 
 @require_http_methods(["GET", "POST"])
 def marketing_sms(request: HttpRequest):
-    from workshop.models import SmsSettings, debtor_orders_queryset
+    from django.db.models import Case, Count, IntegerField, Value, When
+
+    from workshop.models import SmsKind, SmsLog, SmsSettings, debtor_orders_queryset
     from workshop.messaging import send_marketing_message
 
     cfg = SmsSettings.get_solo()
     debtor_client_ids = set(
         debtor_orders_queryset().exclude(client_id=None).values_list("client_id", flat=True)
-    )
-    clients = list(
-        Client.objects.exclude(id__in=debtor_client_ids)
-        .filter(allow_marketing_sms=True)
-        .order_by("name")
     )
 
     if request.method == "POST":
@@ -1119,6 +1116,42 @@ def marketing_sms(request: HttpRequest):
             messages.warning(request, f"Сообщения не отправлены (ошибок: {fail}). Нужен Max user_id у клиента.")
         return redirect("marketing_sms")
 
+    query = request.GET.get("q", "").strip()
+    sort = request.GET.get("sort", "name").strip()
+    allowed_sorts = {
+        "name": ("name", "id"),
+        "-name": ("-name", "id"),
+        "date": ("created_at", "id"),
+        "-date": ("-created_at", "id"),
+        "max": ("-has_max", "name", "id"),
+        "-max": ("has_max", "name", "id"),
+        "regular": ("-orders_count", "name", "id"),
+        "-regular": ("orders_count", "name", "id"),
+    }
+    order_by = allowed_sorts.get(sort, ("name", "id"))
+
+    qs = (
+        Client.objects.exclude(id__in=debtor_client_ids)
+        .filter(allow_marketing_sms=True)
+        .annotate(
+            orders_count=Count("orders"),
+            has_max=Case(
+                When(~Q(max_user_id=""), then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            ),
+        )
+    )
+    if query:
+        qs = qs.filter(Q(name__icontains=query) | Q(phone__icontains=query) | Q(comment__icontains=query))
+    clients = list(qs.order_by(*order_by))
+
+    recent_messages = list(
+        SmsLog.objects.filter(kind=SmsKind.MARKETING)
+        .select_related("client")
+        .order_by("-id")[:10]
+    )
+
     return render(
         request,
         "workshop/marketing_sms.html",
@@ -1126,8 +1159,23 @@ def marketing_sms(request: HttpRequest):
             "clients": clients,
             "cfg": cfg,
             "default_text": cfg.marketing_default_text,
+            "query": query,
+            "sort": sort,
+            "recent_messages": recent_messages,
         },
     )
+
+
+@require_POST
+def marketing_message_delete(request: HttpRequest, log_id: int):
+    from workshop.models import SmsKind, SmsLog
+
+    log = get_object_or_404(SmsLog, pk=log_id, kind=SmsKind.MARKETING)
+    details = f"#{log.id} {log.phone}"
+    log.delete()
+    log_action(request, "marketing_log_delete", entity_type="messaging", entity_id=log_id, details=details)
+    messages.success(request, "Сообщение удалено из очереди")
+    return redirect("marketing_sms")
 
 
 @csrf_exempt
