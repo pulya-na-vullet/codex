@@ -46,6 +46,52 @@
             border-color: #6d28d9;
             color: #fff;
         }
+        .navbar-nav .nav-page-btn {
+            position: relative;
+            background: transparent;
+            border: 1px solid #64748b;
+            color: #cbd5e1;
+            transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .2s ease;
+        }
+        .navbar-nav .nav-page-btn:hover {
+            background: #334155;
+            border-color: #94a3b8;
+            color: #fff;
+        }
+        .navbar-nav .nav-page-btn.is-active {
+            background: rgba(37, 99, 235, 0.28);
+            border-color: #60a5fa;
+            color: #fff;
+            animation: nav-active-in .34s ease-out;
+        }
+        .navbar-nav .nav-page-btn.is-active::after {
+            content: "";
+            position: absolute;
+            left: .55rem;
+            right: .55rem;
+            bottom: -.2rem;
+            height: 2px;
+            border-radius: 2px;
+            background: #60a5fa;
+            transform-origin: center;
+            animation: nav-active-underline 1.6s ease-in-out infinite;
+        }
+        @keyframes nav-active-in {
+            from { transform: translateY(3px); opacity: .55; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes nav-active-underline {
+            0%, 100% { opacity: .55; transform: scaleX(.86); }
+            50% { opacity: 1; transform: scaleX(1); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .navbar-nav .nav-page-btn,
+            .navbar-nav .nav-page-btn.is-active,
+            .navbar-nav .nav-page-btn.is-active::after {
+                animation: none;
+                transition: none;
+            }
+        }
         .text-bg-purple { background-color: #7c3aed !important; color: #fff !important; }
         .text-purple { color: #c4b5fd !important; }
         .text-danger { color: #f87171 !important; }
@@ -195,22 +241,23 @@
     </style>
 </head>
 <body>
+{% load workshop_extras %}
 <nav class="navbar navbar-expand-lg border-bottom mb-4">
     <div class="container-fluid">
         <a class="navbar-brand text-light fw-bold" href="{% url 'dashboard' %}">ИТ-мастерская</a>
         {% if request.session.workshop_authenticated %}
         <div class="navbar-nav flex-row gap-2 align-items-center flex-wrap">
-            <a class="btn btn-outline-light btn-sm" href="{% url 'orders' %}">Заказы</a>
-            <a class="btn btn-violet btn-sm" href="{% url 'work_queue' %}">В работе</a>
-            <a class="btn btn-outline-warning btn-sm" href="{% url 'debtors' %}">Должники</a>
-            <a class="btn btn-outline-light btn-sm" href="{% url 'marketing_sms' %}">Маркетинг</a>
-            <a class="btn btn-outline-light btn-sm" href="{% url 'clients' %}">Клиенты</a>
-            <a class="btn btn-outline-light btn-sm" href="{% url 'services' %}">Услуги</a>
-            <a class="btn btn-outline-light btn-sm" href="{% url 'acceptance_acts' %}">Акты приёма</a>
-            <a class="btn btn-outline-light btn-sm" href="{% url 'statistics' %}">Статистика</a>
-            <a class="btn btn-outline-light btn-sm" href="{% url 'audit_log' %}">Журнал</a>
-            <a class="btn btn-outline-light btn-sm" href="{% url 'admin_panel' %}">Админ</a>
-            <a class="btn btn-success btn-sm" href="{% url 'create_order' %}">Новый заказ</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'orders' %}" href="{% url 'orders' %}">Заказы</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'work_queue' %}" href="{% url 'work_queue' %}">В работе</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'debtors' %}" href="{% url 'debtors' %}">Должники</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'marketing' %}" href="{% url 'marketing_sms' %}">Маркетинг</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'clients' %}" href="{% url 'clients' %}">Клиенты</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'services' %}" href="{% url 'services' %}">Услуги</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'acceptance' %}" href="{% url 'acceptance_acts' %}">Акты приёма</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'statistics' %}" href="{% url 'statistics' %}">Статистика</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'audit' %}" href="{% url 'audit_log' %}">Журнал</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'admin' %}" href="{% url 'admin_panel' %}">Админ</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'create_order' %}" href="{% url 'create_order' %}">Новый заказ</a>
             <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}
                 <button class="btn btn-outline-warning btn-sm" type="submit">Выйти</button>
             </form>

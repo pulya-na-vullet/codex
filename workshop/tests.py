@@ -124,6 +124,24 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Задач в работе")
         self.assertContains(r, "Диагностика в работе")
         self.assertContains(r, "Нужно позвонить")
+        r = self.http.get("/work-queue")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'nav-page-btn is-active')
+        self.assertContains(r, 'href="/work-queue">В работе</a>')
+        # Активна только «В работе», не «Заказы».
+        self.assertRegex(
+            r.content.decode(),
+            r'nav-page-btn is-active" href="/work-queue">В работе</a>',
+        )
+        self.assertNotRegex(
+            r.content.decode(),
+            r'nav-page-btn is-active" href="/orders">Заказы</a>',
+        )
+        r = self.http.get("/orders")
+        self.assertRegex(
+            r.content.decode(),
+            r'nav-page-btn is-active" href="/orders">Заказы</a>',
+        )
 
     def test_delete_client_and_service(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
