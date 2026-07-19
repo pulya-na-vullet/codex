@@ -1,21 +1,24 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><title>Прайс-лист — {{ company_name }}</title>
 <style>
-body{font-family:Arial,sans-serif;margin:20px;color:#111;font-size:14px}
-h1{font-size:22px;margin:0 0 8px}
-h2{font-size:15px;margin:18px 0 6px;border-bottom:1px solid #cbd5e1;padding-bottom:4px}
-table{width:100%;border-collapse:collapse;margin-top:4px}
-th,td{border:1px solid #bbb;padding:7px 8px}
+body{font-family:Arial,sans-serif;margin:16px;color:#111;font-size:12px}
+h1{font-size:20px;margin:0 0 6px}
+h2{font-size:12px;margin:10px 0 4px;border-bottom:1px solid #cbd5e1;padding-bottom:2px}
+table{width:100%;border-collapse:collapse;margin-top:2px;table-layout:fixed}
+th,td{border:1px solid #bbb;padding:4px 6px;vertical-align:top}
 th{background:#f1f5f9;text-align:left}
-.num{text-align:right;white-space:nowrap}
-.header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:12px}
+td:first-child{word-wrap:break-word}
+.num{text-align:right;white-space:nowrap;width:72px}
+.header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:8px}
 .company{flex:1 1 auto}
-.approve{flex:0 0 260px;border:1px solid #94a3b8;border-radius:4px;padding:10px 12px;min-height:88px}
-.approve-title{font-size:12px;color:#334155;margin-bottom:18px}
-.approve-line{margin-top:14px;font-size:13px}
-.meta{margin:8px 0 14px;color:#334155}
-.footer{margin-top:28px;font-size:13px}
-@media print{.actions{display:none} body{margin:12mm}}
+.approve{flex:0 0 220px;border:1px solid #94a3b8;border-radius:4px;padding:8px 10px;min-height:72px}
+.approve-title{font-size:11px;color:#334155;margin-bottom:12px}
+.approve-line{margin-top:10px;font-size:12px}
+.meta{margin:6px 0 10px;color:#334155}
+.columns{display:flex;gap:12px;align-items:flex-start}
+.col{flex:1 1 50%;min-width:0}
+.note{margin-top:12px;font-size:11px;color:#334155}
+@media print{.actions{display:none} body{margin:8mm;font-size:11px}}
 </style></head><body>
 <div class="actions" style="margin-bottom:12px">
     <button type="button" onclick="window.print()">Печать</button>
@@ -42,25 +45,30 @@ th{background:#f1f5f9;text-align:left}
 </div>
 <hr>
 
-{% for group in groups %}
-    <h2>{{ group.category }}</h2>
-    <table>
-        <thead><tr><th>Услуга</th><th class="num">Цена, ₽</th></tr></thead>
-        <tbody>
-        {% for s in group.services %}
-            <tr>
-                <td>{{ s.name }}</td>
-                <td class="num">{{ s.price }}</td>
-            </tr>
+{% if services_count %}
+<div class="columns">
+    {% for groups in columns %}
+    <div class="col">
+        {% for group in groups %}
+            <h2>{{ group.category }}</h2>
+            <table>
+                <thead><tr><th>Услуга</th><th class="num">Цена, ₽</th></tr></thead>
+                <tbody>
+                {% for s in group.services %}
+                    <tr>
+                        <td>{{ s.name }}</td>
+                        <td class="num">{{ s.price }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
         {% endfor %}
-        </tbody>
-    </table>
-{% empty %}
-    <p>Нет активных услуг для печати.</p>
-{% endfor %}
-
-<div class="footer">
-    <p>Цены указаны в рублях. Актуальный прайс-лист на дату публикации.</p>
-    <p>Подпись ответственного: _________________ / __________________________</p>
+    </div>
+    {% endfor %}
 </div>
+{% else %}
+    <p>Нет активных услуг для печати.</p>
+{% endif %}
+
+<p class="note">Цены указаны в рублях. Актуальный прайс-лист на дату публикации.</p>
 </body></html>

@@ -335,6 +335,8 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Утверждаю")
         self.assertContains(r, "Активная услуга")
         self.assertNotContains(r, "Старая услуга")
+        self.assertNotContains(r, "Подпись ответственного")
+        self.assertContains(r, 'class="columns"')
         r = self.http.get("/")
         self.assertNotContains(r, ">Главная</a>")
 

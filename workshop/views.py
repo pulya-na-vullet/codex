@@ -633,15 +633,7 @@ def _services_status_redirect(request: HttpRequest) -> str:
     return f"/services?status={status}"
 
 
-@require_GET
-def services_print(request: HttpRequest):
-    """Печатная форма прайс-листа активных услуг."""
-    published_at = timezone.localdate()
-    services = list(
-        Service.objects.filter(is_active=True)
-        .select_related("category")
-        .order_by("category__name", "name")
-    )
+def _price_list_groups(services) -> list[dict]:
     groups: list[dict] = []
     by_label: dict[str, list] = {}
     for service in services:
@@ -650,6 +642,20 @@ def services_print(request: HttpRequest):
             by_label[label] = []
             groups.append({"category": label, "services": by_label[label]})
         by_label[label].append(service)
+    return groups
+
+
+@require_GET
+def services_print(request: HttpRequest):
+    """Печатная форма прайс-листа активных услуг (две колонки)."""
+    published_at = timezone.localdate()
+    services = list(
+        Service.objects.filter(is_active=True)
+        .select_related("category")
+        .order_by("category__name", "name")
+    )
+    mid = (len(services) + 1) // 2
+    columns = [_price_list_groups(services[:mid]), _price_list_groups(services[mid:])]
 
     log_action(
         request,
@@ -661,7 +667,7 @@ def services_print(request: HttpRequest):
         request,
         "workshop/print_services_price.html",
         {
-            "groups": groups,
+            "columns": columns,
             "services_count": len(services),
             "published_at": published_at,
             "company_name": settings.COMPANY_NAME,
