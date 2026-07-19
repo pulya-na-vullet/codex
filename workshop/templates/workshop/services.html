@@ -6,10 +6,13 @@
         <div class="card"><div class="card-body">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                 <h5 class="mb-0">Каталог услуг</h5>
-                <div class="btn-group">
-                    <a class="btn btn-sm {% if status_filter == 'all' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?status=all">Все</a>
-                    <a class="btn btn-sm {% if status_filter == 'active' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?status=active">Активные</a>
-                    <a class="btn btn-sm {% if status_filter == 'inactive' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?status=inactive">Неактивные</a>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <a class="btn btn-outline-light btn-sm" href="{% url 'services_print' %}" target="_blank">Печать прайса</a>
+                    <div class="btn-group">
+                        <a class="btn btn-sm {% if status_filter == 'all' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?status=all">Все</a>
+                        <a class="btn btn-sm {% if status_filter == 'active' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?status=active">Активные</a>
+                        <a class="btn btn-sm {% if status_filter == 'inactive' %}btn-primary{% else %}btn-outline-light{% endif %}" href="?status=inactive">Неактивные</a>
+                    </div>
                 </div>
             </div>
             <div class="table-responsive">

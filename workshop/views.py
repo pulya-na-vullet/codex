@@ -582,9 +582,9 @@ def import_clients_excel(request: HttpRequest):
 
 @require_http_methods(["GET", "POST"])
 def services(request: HttpRequest):
-    status_filter = request.GET.get("status", "all")
+    status_filter = request.GET.get("status", "active")
     if status_filter not in {"all", "active", "inactive"}:
-        status_filter = "all"
+        status_filter = "active"
 
     if request.method == "POST":
         name = request.POST.get("name", "").strip()
@@ -627,10 +627,49 @@ def services(request: HttpRequest):
 
 
 def _services_status_redirect(request: HttpRequest) -> str:
-    status = request.POST.get("status") or request.GET.get("status") or "all"
+    status = request.POST.get("status") or request.GET.get("status") or "active"
     if status not in {"all", "active", "inactive"}:
-        status = "all"
+        status = "active"
     return f"/services?status={status}"
+
+
+@require_GET
+def services_print(request: HttpRequest):
+    """Печатная форма прайс-листа активных услуг."""
+    published_at = timezone.localdate()
+    services = list(
+        Service.objects.filter(is_active=True)
+        .select_related("category")
+        .order_by("category__name", "name")
+    )
+    groups: list[dict] = []
+    by_label: dict[str, list] = {}
+    for service in services:
+        label = service.category.path_label if service.category_id else "Основные"
+        if label not in by_label:
+            by_label[label] = []
+            groups.append({"category": label, "services": by_label[label]})
+        by_label[label].append(service)
+
+    log_action(
+        request,
+        "services_price_list_print",
+        entity_type="service",
+        details=f"items={len(services)} date={published_at.isoformat()}",
+    )
+    return render(
+        request,
+        "workshop/print_services_price.html",
+        {
+            "groups": groups,
+            "services_count": len(services),
+            "published_at": published_at,
+            "company_name": settings.COMPANY_NAME,
+            "company_phone": settings.COMPANY_PHONE,
+            "quality_phone": settings.QUALITY_PHONE,
+            "company_address": settings.COMPANY_ADDRESS,
+        },
+    )
 
 
 @require_POST

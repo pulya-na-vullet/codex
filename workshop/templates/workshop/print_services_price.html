@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Прайс-лист — {{ company_name }}</title>
+<style>
+body{font-family:Arial,sans-serif;margin:20px;color:#111;font-size:14px}
+h1{font-size:22px;margin:0 0 8px}
+h2{font-size:15px;margin:18px 0 6px;border-bottom:1px solid #cbd5e1;padding-bottom:4px}
+table{width:100%;border-collapse:collapse;margin-top:4px}
+th,td{border:1px solid #bbb;padding:7px 8px}
+th{background:#f1f5f9;text-align:left}
+.num{text-align:right;white-space:nowrap}
+.header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:12px}
+.company{flex:1 1 auto}
+.approve{flex:0 0 260px;border:1px solid #94a3b8;border-radius:4px;padding:10px 12px;min-height:88px}
+.approve-title{font-size:12px;color:#334155;margin-bottom:18px}
+.approve-line{margin-top:14px;font-size:13px}
+.meta{margin:8px 0 14px;color:#334155}
+.footer{margin-top:28px;font-size:13px}
+@media print{.actions{display:none} body{margin:12mm}}
+</style></head><body>
+<div class="actions" style="margin-bottom:12px">
+    <button type="button" onclick="window.print()">Печать</button>
+    <button type="button" onclick="history.back()">Назад</button>
+</div>
+
+<div class="header">
+    <div class="company">
+        <h1>Прайс-лист</h1>
+        <div><strong>{{ company_name }}</strong>, тел.: {{ company_phone }}</div>
+        <div>Контроль качества: {{ quality_phone }}</div>
+        <div>Адрес: {{ company_address }}</div>
+    </div>
+    <div class="approve">
+        <div class="approve-title">Утверждаю</div>
+        <div class="approve-line">Подпись: _________________</div>
+        <div class="approve-line">Ф.И.О.: ___________________</div>
+    </div>
+</div>
+
+<div class="meta">
+    <strong>Дата публикации прайс-листа:</strong> {{ published_at|date:"d.m.Y" }}
+    <span style="margin-left:12px">Активных услуг: {{ services_count }}</span>
+</div>
+<hr>
+
+{% for group in groups %}
+    <h2>{{ group.category }}</h2>
+    <table>
+        <thead><tr><th>Услуга</th><th class="num">Цена, ₽</th></tr></thead>
+        <tbody>
+        {% for s in group.services %}
+            <tr>
+                <td>{{ s.name }}</td>
+                <td class="num">{{ s.price }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% empty %}
+    <p>Нет активных услуг для печати.</p>
+{% endfor %}
+
+<div class="footer">
+    <p>Цены указаны в рублях. Актуальный прайс-лист на дату публикации.</p>
+    <p>Подпись ответственного: _________________ / __________________________</p>
+</div>
+</body></html>

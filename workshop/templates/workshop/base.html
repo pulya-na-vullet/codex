@@ -187,7 +187,6 @@
         <a class="navbar-brand text-light fw-bold" href="{% url 'dashboard' %}">ИТ-мастерская</a>
         {% if request.session.workshop_authenticated %}
         <div class="navbar-nav flex-row gap-2 align-items-center flex-wrap">
-            <a class="btn btn-outline-light btn-sm" href="{% url 'dashboard' %}">Главная</a>
             <a class="btn btn-outline-light btn-sm" href="{% url 'orders' %}">Заказы</a>
             <a class="btn btn-violet btn-sm" href="{% url 'work_queue' %}">В работе</a>
             <a class="btn btn-outline-warning btn-sm" href="{% url 'debtors' %}">Должники</a>

@@ -65,7 +65,6 @@
         <a class="navbar-brand text-light fw-bold" href="{{ url_for('dashboard') }}">ИТ-мастерская</a>
         {% if session.get('authenticated') %}
         <div class="navbar-nav flex-row gap-2 align-items-center">
-            <a class="btn btn-outline-light btn-sm" href="{{ url_for('dashboard') }}">Главная</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('orders') }}">Заказы</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('clients') }}">Клиенты</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('services') }}">Услуги</a>

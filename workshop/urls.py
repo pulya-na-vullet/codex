@@ -13,6 +13,7 @@ urlpatterns = [
     path("clients/export.xlsx", views.export_clients_excel, name="export_clients_excel"),
     path("clients/import", views.import_clients_excel, name="import_clients_excel"),
     path("services", views.services, name="services"),
+    path("services/print", views.services_print, name="services_print"),
     path("services/<int:service_id>/toggle-active", views.service_toggle_active, name="service_toggle_active"),
     path("services/<int:service_id>/delete", views.service_delete, name="service_delete"),
     path("orders", views.orders_list, name="orders"),
