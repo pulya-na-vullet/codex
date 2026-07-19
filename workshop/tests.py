@@ -490,6 +490,9 @@ class AuthAndPagesTests(TestCase):
         self.assertTrue(SmsLog.objects.filter(kind="debt", success=True).exists())
         r = self.http.get("/marketing")
         self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Очередь последних рассылок")
+        # По умолчанию сортировка по Max (с Max сверху).
+        self.assertContains(r, "Max ↓")
         other = Client.objects.create(
             name="Маркет",
             phone="+79997654321",

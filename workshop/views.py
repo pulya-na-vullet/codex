@@ -1128,7 +1128,7 @@ def marketing_sms(request: HttpRequest):
         return redirect("marketing_sms")
 
     query = request.GET.get("q", "").strip()
-    sort = request.GET.get("sort", "name").strip()
+    sort = request.GET.get("sort", "max").strip() or "max"
     allowed_sorts = {
         "name": ("name", "id"),
         "-name": ("-name", "id"),
@@ -1139,7 +1139,7 @@ def marketing_sms(request: HttpRequest):
         "regular": ("-orders_count", "name", "id"),
         "-regular": ("orders_count", "name", "id"),
     }
-    order_by = allowed_sorts.get(sort, ("name", "id"))
+    order_by = allowed_sorts.get(sort, allowed_sorts["max"])
 
     qs = (
         Client.objects.exclude(id__in=debtor_client_ids)
