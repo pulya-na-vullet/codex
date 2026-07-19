@@ -97,7 +97,8 @@
                 </div>
                 <div class="small mt-1">Сейчас на сервере (МСК): <strong>{{ ai_scheduler.server_now_msk }}</strong></div>
                 <div class="small">Расписание: <strong>{{ ai_scheduler.schedule }}</strong> МСК
-                    {% if ai_scheduler.due_now %} · <span class="text-warning">есть неотправленный отчёт за сегодня</span>{% endif %}
+                    {% if ai_scheduler.due_now %} · <span class="text-warning">ждёт автоотправки</span>{% endif %}
+                    {% if ai_scheduler.scheduled_sent_today %} · автоотчёт за сегодня уже ушёл{% endif %}
                 </div>
             </div>
             <form method="post" class="vstack gap-3">{% csrf_token %}
@@ -134,21 +135,34 @@
                 <div style="max-width: 220px;">
                     <label class="form-label">Время отправки (МСК)</label>
                     <input class="form-control" type="time" name="report_time_msk" value="{{ report_time_msk }}" required>
-                    <div class="small-muted mt-1">Сейчас: {{ report_time_msk }} МСК</div>
+                    <div class="small-muted mt-1">Расписание: {{ report_time_msk }} МСК</div>
                 </div>
                 <button class="btn btn-success" type="submit">Сохранить Яндекс ИИ</button>
             </form>
-            <form method="post" class="mt-3">{% csrf_token %}
-                <input type="hidden" name="section" value="ai_report_now">
-                <button class="btn btn-outline-warning btn-sm" type="submit"
-                        onclick="return confirm('Сформировать отчёт за сегодня и отправить админу в Max?');">
-                    Отправить отчёт сейчас
-                </button>
-            </form>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <form method="post">{% csrf_token %}
+                    <input type="hidden" name="section" value="ai_report_now">
+                    <button class="btn btn-outline-warning btn-sm" type="submit"
+                            onclick="return confirm('Отправить тестовый отчёт сейчас? Расписание на сегодня не блокируется.');">
+                        Отправить отчёт сейчас
+                    </button>
+                </form>
+                <form method="post">{% csrf_token %}
+                    <input type="hidden" name="section" value="ai_report_reset_today">
+                    <button class="btn btn-outline-light btn-sm" type="submit"
+                            onclick="return confirm('Снять отметку «уже отправлено сегодня» и разрешить автоотправку ещё раз?');">
+                        Разрешить автоотправку сегодня ещё раз
+                    </button>
+                </form>
+            </div>
             {% if ai_cfg.last_report_at %}
                 <div class="small-muted mt-3">
-                    Последний отчёт: {{ ai_cfg.last_report_at|date:"d.m.Y H:i" }}
-                    {% if ai_cfg.last_report_date %} (день {{ ai_cfg.last_report_date|date:"d.m.Y" }}){% endif %}
+                    Последняя отправка: {{ ai_cfg.last_report_at|date:"d.m.Y H:i" }}
+                    {% if ai_cfg.last_report_date %}
+                        · автоотчёт за день {{ ai_cfg.last_report_date|date:"d.m.Y" }} учтён
+                    {% else %}
+                        · это была тестовая/ручная отправка (расписание не блокирует)
+                    {% endif %}
                 </div>
             {% endif %}
             {% if ai_cfg.last_report_error %}

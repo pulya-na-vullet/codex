@@ -1043,10 +1043,12 @@ def admin_panel(request: HttpRequest):
     from workshop.models import SmsLog, SmsProvider, SmsSettings, YandexAiSettings
     from workshop.messaging import start_max_long_poll_worker
     from workshop.yandex_ai import (
+        clear_today_scheduled_mark,
+        now_msk,
         restart_ai_report_scheduler,
         run_daily_ai_report,
         scheduler_status,
-        start_ai_report_scheduler,
+        should_send_daily_report,
     )
 
     cfg = SmsSettings.get_solo()
@@ -1063,12 +1065,34 @@ def admin_panel(request: HttpRequest):
                 details=f"ok={result.get('ok')} source={result.get('source')} {result.get('detail')}",
             )
             if result.get("ok"):
-                messages.success(request, f"AI-отчёт отправлен ({result.get('source')})")
+                messages.success(
+                    request,
+                    f"Тестовый AI-отчёт отправлен ({result.get('source')}). "
+                    "Расписание на сегодня не блокируется.",
+                )
             else:
                 messages.warning(request, f"AI-отчёт не отправлен: {result.get('detail')}")
             return redirect("admin_panel")
 
+        if section == "ai_report_reset_today":
+            cleared = clear_today_scheduled_mark()
+            restart_ai_report_scheduler()
+            log_action(request, "ai_report_reset_today", entity_type="ai", details=f"cleared={cleared}")
+            if cleared:
+                messages.success(request, "Отметка «уже отправлено сегодня» снята — автоотправка снова возможна.")
+            else:
+                messages.info(request, "Отметки за сегодня не было.")
+            if should_send_daily_report(YandexAiSettings.get_solo()):
+                result = run_daily_ai_report(force=False)
+                if result.get("ok"):
+                    messages.success(request, "Время уже наступило — отчёт по расписанию отправлен.")
+                elif result.get("detail"):
+                    messages.warning(request, f"Автоотправка не удалась: {result.get('detail')}")
+            return redirect("admin_panel")
+
         if section == "ai":
+            old_hour = int(ai_cfg.report_hour_msk or 20)
+            old_minute = int(ai_cfg.report_minute_msk or 0)
             ai_cfg.enabled = request.POST.get("ai_enabled") == "1"
             ai_cfg.api_key = request.POST.get("api_key", "").strip()
             ai_cfg.folder_id = request.POST.get("folder_id", "").strip()
@@ -1095,11 +1119,13 @@ def admin_panel(request: HttpRequest):
                     minute = 0
             ai_cfg.report_hour_msk = max(0, min(23, hour))
             ai_cfg.report_minute_msk = max(0, min(59, minute))
+            schedule_changed = (ai_cfg.report_hour_msk, ai_cfg.report_minute_msk) != (old_hour, old_minute)
+            # Changing today's schedule re-arms auto-send (manual tests / new time).
+            if schedule_changed and ai_cfg.last_report_date == now_msk().date():
+                ai_cfg.last_report_date = None
             ai_cfg.save()
             restart_ai_report_scheduler()
             due_result = None
-            from workshop.yandex_ai import should_send_daily_report
-
             if should_send_daily_report(ai_cfg):
                 due_result = run_daily_ai_report(force=False)
             log_action(
@@ -1115,6 +1141,8 @@ def admin_panel(request: HttpRequest):
                 f"Настройки Яндекс ИИ сохранены. Отправка в "
                 f"{ai_cfg.report_hour_msk:02d}:{ai_cfg.report_minute_msk:02d} МСК."
             )
+            if schedule_changed:
+                msg += " Расписание изменено — автоотправка за сегодня снова разрешена."
             if due_result is not None:
                 if due_result.get("ok"):
                     messages.success(request, msg + " Время уже наступило — отчёт отправлен сейчас.")

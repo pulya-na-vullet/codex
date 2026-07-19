@@ -508,6 +508,7 @@ class AuthAndPagesTests(TestCase):
             build_fallback_report,
             collect_day_facts,
             generate_day_report,
+            run_daily_ai_report,
             should_send_daily_report,
         )
 
@@ -561,8 +562,14 @@ class AuthAndPagesTests(TestCase):
         self.assertTrue(result.get("ok"))
         ai.refresh_from_db()
         self.assertIsNotNone(ai.last_report_date)
+        # Ручная кнопка не должна блокировать расписание на день.
         ai.last_report_date = None
         ai.save(update_fields=["last_report_date"])
+        with patch("workshop.yandex_ai.send_report_to_admin", return_value=(True, "sent")):
+            manual = run_daily_ai_report(force=True)
+        self.assertTrue(manual.get("ok"))
+        ai.refresh_from_db()
+        self.assertIsNone(ai.last_report_date)
         r = self.http.post(f"/debtors/{order.id}/sms")
         self.assertEqual(r.status_code, 302)
         self.assertTrue(SmsLog.objects.filter(kind="debt", success=True).exists())

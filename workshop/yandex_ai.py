@@ -322,6 +322,12 @@ def should_send_daily_report(cfg, now: datetime | None = None) -> bool:
 
 
 def run_daily_ai_report(*, day=None, force: bool = False) -> dict[str, Any]:
+    """Generate and send the daily report.
+
+    ``force=True`` is for the manual admin button (test send): it bypasses
+    enabled/already-sent checks and does **not** mark the day as handled by
+    the scheduler, so the regular schedule can still fire later.
+    """
     cfg = get_or_create_ai_settings()
     if not cfg.enabled and not force:
         return {"ok": False, "detail": "Yandex AI отчёт отключён"}
@@ -330,14 +336,15 @@ def run_daily_ai_report(*, day=None, force: bool = False) -> dict[str, Any]:
         day = now_msk().date()
 
     if not force and cfg.last_report_date == day:
-        return {"ok": False, "detail": f"Отчёт за {day} уже отправлялся"}
+        return {"ok": False, "detail": f"Отчёт за {day} уже отправлялся по расписанию"}
 
     report, source = generate_day_report(day, use_ai=True)
     ok, detail = send_report_to_admin(report)
     cfg.last_report_text = report[:4000]
     cfg.last_report_error = "" if ok else (detail or "")[:1000]
     cfg.last_report_at = timezone.now()
-    if ok:
+    # Only scheduled/catch-up sends mark the day — manual tests must not block them.
+    if ok and not force:
         cfg.last_report_date = day
     cfg.save(
         update_fields=[
@@ -348,7 +355,14 @@ def run_daily_ai_report(*, day=None, force: bool = False) -> dict[str, Any]:
             "updated_at",
         ]
     )
-    return {"ok": ok, "detail": detail, "source": source, "report": report, "day": day.isoformat()}
+    return {
+        "ok": ok,
+        "detail": detail,
+        "source": source,
+        "report": report,
+        "day": day.isoformat(),
+        "manual": bool(force),
+    }
 
 
 _due_check_lock = threading.Lock()
@@ -470,17 +484,30 @@ def restart_ai_report_scheduler() -> None:
     start_ai_report_scheduler()
 
 
+def clear_today_scheduled_mark() -> bool:
+    """Allow the scheduler to send again today (after a test or schedule change)."""
+    cfg = get_or_create_ai_settings()
+    today = now_msk().date()
+    if cfg.last_report_date != today:
+        return False
+    cfg.last_report_date = None
+    cfg.save(update_fields=["last_report_date", "updated_at"])
+    return True
+
+
 def scheduler_status() -> dict[str, Any]:
     cfg = get_or_create_ai_settings()
     hour, minute = report_schedule_parts(cfg)
     current = now_msk()
     due = should_send_daily_report(cfg, current)
+    scheduled_sent_today = cfg.last_report_date == current.date()
     return {
         "enabled": bool(cfg.enabled),
         "running": is_ai_report_scheduler_running(),
         "server_now_msk": current.strftime("%d.%m.%Y %H:%M:%S"),
         "schedule": f"{hour:02d}:{minute:02d}",
         "due_now": due,
+        "scheduled_sent_today": scheduled_sent_today,
         "last_report_date": cfg.last_report_date.isoformat() if cfg.last_report_date else "",
         "last_report_error": (cfg.last_report_error or "")[:300],
         "setting_enabled": getattr(settings, "YANDEX_AI_SCHEDULER", True),
