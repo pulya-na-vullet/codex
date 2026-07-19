@@ -43,17 +43,16 @@
                 <div class="small-muted mb-2">Последние 10 маркетинговых сообщений</div>
                 <div class="table-responsive" style="max-height: 420px; overflow: auto;">
                     <table class="table table-sm align-middle mb-0">
-                        <thead><tr><th>Когда</th><th>Кому</th><th></th></tr></thead>
+                        <thead><tr><th style="width: 4.5rem;">Когда</th><th>Сообщение</th><th style="width: 5.5rem;"></th></tr></thead>
                         <tbody>
                         {% for m in recent_messages %}
                             <tr>
-                                <td class="small">{{ m.created_at|date:"d.m H:i" }}</td>
+                                <td class="small align-top">{{ m.created_at|date:"d.m H:i" }}</td>
                                 <td class="small">
-                                    {% if m.client %}{{ m.client.name }}{% else %}{{ m.phone }}{% endif %}
-                                    <div class="small-muted text-truncate" style="max-width: 160px;" title="{{ m.text }}">{{ m.text }}</div>
-                                    {% if m.success %}<span class="badge text-bg-success">ok</span>{% else %}<span class="badge text-bg-danger">err</span>{% endif %}
+                                    <div class="fw-semibold">{% if m.client %}{{ m.client.name }}{% else %}{{ m.phone }}{% endif %}</div>
+                                    <div class="marketing-msg-text" title="{{ m.text }}">{{ m.text }}</div>
                                 </td>
-                                <td class="text-end">
+                                <td class="text-end align-top">
                                     <button form="delete-msg-{{ m.id }}" class="btn btn-outline-danger btn-sm" type="submit"
                                             onclick="return confirm('Удалить сообщение из очереди?');">Удалить</button>
                                 </td>
