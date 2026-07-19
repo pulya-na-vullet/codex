@@ -107,6 +107,18 @@
             line-height: 1.35;
             max-width: 100%;
         }
+        .dropdown { position: relative; }
+        .dropdown-menu {
+            display: none;
+            position: absolute;
+            left: 0;
+            top: calc(100% + .35rem);
+            z-index: 30;
+            background: #fff;
+            border: 1px solid #cbd5e1;
+            border-radius: .5rem;
+        }
+        .dropdown-menu.show { display: block; }
         .text-secondary, .small-muted { color: var(--text-soft) !important; }
         .form-control, .form-select, textarea.form-control {
             background: #0b1220; color: var(--text-main); border: 1px solid var(--border);

@@ -1178,6 +1178,36 @@ def marketing_message_delete(request: HttpRequest, log_id: int):
     return redirect("marketing_sms")
 
 
+@require_GET
+def max_bot_qr(request: HttpRequest):
+    """PNG QR-код со ссылкой на бота Max из настроек."""
+    from io import BytesIO
+
+    from workshop.models import SmsSettings
+
+    try:
+        import qrcode
+    except ImportError:
+        return HttpResponse("Установите qrcode: pip install qrcode", status=500, content_type="text/plain")
+
+    cfg = SmsSettings.get_solo()
+    link = (cfg.bot_link or "").strip()
+    if not link and cfg.bot_username:
+        link = f"https://max.ru/{cfg.bot_username.lstrip('@')}"
+    if not link:
+        return HttpResponse("Ссылка на бота не задана", status=404, content_type="text/plain")
+
+    qr = qrcode.QRCode(version=None, box_size=8, border=2)
+    qr.add_data(link)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    response = HttpResponse(buf.getvalue(), content_type="image/png")
+    response["Cache-Control"] = "no-store"
+    return response
+
+
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def max_webhook(request: HttpRequest):

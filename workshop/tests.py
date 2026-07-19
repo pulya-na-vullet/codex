@@ -442,6 +442,7 @@ class AuthAndPagesTests(TestCase):
         cfg.enabled = True
         cfg.marketing_enabled = True
         cfg.provider = "log"
+        cfg.bot_link = "https://max.ru/se13602985_bot"
         cfg.save()
         client = Client.objects.create(name="Max Клиент", phone="+79991234567", max_user_id="12345")
         order = Order.objects.create(
@@ -502,7 +503,11 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Очередь последних рассылок")
         self.assertContains(r, "Маркет")
-        self.assertContains(r, "Поиск")
+        self.assertContains(r, "QR-код")
+        r = self.http.get("/marketing/bot-qr.png")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "image/png")
+        self.assertTrue(r.content[:8] == b"\x89PNG\r\n\x1a\n")
         log = SmsLog.objects.filter(kind="marketing").first()
         r = self.http.post(f"/marketing/messages/{log.id}/delete")
         self.assertEqual(r.status_code, 302)

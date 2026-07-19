@@ -19,7 +19,17 @@
 {% endif %}
 
 {% if cfg.bot_link %}
-<div class="alert alert-primary py-2">Клиенты без Max: пусть напишут боту <a href="{{ cfg.bot_link }}" target="_blank">{{ cfg.bot_link }}</a> и пришлют свой телефон.</div>
+<div class="alert alert-primary py-2 d-flex flex-wrap align-items-center gap-2 mb-3">
+    <span>Клиенты без Max: пусть напишут боту <a href="{{ cfg.bot_link }}" target="_blank">{{ cfg.bot_link }}</a> и пришлют свой телефон.</span>
+    <div class="dropdown d-inline-block">
+        <button class="btn btn-sm btn-light" type="button" id="max-bot-qr-btn" aria-expanded="false">QR-код</button>
+        <div class="dropdown-menu p-3 text-center shadow" id="max-bot-qr-menu" style="min-width: 240px;">
+            <div class="small text-dark mb-2">Сканируйте в Max</div>
+            <img src="{% url 'max_bot_qr' %}" alt="QR-код бота Max" width="200" height="200" class="img-fluid rounded bg-white p-1">
+            <div class="small text-muted mt-2 text-break">{{ cfg.bot_link }}</div>
+        </div>
+    </div>
+</div>
 {% endif %}
 
 <form method="post" id="marketing-send-form">{% csrf_token %}
@@ -139,13 +149,31 @@
 <script>
 (() => {
     const btn = document.getElementById('toggle-all');
-    if (!btn) return;
-    let all = false;
-    btn.addEventListener('click', () => {
-        all = !all;
-        document.querySelectorAll('.client-check:not(:disabled)').forEach((el) => { el.checked = all; });
-        btn.textContent = all ? 'Снять всех' : 'Выбрать всех';
-    });
+    if (btn) {
+        let all = false;
+        btn.addEventListener('click', () => {
+            all = !all;
+            document.querySelectorAll('.client-check:not(:disabled)').forEach((el) => { el.checked = all; });
+            btn.textContent = all ? 'Снять всех' : 'Выбрать всех';
+        });
+    }
+
+    const qrBtn = document.getElementById('max-bot-qr-btn');
+    const qrMenu = document.getElementById('max-bot-qr-menu');
+    if (qrBtn && qrMenu) {
+        qrBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const open = qrMenu.classList.toggle('show');
+            qrBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        document.addEventListener('click', (e) => {
+            if (!qrMenu.classList.contains('show')) return;
+            if (qrMenu.contains(e.target) || qrBtn.contains(e.target)) return;
+            qrMenu.classList.remove('show');
+            qrBtn.setAttribute('aria-expanded', 'false');
+        });
+    }
 })();
 </script>
 {% endblock %}
