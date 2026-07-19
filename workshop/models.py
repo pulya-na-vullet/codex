@@ -712,6 +712,22 @@ class SmsKind(models.TextChoices):
     SYSTEM = "system", "Системное"
 
 
+class MarketingBlast(models.Model):
+    """Одна масс-рассылка маркетинга (может включать несколько SmsLog)."""
+
+    created_at = models.DateTimeField("Когда", default=timezone.now, db_index=True)
+    template_text = models.TextField("Текст шаблона")
+    username = models.CharField("Кто отправил", max_length=64, blank=True, default="")
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "Маркетинговая рассылка"
+        verbose_name_plural = "Маркетинговые рассылки"
+
+    def __str__(self) -> str:
+        return f"#{self.id} {self.created_at:%d.%m.%Y %H:%M}"
+
+
 class SmsLog(models.Model):
     created_at = models.DateTimeField("Когда", default=timezone.now, db_index=True)
     kind = models.CharField("Тип", max_length=20, choices=SmsKind.choices, default=SmsKind.DEBT)
@@ -735,6 +751,14 @@ class SmsLog(models.Model):
         on_delete=models.SET_NULL,
         related_name="sms_logs",
         verbose_name="Заказ",
+    )
+    blast = models.ForeignKey(
+        MarketingBlast,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="logs",
+        verbose_name="Рассылка",
     )
     username = models.CharField("Кто отправил", max_length=64, blank=True, default="")
 

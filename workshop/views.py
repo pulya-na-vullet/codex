@@ -1078,9 +1078,9 @@ def admin_panel(request: HttpRequest):
 
 @require_http_methods(["GET", "POST"])
 def marketing_sms(request: HttpRequest):
-    from django.db.models import Case, Count, IntegerField, Value, When
+    from django.db.models import Case, Count, IntegerField, Prefetch, Value, When
 
-    from workshop.models import SmsKind, SmsLog, SmsSettings, debtor_orders_queryset
+    from workshop.models import MarketingBlast, SmsKind, SmsLog, SmsSettings, debtor_orders_queryset
     from workshop.messaging import send_marketing_message
 
     cfg = SmsSettings.get_solo()
@@ -1098,18 +1098,29 @@ def marketing_sms(request: HttpRequest):
         if not selected:
             messages.warning(request, "Выберите хотя бы одного клиента")
             return redirect("marketing_sms")
+        blast = MarketingBlast.objects.create(template_text=text, username=username)
         ok = fail = 0
         for cid in selected:
             client = Client.objects.filter(pk=cid).first()
             if not client:
                 fail += 1
                 continue
-            result = send_marketing_message(client, text, username=username)
+            result = send_marketing_message(client, text, username=username, blast=blast)
             if result.success:
                 ok += 1
             else:
                 fail += 1
-        log_action(request, "max_marketing_bulk", entity_type="messaging", details=f"ok={ok} fail={fail}")
+        blast_id = blast.id
+        if not blast.logs.exists():
+            blast.delete()
+            blast_id = None
+        log_action(
+            request,
+            "max_marketing_bulk",
+            entity_type="messaging",
+            entity_id=blast_id,
+            details=f"blast={blast_id or '-'} ok={ok} fail={fail}",
+        )
         if ok:
             messages.success(request, f"Маркетинг Max: отправлено {ok}, ошибок {fail}")
         else:
@@ -1146,9 +1157,19 @@ def marketing_sms(request: HttpRequest):
         qs = qs.filter(Q(name__icontains=query) | Q(phone__icontains=query) | Q(comment__icontains=query))
     clients = list(qs.order_by(*order_by))
 
-    recent_messages = list(
-        SmsLog.objects.filter(kind=SmsKind.MARKETING)
-        .select_related("client")
+    recent_blasts = list(
+        MarketingBlast.objects.annotate(
+            recipients_count=Count("logs"),
+            success_count=Count("logs", filter=Q(logs__success=True)),
+        )
+        .prefetch_related(
+            Prefetch(
+                "logs",
+                queryset=SmsLog.objects.filter(kind=SmsKind.MARKETING)
+                .select_related("client")
+                .order_by("id"),
+            )
+        )
         .order_by("-id")[:10]
     )
 
@@ -1161,20 +1182,40 @@ def marketing_sms(request: HttpRequest):
             "default_text": cfg.marketing_default_text,
             "query": query,
             "sort": sort,
-            "recent_messages": recent_messages,
+            "recent_blasts": recent_blasts,
         },
     )
 
 
 @require_POST
+def marketing_blast_delete(request: HttpRequest, blast_id: int):
+    from workshop.models import MarketingBlast
+
+    blast = get_object_or_404(MarketingBlast, pk=blast_id)
+    details = f"#{blast.id} recipients={blast.logs.count()}"
+    blast.delete()
+    log_action(request, "marketing_blast_delete", entity_type="messaging", entity_id=blast_id, details=details)
+    messages.success(request, "Рассылка удалена из очереди")
+    return redirect("marketing_sms")
+
+
+@require_POST
 def marketing_message_delete(request: HttpRequest, log_id: int):
+    """Совместимость: удаление одиночного лога или всей рассылки, если лог к ней привязан."""
     from workshop.models import SmsKind, SmsLog
 
     log = get_object_or_404(SmsLog, pk=log_id, kind=SmsKind.MARKETING)
-    details = f"#{log.id} {log.phone}"
-    log.delete()
-    log_action(request, "marketing_log_delete", entity_type="messaging", entity_id=log_id, details=details)
-    messages.success(request, "Сообщение удалено из очереди")
+    if log.blast_id:
+        blast = log.blast
+        details = f"blast=#{blast.id} via log=#{log.id}"
+        blast.delete()
+        log_action(request, "marketing_blast_delete", entity_type="messaging", entity_id=blast.id, details=details)
+        messages.success(request, "Рассылка удалена из очереди")
+    else:
+        details = f"#{log.id} {log.phone}"
+        log.delete()
+        log_action(request, "marketing_log_delete", entity_type="messaging", entity_id=log_id, details=details)
+        messages.success(request, "Сообщение удалено из очереди")
     return redirect("marketing_sms")
 
 

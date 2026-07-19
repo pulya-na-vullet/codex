@@ -14,7 +14,7 @@ from typing import Any
 
 from django.conf import settings
 
-from workshop.models import Client, Order, SmsKind, SmsLog, SmsProvider, SmsSettings
+from workshop.models import Client, MarketingBlast, Order, SmsKind, SmsLog, SmsProvider, SmsSettings
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +205,7 @@ def _log(
     client: Client | None = None,
     order: Order | None = None,
     username: str = "",
+    blast: MarketingBlast | None = None,
 ) -> None:
     SmsLog.objects.create(
         kind=kind,
@@ -216,6 +217,7 @@ def _log(
         client=client,
         order=order,
         username=username,
+        blast=blast,
     )
 
 
@@ -228,6 +230,7 @@ def send_message(
     order: Order | None = None,
     username: str = "",
     force: bool = False,
+    blast: MarketingBlast | None = None,
 ) -> MessageResult:
     cfg = SmsSettings.get_solo()
     normalized = _digits_phone(phone)
@@ -245,6 +248,7 @@ def send_message(
             client=client,
             order=order,
             username=username,
+            blast=blast,
         )
         return result
 
@@ -260,6 +264,7 @@ def send_message(
             client=client,
             order=order,
             username=username,
+            blast=blast,
         )
         return result
 
@@ -275,6 +280,7 @@ def send_message(
             client=client,
             order=order,
             username=username,
+            blast=blast,
         )
         return result
 
@@ -294,6 +300,7 @@ def send_message(
             client=client,
             order=order,
             username=username,
+            blast=blast,
         )
         return result
 
@@ -311,6 +318,7 @@ def send_message(
             client=client,
             order=order,
             username=username,
+            blast=blast,
         )
         return result
 
@@ -330,6 +338,7 @@ def send_message(
             client=client,
             order=order,
             username=username,
+            blast=blast,
         )
         return result
 
@@ -358,6 +367,7 @@ def send_message(
         client=client,
         order=order,
         username=username,
+        blast=blast,
     )
     return result
 
@@ -379,7 +389,13 @@ def send_debt_message_for_order(order: Order, *, username: str = "") -> MessageR
     )
 
 
-def send_marketing_message(client: Client, text: str, *, username: str = "") -> MessageResult:
+def send_marketing_message(
+    client: Client,
+    text: str,
+    *,
+    username: str = "",
+    blast: MarketingBlast | None = None,
+) -> MessageResult:
     if not client.allow_marketing_sms:
         return MessageResult(success=False, response="Клиент отключил маркетинговые сообщения")
     cfg = SmsSettings.get_solo()
@@ -390,6 +406,7 @@ def send_marketing_message(client: Client, text: str, *, username: str = "") -> 
         kind=SmsKind.MARKETING,
         client=client,
         username=username,
+        blast=blast,
     )
 
 

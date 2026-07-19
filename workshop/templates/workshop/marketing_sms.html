@@ -53,18 +53,48 @@
                 <div class="small-muted mb-2">Последние 10 маркетинговых сообщений</div>
                 <div class="table-responsive" style="max-height: 420px; overflow: auto;">
                     <table class="table table-sm align-middle mb-0">
-                        <thead><tr><th style="width: 4.5rem;">Когда</th><th>Сообщение</th><th style="width: 5.5rem;"></th></tr></thead>
+                        <thead><tr><th style="width: 4.5rem;">Когда</th><th>Сообщение</th><th style="width: 7.5rem;"></th></tr></thead>
                         <tbody>
-                        {% for m in recent_messages %}
+                        {% for b in recent_blasts %}
                             <tr>
-                                <td class="small align-top">{{ m.created_at|date:"d.m H:i" }}</td>
+                                <td class="small align-top">{{ b.created_at|date:"d.m H:i" }}</td>
                                 <td class="small">
-                                    <div class="fw-semibold">{% if m.client %}{{ m.client.name }}{% else %}{{ m.phone }}{% endif %}</div>
-                                    <div class="marketing-msg-text" title="{{ m.text }}">{{ m.text }}</div>
+                                    <div class="fw-semibold">Масс-рассылка · клиентов: {{ b.recipients_count }}</div>
+                                    <div class="marketing-msg-text" title="{{ b.template_text }}">{{ b.template_text }}</div>
+                                    <div class="d-flex flex-wrap gap-1 mt-2">
+                                        <button type="button" class="btn btn-outline-light btn-sm marketing-pop-btn"
+                                                data-pop="blast-text-{{ b.id }}">Текст</button>
+                                        <button type="button" class="btn btn-outline-light btn-sm marketing-pop-btn"
+                                                data-pop="blast-who-{{ b.id }}">Кому</button>
+                                    </div>
+                                    <div class="marketing-pop" id="blast-text-{{ b.id }}" hidden>
+                                        <div class="marketing-pop-title">Текст рассылки</div>
+                                        <div class="small-muted mb-2">Отправлено клиентам: <strong class="text-light">{{ b.success_count }}</strong> из {{ b.recipients_count }}</div>
+                                        <div class="marketing-pop-body">{{ b.template_text }}</div>
+                                    </div>
+                                    <div class="marketing-pop" id="blast-who-{{ b.id }}" hidden>
+                                        <div class="marketing-pop-title">Кому отправлено</div>
+                                        <div class="small-muted mb-2">Всего: {{ b.recipients_count }}</div>
+                                        <ul class="marketing-pop-list mb-0">
+                                            {% for log in b.logs.all %}
+                                                <li>
+                                                    <span class="fw-semibold">{% if log.client %}{{ log.client.name }}{% else %}{{ log.phone }}{% endif %}</span>
+                                                    <span class="small-muted"> · {{ log.phone }}</span>
+                                                    {% if log.success %}
+                                                        <span class="badge text-bg-success ms-1">ok</span>
+                                                    {% else %}
+                                                        <span class="badge text-bg-secondary ms-1">ошибка</span>
+                                                    {% endif %}
+                                                </li>
+                                            {% empty %}
+                                                <li class="text-secondary">Нет получателей</li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
                                 </td>
                                 <td class="text-end align-top">
-                                    <button form="delete-msg-{{ m.id }}" class="btn btn-outline-danger btn-sm" type="submit"
-                                            onclick="return confirm('Удалить сообщение из очереди?');">Удалить</button>
+                                    <button form="delete-blast-{{ b.id }}" class="btn btn-outline-danger btn-sm" type="submit"
+                                            onclick="return confirm('Удалить всю рассылку из очереди?');">Удалить</button>
                                 </td>
                             </tr>
                         {% empty %}
@@ -142,9 +172,17 @@
 <form id="marketing-filter" method="get" class="d-none">
     <input type="hidden" name="sort" value="{{ sort }}">
 </form>
-{% for m in recent_messages %}
-<form id="delete-msg-{{ m.id }}" method="post" action="{% url 'marketing_message_delete' m.id %}" class="d-none">{% csrf_token %}</form>
+{% for b in recent_blasts %}
+<form id="delete-blast-{{ b.id }}" method="post" action="{% url 'marketing_blast_delete' b.id %}" class="d-none">{% csrf_token %}</form>
 {% endfor %}
+
+<dialog id="marketing-dialog" class="marketing-dialog">
+    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+        <div id="marketing-dialog-title" class="fw-semibold"></div>
+        <button type="button" class="btn btn-sm btn-outline-light" id="marketing-dialog-close">Закрыть</button>
+    </div>
+    <div id="marketing-dialog-body"></div>
+</dialog>
 
 <script>
 (() => {
@@ -174,6 +212,72 @@
             qrBtn.setAttribute('aria-expanded', 'false');
         });
     }
+
+    const dialog = document.getElementById('marketing-dialog');
+    const dialogTitle = document.getElementById('marketing-dialog-title');
+    const dialogBody = document.getElementById('marketing-dialog-body');
+    const dialogClose = document.getElementById('marketing-dialog-close');
+    if (dialog && dialogTitle && dialogBody) {
+        document.querySelectorAll('.marketing-pop-btn').forEach((el) => {
+            el.addEventListener('click', () => {
+                const src = document.getElementById(el.getAttribute('data-pop'));
+                if (!src) return;
+                const title = src.querySelector('.marketing-pop-title');
+                dialogTitle.textContent = title ? title.textContent : '';
+                dialogBody.innerHTML = '';
+                Array.from(src.children).forEach((child) => {
+                    if (child.classList.contains('marketing-pop-title')) return;
+                    dialogBody.appendChild(child.cloneNode(true));
+                });
+                if (typeof dialog.showModal === 'function') dialog.showModal();
+                else dialog.setAttribute('open', 'open');
+            });
+        });
+        const closeDialog = () => {
+            if (typeof dialog.close === 'function') dialog.close();
+            else dialog.removeAttribute('open');
+        };
+        if (dialogClose) dialogClose.addEventListener('click', closeDialog);
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) closeDialog();
+        });
+    }
 })();
 </script>
+<style>
+.marketing-dialog {
+    border: 1px solid #334155;
+    border-radius: .75rem;
+    background: #1e293b;
+    color: #e2e8f0;
+    max-width: min(560px, 92vw);
+    width: 100%;
+    padding: 1rem 1.1rem;
+}
+.marketing-dialog::backdrop {
+    background: rgba(2, 6, 23, 0.65);
+}
+.marketing-pop-body {
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.4;
+    background: #0b1220;
+    border: 1px solid #334155;
+    border-radius: .5rem;
+    padding: .75rem .85rem;
+    max-height: 50vh;
+    overflow: auto;
+}
+.marketing-pop-list {
+    list-style: none;
+    padding-left: 0;
+    max-height: 50vh;
+    overflow: auto;
+}
+.marketing-pop-list li {
+    padding: .35rem 0;
+    border-bottom: 1px solid #334155;
+}
+.marketing-pop-list li:last-child { border-bottom: 0; }
+</style>
 {% endblock %}

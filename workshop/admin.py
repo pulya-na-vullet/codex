@@ -4,6 +4,7 @@ from workshop.models import (
     AcceptanceAct,
     AuditLog,
     Client,
+    MarketingBlast,
     Order,
     OrderLine,
     PrintJob,
@@ -91,9 +92,15 @@ class SmsSettingsAdmin(admin.ModelAdmin):
     list_display = ("provider", "enabled", "marketing_enabled", "long_poll_enabled", "updated_at")
 
 
+@admin.register(MarketingBlast)
+class MarketingBlastAdmin(admin.ModelAdmin):
+    list_display = ("id", "created_at", "username")
+    search_fields = ("template_text", "username")
+
+
 @admin.register(SmsLog)
 class SmsLogAdmin(admin.ModelAdmin):
-    list_display = ("created_at", "kind", "phone", "success", "provider", "username")
+    list_display = ("created_at", "kind", "phone", "success", "provider", "username", "blast")
     list_filter = ("kind", "success", "provider")
     search_fields = ("phone", "text", "response")
 

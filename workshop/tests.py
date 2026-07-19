@@ -496,22 +496,43 @@ class AuthAndPagesTests(TestCase):
             allow_marketing_sms=True,
             max_user_id="999",
         )
-        r = self.http.post("/marketing", {"text": "Привет, {name}!", "client_ids": [str(other.id)]})
+        second = Client.objects.create(
+            name="Маркет2",
+            phone="+79997654322",
+            allow_marketing_sms=True,
+            max_user_id="998",
+        )
+        r = self.http.post(
+            "/marketing",
+            {"text": "Привет, {name}!", "client_ids": [str(other.id), str(second.id)]},
+        )
         self.assertEqual(r.status_code, 302)
-        self.assertTrue(SmsLog.objects.filter(kind="marketing", success=True).exists())
+        self.assertEqual(SmsLog.objects.filter(kind="marketing", success=True).count(), 2)
+        from workshop.models import MarketingBlast
+
+        blast = MarketingBlast.objects.latest("id")
+        self.assertEqual(blast.logs.count(), 2)
+        self.assertEqual(blast.template_text, "Привет, {name}!")
         r = self.http.get("/marketing?q=Маркет&sort=max")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Очередь последних рассылок")
+        self.assertContains(r, "Масс-рассылка")
+        self.assertContains(r, "клиентов: 2")
+        self.assertContains(r, "Текст")
+        self.assertContains(r, "Кому")
         self.assertContains(r, "Маркет")
+        self.assertContains(r, "Маркет2")
         self.assertContains(r, "QR-код")
+        # Одна строка на всю рассылку, а не по строке на клиента.
+        self.assertEqual(r.content.decode().count("Масс-рассылка"), 1)
         r = self.http.get("/marketing/bot-qr.png")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r["Content-Type"], "image/png")
         self.assertTrue(r.content[:8] == b"\x89PNG\r\n\x1a\n")
-        log = SmsLog.objects.filter(kind="marketing").first()
-        r = self.http.post(f"/marketing/messages/{log.id}/delete")
+        r = self.http.post(f"/marketing/blasts/{blast.id}/delete")
         self.assertEqual(r.status_code, 302)
-        self.assertFalse(SmsLog.objects.filter(pk=log.id).exists())
+        self.assertFalse(MarketingBlast.objects.filter(pk=blast.id).exists())
+        self.assertFalse(SmsLog.objects.filter(kind="marketing").exists())
         r = self.http.get("/max/webhook")
         self.assertEqual(r.status_code, 200)
 
