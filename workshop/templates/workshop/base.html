@@ -75,9 +75,21 @@
         }
         .acceptance-create-form {
             gap: .45rem !important;
-            overflow: auto;
+            overflow-x: hidden;
+            overflow-y: auto;
             min-height: 0;
             flex: 1 1 auto;
+            max-width: 100%;
+        }
+        .acceptance-create-form .row {
+            --bs-gutter-x: 0.5rem;
+            margin-left: 0;
+            margin-right: 0;
+        }
+        .acceptance-create-form .row > [class*="col"] {
+            padding-left: calc(var(--bs-gutter-x) * .5);
+            padding-right: calc(var(--bs-gutter-x) * .5);
+            max-width: 100%;
         }
         .acceptance-create-form .form-label {
             margin-bottom: .15rem;
@@ -89,6 +101,7 @@
             padding-bottom: .25rem;
             min-height: calc(1.5em + .5rem + 2px);
             font-size: .875rem;
+            max-width: 100%;
         }
         .acceptance-create-form textarea.form-control {
             min-height: 2.1rem;
