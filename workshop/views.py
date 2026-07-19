@@ -1042,7 +1042,12 @@ def debtors_sms_one(request: HttpRequest, order_id: int):
 def admin_panel(request: HttpRequest):
     from workshop.models import SmsLog, SmsProvider, SmsSettings, YandexAiSettings
     from workshop.messaging import start_max_long_poll_worker
-    from workshop.yandex_ai import run_daily_ai_report, start_ai_report_scheduler
+    from workshop.yandex_ai import (
+        restart_ai_report_scheduler,
+        run_daily_ai_report,
+        scheduler_status,
+        start_ai_report_scheduler,
+    )
 
     cfg = SmsSettings.get_solo()
     ai_cfg = YandexAiSettings.get_solo()
@@ -1091,7 +1096,12 @@ def admin_panel(request: HttpRequest):
             ai_cfg.report_hour_msk = max(0, min(23, hour))
             ai_cfg.report_minute_msk = max(0, min(59, minute))
             ai_cfg.save()
-            start_ai_report_scheduler()
+            restart_ai_report_scheduler()
+            due_result = None
+            from workshop.yandex_ai import should_send_daily_report
+
+            if should_send_daily_report(ai_cfg):
+                due_result = run_daily_ai_report(force=False)
             log_action(
                 request,
                 "ai_settings_update",
@@ -1101,10 +1111,20 @@ def admin_panel(request: HttpRequest):
                     f"time={ai_cfg.report_hour_msk:02d}:{ai_cfg.report_minute_msk:02d}"
                 ),
             )
-            messages.success(
-                request,
-                f"Настройки Яндекс ИИ сохранены. Отправка в {ai_cfg.report_hour_msk:02d}:{ai_cfg.report_minute_msk:02d} МСК.",
+            msg = (
+                f"Настройки Яндекс ИИ сохранены. Отправка в "
+                f"{ai_cfg.report_hour_msk:02d}:{ai_cfg.report_minute_msk:02d} МСК."
             )
+            if due_result is not None:
+                if due_result.get("ok"):
+                    messages.success(request, msg + " Время уже наступило — отчёт отправлен сейчас.")
+                else:
+                    messages.warning(
+                        request,
+                        msg + f" Время уже наступило, но отправка не удалась: {due_result.get('detail')}",
+                    )
+            else:
+                messages.success(request, msg)
             return redirect("admin_panel")
 
         cfg.enabled = request.POST.get("enabled") == "1"
@@ -1142,6 +1162,7 @@ def admin_panel(request: HttpRequest):
             "cfg": cfg,
             "ai_cfg": ai_cfg,
             "report_time_msk": f"{int(ai_cfg.report_hour_msk or 0):02d}:{int(ai_cfg.report_minute_msk or 0):02d}",
+            "ai_scheduler": scheduler_status(),
             "providers": SmsProvider.choices,
             "recent_messages": SmsLog.objects.select_related("client", "order")[:50],
         },

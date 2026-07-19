@@ -109,6 +109,14 @@ MAX_API_BASE = os.getenv("IT_MASTER_MAX_API", "https://platform-api2.max.ru")
 MAX_LONG_POLL_WORKER = os.getenv("IT_MASTER_MAX_LONG_POLL", "1") == "1"
 YANDEX_AI_SCHEDULER = os.getenv("IT_MASTER_YANDEX_AI_SCHEDULER", "1") == "1"
 
+# Disable background workers during `manage.py test` to avoid SQLite locks.
+import sys
+
+if "test" in sys.argv:
+    YANDEX_AI_SCHEDULER = False
+    MAX_LONG_POLL_WORKER = False
+    PRINT_WORKER_ENABLED = False
+
 from django.contrib.messages import constants as message_constants
 
 MESSAGE_TAGS = {

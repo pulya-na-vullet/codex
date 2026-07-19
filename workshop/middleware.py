@@ -33,4 +33,20 @@ class IdleLogoutMiddleware:
             return redirect(f"{login_url}?next={path}")
 
         request.session["workshop_last_active"] = now
+
+        # Fallback: if the background AI scheduler thread is dead/stuck,
+        # authenticated page views can still deliver a due daily report.
+        try:
+            from workshop.yandex_ai import (
+                ensure_due_ai_report,
+                is_ai_report_scheduler_running,
+                start_ai_report_scheduler,
+            )
+
+            if not is_ai_report_scheduler_running():
+                start_ai_report_scheduler()
+            ensure_due_ai_report()
+        except Exception:
+            pass
+
         return self.get_response(request)

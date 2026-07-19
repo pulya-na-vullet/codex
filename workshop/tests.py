@@ -499,7 +499,7 @@ class AuthAndPagesTests(TestCase):
                 "model_name": "yandexgpt-lite",
                 "admin_phone": "+79991234567",
                 "admin_max_user_id": "12345",
-                "report_time_msk": "20:15",
+                "report_time_msk": "23:59",
             },
         )
         self.assertEqual(r.status_code, 302)
@@ -514,11 +514,16 @@ class AuthAndPagesTests(TestCase):
         ai = YandexAiSettings.get_solo()
         self.assertTrue(ai.enabled)
         self.assertEqual(ai.folder_id, "b1gtest")
-        self.assertEqual(ai.report_hour_msk, 20)
-        self.assertEqual(ai.report_minute_msk, 15)
+        self.assertEqual(ai.report_hour_msk, 23)
+        self.assertEqual(ai.report_minute_msk, 59)
+        ai.report_hour_msk = 20
+        ai.report_minute_msk = 15
+        ai.save(update_fields=["report_hour_msk", "report_minute_msk"])
         r = self.http.get("/admin-panel")
         self.assertContains(r, 'name="report_time_msk"')
         self.assertContains(r, 'value="20:15"')
+        self.assertContains(r, "Статус планировщика")
+        self.assertContains(r, "Сейчас на сервере (МСК)")
         facts = collect_day_facts()
         report = build_fallback_report(facts)
         self.assertIn("День:", report)
@@ -528,7 +533,12 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(source, "fallback")
         self.assertIn("День:", text)
         from datetime import datetime
+        from unittest.mock import patch
         from zoneinfo import ZoneInfo
+
+        from django.test import override_settings
+
+        from workshop.yandex_ai import ensure_due_ai_report
 
         msk = ZoneInfo("Europe/Moscow")
         before = datetime(2026, 7, 19, 20, 14, tzinfo=msk)
@@ -540,6 +550,17 @@ class AuthAndPagesTests(TestCase):
         ai.last_report_date = after.date()
         ai.save(update_fields=["last_report_date"])
         self.assertFalse(should_send_daily_report(ai, late))
+        # Сброс даты — ensure_due должен отправить (мок Max).
+        ai.last_report_date = None
+        ai.save(update_fields=["last_report_date"])
+        with override_settings(YANDEX_AI_SCHEDULER=True):
+            with patch("workshop.yandex_ai.now_msk", return_value=late):
+                with patch("workshop.yandex_ai.send_report_to_admin", return_value=(True, "sent")):
+                    result = ensure_due_ai_report(force_check=True, min_interval_sec=0)
+        self.assertIsNotNone(result)
+        self.assertTrue(result.get("ok"))
+        ai.refresh_from_db()
+        self.assertIsNotNone(ai.last_report_date)
         ai.last_report_date = None
         ai.save(update_fields=["last_report_date"])
         r = self.http.post(f"/debtors/{order.id}/sms")

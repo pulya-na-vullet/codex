@@ -88,7 +88,17 @@
             <h5 class="mb-3">Яндекс ИИ — ежедневный отчёт</h5>
             <div class="small-muted mb-3">
                 Планировщик каждый день в указанное время (МСК) анализирует журнал и присылает отчёт администратору в Max.
-                Если приложение было выключено в этот момент — отчёт догонит позже в тот же день.
+                Если приложение было выключено в этот момент — отчёт догонит позже в тот же день (и при открытии любой страницы сайта).
+            </div>
+            <div class="alert {% if ai_scheduler.running and ai_scheduler.enabled %}alert-success{% else %}alert-warning{% endif %} py-2">
+                <div><strong>Статус планировщика:</strong>
+                    {% if not ai_scheduler.setting_enabled %}выключен в env{% elif ai_scheduler.running %}работает{% else %}не запущен{% endif %}
+                    · отчёт {% if ai_scheduler.enabled %}включён{% else %}выключен{% endif %}
+                </div>
+                <div class="small mt-1">Сейчас на сервере (МСК): <strong>{{ ai_scheduler.server_now_msk }}</strong></div>
+                <div class="small">Расписание: <strong>{{ ai_scheduler.schedule }}</strong> МСК
+                    {% if ai_scheduler.due_now %} · <span class="text-warning">есть неотправленный отчёт за сегодня</span>{% endif %}
+                </div>
             </div>
             <form method="post" class="vstack gap-3">{% csrf_token %}
                 <input type="hidden" name="section" value="ai">

@@ -301,7 +301,11 @@ def report_schedule_parts(cfg) -> tuple[int, int]:
     return max(0, min(23, hour)), max(0, min(59, minute))
 
 
-def should_send_daily_report(cfg, now_msk: datetime | None = None) -> bool:
+def now_msk() -> datetime:
+    return timezone.now().astimezone(MSK)
+
+
+def should_send_daily_report(cfg, now: datetime | None = None) -> bool:
     """True when today's report is due and has not been sent yet.
 
     Uses catch-up: after the configured MSK time, keep trying until success
@@ -309,15 +313,12 @@ def should_send_daily_report(cfg, now_msk: datetime | None = None) -> bool:
     """
     if not getattr(cfg, "enabled", False):
         return False
-    if now_msk is None:
-        now_msk = timezone.now().astimezone(MSK)
-    else:
-        now_msk = now_msk.astimezone(MSK)
-    if cfg.last_report_date == now_msk.date():
+    current = now.astimezone(MSK) if now is not None else now_msk()
+    if cfg.last_report_date == current.date():
         return False
     hour, minute = report_schedule_parts(cfg)
-    scheduled = now_msk.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    return now_msk >= scheduled
+    scheduled = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return current >= scheduled
 
 
 def run_daily_ai_report(*, day=None, force: bool = False) -> dict[str, Any]:
@@ -326,7 +327,7 @@ def run_daily_ai_report(*, day=None, force: bool = False) -> dict[str, Any]:
         return {"ok": False, "detail": "Yandex AI отчёт отключён"}
 
     if day is None:
-        day = timezone.now().astimezone(MSK).date()
+        day = now_msk().date()
 
     if not force and cfg.last_report_date == day:
         return {"ok": False, "detail": f"Отчёт за {day} уже отправлялся"}
@@ -350,6 +351,51 @@ def run_daily_ai_report(*, day=None, force: bool = False) -> dict[str, Any]:
     return {"ok": ok, "detail": detail, "source": source, "report": report, "day": day.isoformat()}
 
 
+_due_check_lock = threading.Lock()
+_due_check_last_mono = 0.0
+_due_send_lock = threading.Lock()
+
+
+def ensure_due_ai_report(*, force_check: bool = False, min_interval_sec: float = 20.0) -> dict[str, Any] | None:
+    """If today's scheduled report is due, send it.
+
+    Safe to call from the web request path as a fallback when the background
+    thread is stuck/dead. Throttled so it does not run on every click.
+    """
+    global _due_check_last_mono
+    if not getattr(settings, "YANDEX_AI_SCHEDULER", True):
+        return None
+
+    now_mono = time.monotonic()
+    with _due_check_lock:
+        if not force_check and (now_mono - _due_check_last_mono) < min_interval_sec:
+            return None
+        _due_check_last_mono = now_mono
+
+    if not _due_send_lock.acquire(blocking=False):
+        return None
+    try:
+        from django.db import close_old_connections
+
+        close_old_connections()
+        cfg = get_or_create_ai_settings()
+        if not should_send_daily_report(cfg):
+            return None
+        hour, minute = report_schedule_parts(cfg)
+        logger.info(
+            "Due AI report triggered (schedule %02d:%02d MSK, server now %s)",
+            hour,
+            minute,
+            now_msk().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        return run_daily_ai_report(day=now_msk().date(), force=False)
+    except Exception:
+        logger.exception("ensure_due_ai_report failed")
+        return {"ok": False, "detail": "ensure_due_ai_report failed"}
+    finally:
+        _due_send_lock.release()
+
+
 def _scheduler_loop(stop_event: threading.Event) -> None:
     from django.db import close_old_connections
     from django.db.utils import OperationalError, ProgrammingError
@@ -357,34 +403,48 @@ def _scheduler_loop(stop_event: threading.Event) -> None:
     while not stop_event.is_set():
         try:
             close_old_connections()
-            cfg = get_or_create_ai_settings()
-            if not cfg.enabled:
-                stop_event.wait(30.0)
-                continue
-            now = timezone.now().astimezone(MSK)
-            if should_send_daily_report(cfg, now):
-                hour, minute = report_schedule_parts(cfg)
-                logger.info(
-                    "Starting daily Yandex AI report for %s (schedule %02d:%02d MSK)",
-                    now.date(),
-                    hour,
-                    minute,
-                )
-                result = run_daily_ai_report(day=now.date(), force=False)
-                logger.info("Daily AI report result: %s", result.get("detail"))
-                # After success wait a bit; on failure retry in ~5 minutes.
-                stop_event.wait(60.0 if result.get("ok") else 300.0)
+            result = ensure_due_ai_report(force_check=True, min_interval_sec=0)
+            if result is not None:
+                stop_event.wait(60.0 if result.get("ok") else 90.0)
                 continue
         except (OperationalError, ProgrammingError):
             logger.warning("AI scheduler: database not ready")
+            stop_event.wait(10.0)
+            continue
         except Exception:
             logger.exception("AI scheduler iteration failed")
-        stop_event.wait(30.0)
+        # Near the scheduled minute poll more often.
+        try:
+            cfg = get_or_create_ai_settings()
+            hour, minute = report_schedule_parts(cfg)
+            now = now_msk()
+            if cfg.enabled and now.hour == hour and abs(now.minute - minute) <= 1:
+                stop_event.wait(5.0)
+                continue
+        except Exception:
+            pass
+        stop_event.wait(15.0)
 
 
 _worker_stop: threading.Event | None = None
 _worker_thread: threading.Thread | None = None
 _worker_lock = threading.Lock()
+
+
+def is_ai_report_scheduler_running() -> bool:
+    return _worker_thread is not None and _worker_thread.is_alive()
+
+
+def stop_ai_report_scheduler() -> None:
+    global _worker_stop, _worker_thread
+    with _worker_lock:
+        if _worker_stop is not None:
+            _worker_stop.set()
+        thread = _worker_thread
+        _worker_thread = None
+        _worker_stop = None
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=2.0)
 
 
 def start_ai_report_scheduler() -> None:
@@ -403,3 +463,25 @@ def start_ai_report_scheduler() -> None:
         )
         _worker_thread.start()
         logger.info("Yandex AI daily report scheduler started")
+
+
+def restart_ai_report_scheduler() -> None:
+    stop_ai_report_scheduler()
+    start_ai_report_scheduler()
+
+
+def scheduler_status() -> dict[str, Any]:
+    cfg = get_or_create_ai_settings()
+    hour, minute = report_schedule_parts(cfg)
+    current = now_msk()
+    due = should_send_daily_report(cfg, current)
+    return {
+        "enabled": bool(cfg.enabled),
+        "running": is_ai_report_scheduler_running(),
+        "server_now_msk": current.strftime("%d.%m.%Y %H:%M:%S"),
+        "schedule": f"{hour:02d}:{minute:02d}",
+        "due_now": due,
+        "last_report_date": cfg.last_report_date.isoformat() if cfg.last_report_date else "",
+        "last_report_error": (cfg.last_report_error or "")[:300],
+        "setting_enabled": getattr(settings, "YANDEX_AI_SCHEDULER", True),
+    }
