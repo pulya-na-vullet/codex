@@ -27,7 +27,6 @@ from workshop.models import (
     OrderStatus,
     PaymentMethod,
     Service,
-    loyalty_discount_percent,
     next_numbered,
 )
 from workshop.pdf import build_acceptance_act_pdf, build_order_pdf
@@ -437,20 +436,31 @@ def client_detail(request: HttpRequest, client_id: int):
         comment = request.POST.get("comment", "").strip()
         max_user_id = request.POST.get("max_user_id", "").strip()
         allow_marketing = request.POST.get("allow_marketing_sms") == "1"
+        discount_raw = request.POST.get("discount_percent", "0").strip().replace(",", ".")
+        try:
+            discount_value = Decimal(discount_raw or "0")
+        except (InvalidOperation, ValueError):
+            messages.warning(request, "Некорректная скидка")
+            return redirect("client_detail", client_id=client.id)
         client.comment = comment
         client.max_user_id = max_user_id
         client.allow_marketing_sms = allow_marketing
-        client.save(update_fields=["comment", "max_user_id", "allow_marketing_sms"])
+        client.set_discount_percent(discount_value, manual=True, save=False)
+        client.save(update_fields=["comment", "max_user_id", "allow_marketing_sms", "discount_percent", "discount_manual"])
         log_action(
             request,
             "client_update",
             entity_type="client",
             entity_id=client.id,
-            details=f"{client.name}: max={max_user_id or '-'} marketing={allow_marketing}",
+            details=(
+                f"{client.name}: max={max_user_id or '-'} marketing={allow_marketing} "
+                f"discount={client.discount_percent}%"
+            ),
         )
         messages.success(request, "Данные клиента сохранены")
         return redirect("client_detail", client_id=client.id)
 
+    client.apply_auto_regular_discount(save=True)
     orders = client.orders.all()
     acts = client.acceptance_acts.all()[:20]
     ctx_client = {
@@ -464,6 +474,7 @@ def client_detail(request: HttpRequest, client_id: int):
         "total_spent": client.total_spent,
         "is_regular": client.is_regular,
         "discount_percent": client.discount_percent,
+        "discount_manual": client.discount_manual,
     }
     return render(
         request,
@@ -706,14 +717,15 @@ def order_create(request: HttpRequest):
         if client_id_raw:
             client = get_object_or_404(Client, pk=int(client_id_raw))
         discount = client.discount_percent if client else Decimal("0")
-        # After creating, visits increase — refresh discount after save
         order = Order.objects.create(
             order_number=next_numbered("ORD", Order, "order_number"),
             client=client,
             discount_percent=discount,
         )
         if client:
-            order.discount_percent = loyalty_discount_percent(client.total_orders)
+            client.apply_auto_regular_discount(save=True)
+            client.refresh_from_db(fields=["discount_percent"])
+            order.discount_percent = client.discount_percent
             order.save(update_fields=["discount_percent"])
         log_action(
             request,

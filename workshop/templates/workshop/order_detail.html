@@ -116,8 +116,8 @@
                         </tr>
                         {% if order.discount_percent %}
                         <tr>
-                            <th colspan="3" class="text-end">Скидка постоянного клиента</th>
-                            <th class="text-end">{{ order.discount_percent|floatformat:0 }}%</th>
+                            <th colspan="3" class="text-end">Доп. скидка от суммы расчёта ({{ order.discount_percent|floatformat:0 }}%)</th>
+                            <th class="text-end">−{{ order.discount_amount|money }}</th>
                             <th></th>
                         </tr>
                         {% endif %}

@@ -4,7 +4,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from django.conf import settings
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Count, Sum
 from django.utils import timezone
@@ -64,6 +64,19 @@ class Client(models.Model):
         db_index=True,
         help_text="ID пользователя в Max после того, как он написал боту",
     )
+    discount_percent = models.DecimalField(
+        "Скидка %",
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0"),
+        validators=[MinValueValidator(0), MaxValueValidator(15)],
+        help_text="Ручная скидка клиента 0–15%. С 3-го заказа автоматически ставится 10%.",
+    )
+    discount_manual = models.BooleanField(
+        "Скидка задана вручную",
+        default=False,
+        help_text="Если включено — авто-скидка 10% за постоянство не перезаписывает значение",
+    )
     created_at = models.DateTimeField("Создан", default=timezone.now)
 
     class Meta:
@@ -85,11 +98,28 @@ class Client(models.Model):
 
     @property
     def is_regular(self) -> bool:
-        return self.total_orders > 3
+        """Постоянный клиент — от 3 заказ-нарядов."""
+        return self.total_orders >= 3
 
-    @property
-    def discount_percent(self) -> Decimal:
-        return loyalty_discount_percent(self.total_orders)
+    def set_discount_percent(self, value, *, manual: bool = False, save: bool = True) -> Decimal:
+        self.discount_percent = clamp_discount_percent(value)
+        if manual:
+            self.discount_manual = True
+        if save:
+            self.save(update_fields=["discount_percent", "discount_manual"])
+        return self.discount_percent
+
+    def apply_auto_regular_discount(self, *, save: bool = True) -> bool:
+        """С 3-го заказа автоматически 10%, если скидку не правили вручную."""
+        if self.total_orders < 3 or self.discount_manual:
+            return False
+        target = Decimal("10")
+        if self.discount_percent >= target:
+            return False
+        self.discount_percent = target
+        if save:
+            self.save(update_fields=["discount_percent"])
+        return True
 
 
 class ServiceCategory(models.Model):
@@ -335,9 +365,13 @@ class Order(models.Model):
         for line in self.lines.all():
             subtotal += line.line_total
         if self.client_id:
-            # discount based on visits including this order
-            visits = Order.objects.filter(client_id=self.client_id).count()
-            self.discount_percent = loyalty_discount_percent(visits)
+            client = self.client
+            if client is not None:
+                client.apply_auto_regular_discount(save=True)
+                client.refresh_from_db(fields=["discount_percent"])
+                self.discount_percent = clamp_discount_percent(client.discount_percent)
+            else:
+                self.discount_percent = Decimal("0")
         else:
             self.discount_percent = Decimal("0")
         self.subtotal_sum = subtotal.quantize(Decimal("0.01"))
@@ -346,6 +380,11 @@ class Order(models.Model):
         if save:
             self.save(update_fields=["discount_percent", "subtotal_sum", "total_sum"])
         return self.total_sum
+
+    @property
+    def discount_amount(self) -> Decimal:
+        """Сумма дополнительной скидки от суммы расчёта."""
+        return (self.subtotal_sum - self.total_sum).quantize(Decimal("0.01"))
 
 
 class OrderLine(models.Model):
@@ -692,15 +731,21 @@ class SmsLog(models.Model):
         return f"{self.created_at:%d.%m.%Y %H:%M} {self.phone} {self.kind}"
 
 
+def clamp_discount_percent(value) -> Decimal:
+    try:
+        amount = Decimal(str(value if value is not None else 0))
+    except Exception:
+        amount = Decimal("0")
+    if amount < 0:
+        amount = Decimal("0")
+    if amount > 15:
+        amount = Decimal("15")
+    return amount.quantize(Decimal("0.01"))
+
+
 def loyalty_discount_percent(orders_count: int) -> Decimal:
-    count = int(orders_count or 0)
-    if count >= 10:
-        return Decimal("10")
-    if count >= 7:
-        return Decimal("7")
-    if count > 3:
-        return Decimal("5")
-    return Decimal("0")
+    """Совместимость: с 3 заказов — 10%, иначе 0."""
+    return Decimal("10") if int(orders_count or 0) >= 3 else Decimal("0")
 
 
 def next_numbered(prefix: str, model, field: str = "order_number") -> str:

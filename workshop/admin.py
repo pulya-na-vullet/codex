@@ -22,9 +22,9 @@ class OrderLineInline(admin.TabularInline):
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
-    list_display = ("name", "phone", "max_user_id", "allow_marketing_sms", "created_at")
+    list_display = ("name", "phone", "discount_percent", "discount_manual", "max_user_id", "allow_marketing_sms", "created_at")
     search_fields = ("name", "phone", "comment", "max_user_id")
-    list_filter = ("allow_marketing_sms",)
+    list_filter = ("allow_marketing_sms", "discount_manual")
 
 
 @admin.register(ServiceCategory)

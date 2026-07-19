@@ -21,7 +21,10 @@ th,td{border:1px solid #bbb;padding:8px} th{background:#f1f5f9;text-align:left}
 <table><thead><tr><th>Услуга</th><th class="num">Цена</th><th class="num">Кол-во</th><th class="num">Сумма</th></tr></thead>
 <tbody>{% for s in lines %}<tr><td>{{ s.service_name }}</td><td class="num">{{ s.unit_price }}</td><td class="num">{{ s.quantity }}</td><td class="num">{{ s.line_total }}</td></tr>{% endfor %}</tbody></table>
 <div class="total">
-{% if order.discount_percent %}<div>Сумма: {{ order.subtotal_sum }}</div><div>Скидка: {{ order.discount_percent|floatformat:0 }}%</div>{% endif %}
+{% if order.discount_percent %}
+<div>Сумма расчёта: {{ order.subtotal_sum }}</div>
+<div>Дополнительная скидка: {{ order.discount_percent|floatformat:0 }}% (−{{ order.discount_amount }})</div>
+{% endif %}
 ИТОГО: {{ order.total_sum }}
 </div>
 <p><strong>Гарантия:</strong> 3 месяца на работы и новые детали.</p>

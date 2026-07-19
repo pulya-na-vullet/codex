@@ -61,8 +61,8 @@
     </table>
     <div class="total">
         {% if order.discount_percent and order.discount_percent > 0 %}
-            <div>Сумма: {{ "%.2f"|format(order.subtotal_sum or order.total_sum) }}</div>
-            <div>Скидка постоянного клиента: {{ "%.0f"|format(order.discount_percent) }}%</div>
+            <div>Сумма расчёта: {{ "%.2f"|format(order.subtotal_sum or order.total_sum) }}</div>
+            <div>Дополнительная скидка: {{ "%.0f"|format(order.discount_percent) }}% (−{{ "%.2f"|format((order.subtotal_sum or 0) - (order.total_sum or 0)) }})</div>
         {% endif %}
         ИТОГО: {{ "%.2f"|format(order.total_sum) }}
     </div>

@@ -20,9 +20,8 @@ class UtilsTests(TestCase):
         self.assertIsNone(normalize_rf_phone("123"))
 
     def test_loyalty(self):
-        self.assertEqual(loyalty_discount_percent(3), Decimal("0"))
-        self.assertEqual(loyalty_discount_percent(4), Decimal("5"))
-        self.assertEqual(loyalty_discount_percent(7), Decimal("7"))
+        self.assertEqual(loyalty_discount_percent(2), Decimal("0"))
+        self.assertEqual(loyalty_discount_percent(3), Decimal("10"))
         self.assertEqual(loyalty_discount_percent(10), Decimal("10"))
 
     def test_money_filter(self):
@@ -39,9 +38,9 @@ class OrderLogicTests(TestCase):
         self.service = Service.objects.create(name="Тест услуга", price=Decimal("1000"), category=cat)
         self.client_obj = Client.objects.create(name="Иван", phone="+79990000001")
 
-    def test_discount_on_fourth_order(self):
+    def test_discount_on_third_order_auto_10(self):
         last = None
-        for _ in range(4):
+        for _ in range(3):
             last = Order.objects.create(order_number=f"ORD-{Order.objects.count()+1:06d}", client=self.client_obj)
             OrderLine.objects.create(
                 order=last,
@@ -51,9 +50,29 @@ class OrderLogicTests(TestCase):
                 quantity=1,
             )
             last.recalculate_totals()
-        self.assertEqual(self.client_obj.total_orders, 4)
-        self.assertEqual(last.discount_percent, Decimal("5"))
-        self.assertEqual(last.total_sum, Decimal("950.00"))
+        self.client_obj.refresh_from_db()
+        self.assertEqual(self.client_obj.total_orders, 3)
+        self.assertTrue(self.client_obj.is_regular)
+        self.assertEqual(self.client_obj.discount_percent, Decimal("10.00"))
+        self.assertEqual(last.discount_percent, Decimal("10.00"))
+        self.assertEqual(last.total_sum, Decimal("900.00"))
+        self.assertEqual(last.discount_amount, Decimal("100.00"))
+
+    def test_manual_discount_not_overwritten(self):
+        self.client_obj.set_discount_percent(5, manual=True)
+        for _ in range(3):
+            order = Order.objects.create(order_number=f"ORD-{Order.objects.count()+1:06d}", client=self.client_obj)
+            OrderLine.objects.create(
+                order=order,
+                service=self.service,
+                service_name=self.service.name,
+                unit_price=self.service.price,
+                quantity=1,
+            )
+            order.recalculate_totals()
+        self.client_obj.refresh_from_db()
+        self.assertEqual(self.client_obj.discount_percent, Decimal("5.00"))
+        self.assertTrue(self.client_obj.discount_manual)
 
     def test_pdf_wraps_multiline_notes(self):
         order = Order.objects.create(

@@ -21,6 +21,15 @@
             <textarea class="form-control" name="comment" rows="3" placeholder="Заметка по клиенту...">{{ client.comment }}</textarea>
         </div>
         <div>
+            <label class="form-label">Скидка, % (0–15)</label>
+            <input class="form-control" type="number" name="discount_percent" min="0" max="15" step="1"
+                   value="{{ client.discount_percent|floatformat:0 }}">
+            <div class="small-muted mt-1">
+                С 3-го заказ-наряда клиент становится постоянным и автоматически получает 10%
+                (можно изменить вручную).
+            </div>
+        </div>
+        <div>
             <label class="form-label">Max user_id</label>
             <input class="form-control" name="max_user_id" value="{{ client.max_user_id }}" placeholder="Заполнится, когда клиент напишет боту">
             <div class="small-muted mt-1">Можно вписать вручную для теста</div>
@@ -37,8 +46,8 @@
 <div class="row g-3 mb-3">
     <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="small-muted">Обращений</div><div class="fs-3 fw-bold">{{ client.total_orders }}</div></div></div></div>
     <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="small-muted">Принёс за всё время</div><div class="fs-3 fw-bold">{{ client.total_spent|money }}</div></div></div></div>
-    <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="small-muted">Статус</div><div class="fs-5 fw-bold">{% if client.is_regular %}Постоянный{% else %}Обычный{% endif %}</div></div></div></div>
-    <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="small-muted">Скидка</div><div class="fs-3 fw-bold">{{ client.discount_percent|floatformat:0 }}%</div></div></div></div>
+    <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="small-muted">Статус</div><div class="fs-5 fw-bold">{% if client.is_regular %}Постоянный{% else %}Обычный{% endif %}</div>{% if client.is_regular %}<div class="small-muted">от 3 заказ-нарядов</div>{% endif %}</div></div></div>
+    <div class="col-md-3"><div class="card h-100"><div class="card-body"><div class="small-muted">Скидка</div><div class="fs-3 fw-bold">{{ client.discount_percent|floatformat:0 }}%</div>{% if client.discount_manual %}<div class="small-muted">задана вручную</div>{% endif %}</div></div></div>
 </div>
 <div class="card mb-3"><div class="card-body">
     <div class="d-flex justify-content-between mb-3">

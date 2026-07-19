@@ -110,9 +110,14 @@ def build_order_pdf(order, lines) -> bytes:
     y -= 20
     c.setFont(font, 12)
     if float(order.discount_percent or 0) > 0:
-        c.drawRightString(width - 40, y, f"Сумма: {float(order.subtotal_sum):.2f}")
+        discount_amount = float(order.subtotal_sum) - float(order.total_sum)
+        c.drawRightString(width - 40, y, f"Сумма расчёта: {float(order.subtotal_sum):.2f}")
         y -= 16
-        c.drawRightString(width - 40, y, f"Скидка постоянного клиента: {float(order.discount_percent):.0f}%")
+        c.drawRightString(
+            width - 40,
+            y,
+            f"Дополнительная скидка: {float(order.discount_percent):.0f}% (−{discount_amount:.2f})",
+        )
         y -= 16
     c.drawRightString(width - 40, y, f"ИТОГО: {float(order.total_sum):.2f}")
     y -= 28
