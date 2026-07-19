@@ -499,17 +499,26 @@ class AuthAndPagesTests(TestCase):
                 "model_name": "yandexgpt-lite",
                 "admin_phone": "+79991234567",
                 "admin_max_user_id": "12345",
-                "report_hour_msk": "20",
+                "report_time_msk": "20:15",
             },
         )
         self.assertEqual(r.status_code, 302)
         from workshop.models import YandexAiSettings
-        from workshop.yandex_ai import build_fallback_report, collect_day_facts, generate_day_report
+        from workshop.yandex_ai import (
+            build_fallback_report,
+            collect_day_facts,
+            generate_day_report,
+            should_send_daily_report,
+        )
 
         ai = YandexAiSettings.get_solo()
         self.assertTrue(ai.enabled)
         self.assertEqual(ai.folder_id, "b1gtest")
         self.assertEqual(ai.report_hour_msk, 20)
+        self.assertEqual(ai.report_minute_msk, 15)
+        r = self.http.get("/admin-panel")
+        self.assertContains(r, 'name="report_time_msk"')
+        self.assertContains(r, 'value="20:15"')
         facts = collect_day_facts()
         report = build_fallback_report(facts)
         self.assertIn("День:", report)
@@ -518,6 +527,21 @@ class AuthAndPagesTests(TestCase):
         text, source = generate_day_report(use_ai=False)
         self.assertEqual(source, "fallback")
         self.assertIn("День:", text)
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        msk = ZoneInfo("Europe/Moscow")
+        before = datetime(2026, 7, 19, 20, 14, tzinfo=msk)
+        after = datetime(2026, 7, 19, 20, 15, tzinfo=msk)
+        late = datetime(2026, 7, 19, 22, 0, tzinfo=msk)
+        self.assertFalse(should_send_daily_report(ai, before))
+        self.assertTrue(should_send_daily_report(ai, after))
+        self.assertTrue(should_send_daily_report(ai, late))
+        ai.last_report_date = after.date()
+        ai.save(update_fields=["last_report_date"])
+        self.assertFalse(should_send_daily_report(ai, late))
+        ai.last_report_date = None
+        ai.save(update_fields=["last_report_date"])
         r = self.http.post(f"/debtors/{order.id}/sms")
         self.assertEqual(r.status_code, 302)
         self.assertTrue(SmsLog.objects.filter(kind="debt", success=True).exists())

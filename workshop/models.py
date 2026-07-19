@@ -682,7 +682,12 @@ class YandexAiSettings(models.Model):
     report_hour_msk = models.PositiveSmallIntegerField(
         "Час отправки (МСК)",
         default=20,
-        help_text="Отчёт уходит в начале этого часа по Москве",
+        help_text="Час по Москве (0–23)",
+    )
+    report_minute_msk = models.PositiveSmallIntegerField(
+        "Минута отправки (МСК)",
+        default=0,
+        help_text="Минута по Москве (0–59)",
     )
     last_report_date = models.DateField("Дата последнего отчёта", null=True, blank=True)
     last_report_at = models.DateTimeField("Когда отправляли", null=True, blank=True)

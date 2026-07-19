@@ -1070,15 +1070,41 @@ def admin_panel(request: HttpRequest):
             ai_cfg.model_name = request.POST.get("model_name", "").strip() or "yandexgpt-lite"
             ai_cfg.admin_phone = request.POST.get("admin_phone", "").strip()
             ai_cfg.admin_max_user_id = request.POST.get("admin_max_user_id", "").strip()
-            try:
-                hour = int(request.POST.get("report_hour_msk", "20") or 20)
-            except ValueError:
-                hour = 20
+            time_raw = (request.POST.get("report_time_msk") or "").strip()
+            hour, minute = 20, 0
+            if time_raw:
+                try:
+                    parts = time_raw.split(":")
+                    hour = int(parts[0])
+                    minute = int(parts[1]) if len(parts) > 1 else 0
+                except (TypeError, ValueError, IndexError):
+                    hour, minute = 20, 0
+            else:
+                try:
+                    hour = int(request.POST.get("report_hour_msk", "20") or 20)
+                except ValueError:
+                    hour = 20
+                try:
+                    minute = int(request.POST.get("report_minute_msk", "0") or 0)
+                except ValueError:
+                    minute = 0
             ai_cfg.report_hour_msk = max(0, min(23, hour))
+            ai_cfg.report_minute_msk = max(0, min(59, minute))
             ai_cfg.save()
             start_ai_report_scheduler()
-            log_action(request, "ai_settings_update", entity_type="ai", details=f"enabled={ai_cfg.enabled}")
-            messages.success(request, "Настройки Яндекс ИИ сохранены")
+            log_action(
+                request,
+                "ai_settings_update",
+                entity_type="ai",
+                details=(
+                    f"enabled={ai_cfg.enabled} "
+                    f"time={ai_cfg.report_hour_msk:02d}:{ai_cfg.report_minute_msk:02d}"
+                ),
+            )
+            messages.success(
+                request,
+                f"Настройки Яндекс ИИ сохранены. Отправка в {ai_cfg.report_hour_msk:02d}:{ai_cfg.report_minute_msk:02d} МСК.",
+            )
             return redirect("admin_panel")
 
         cfg.enabled = request.POST.get("enabled") == "1"
@@ -1115,6 +1141,7 @@ def admin_panel(request: HttpRequest):
         {
             "cfg": cfg,
             "ai_cfg": ai_cfg,
+            "report_time_msk": f"{int(ai_cfg.report_hour_msk or 0):02d}:{int(ai_cfg.report_minute_msk or 0):02d}",
             "providers": SmsProvider.choices,
             "recent_messages": SmsLog.objects.select_related("client", "order")[:50],
         },

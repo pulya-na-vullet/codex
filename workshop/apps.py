@@ -31,4 +31,6 @@ class WorkshopConfig(AppConfig):
 
             start_ai_report_scheduler()
         except Exception:
-            pass
+            import logging
+
+            logging.getLogger(__name__).exception("Failed to start Yandex AI report scheduler")

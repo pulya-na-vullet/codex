@@ -87,7 +87,8 @@
         <div class="card mt-3"><div class="card-body">
             <h5 class="mb-3">Яндекс ИИ — ежедневный отчёт</h5>
             <div class="small-muted mb-3">
-                В 20:00 МСК (или в указанный час) ИИ анализирует журнал за текущий день и присылает отчёт администратору в Max.
+                Планировщик каждый день в указанное время (МСК) анализирует журнал и присылает отчёт администратору в Max.
+                Если приложение было выключено в этот момент — отчёт догонит позже в тот же день.
             </div>
             <form method="post" class="vstack gap-3">{% csrf_token %}
                 <input type="hidden" name="section" value="ai">
@@ -120,9 +121,10 @@
                         <input class="form-control" name="admin_max_user_id" value="{{ ai_cfg.admin_max_user_id }}" placeholder="если известен">
                     </div>
                 </div>
-                <div style="max-width: 180px;">
-                    <label class="form-label">Час отправки (МСК)</label>
-                    <input class="form-control" type="number" min="0" max="23" name="report_hour_msk" value="{{ ai_cfg.report_hour_msk }}">
+                <div style="max-width: 220px;">
+                    <label class="form-label">Время отправки (МСК)</label>
+                    <input class="form-control" type="time" name="report_time_msk" value="{{ report_time_msk }}" required>
+                    <div class="small-muted mt-1">Сейчас: {{ report_time_msk }} МСК</div>
                 </div>
                 <button class="btn btn-success" type="submit">Сохранить Яндекс ИИ</button>
             </form>
@@ -164,7 +166,8 @@
                 <li>Выдайте роль `ai.languageModels.user`, создайте API-ключ</li>
                 <li>Вставьте API-ключ и Folder ID слева</li>
                 <li>Укажите телефон/Max user_id администратора (он должен написать боту)</li>
-                <li>В 20:00 МСК отчёт уйдёт в Max автоматически</li>
+                <li>Задайте время отправки в поле «Время отправки (МСК)»</li>
+                <li>В это время отчёт уйдёт в Max автоматически</li>
             </ol>
         </div></div>
         <div class="card"><div class="card-body">

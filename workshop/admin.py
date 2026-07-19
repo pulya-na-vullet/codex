@@ -107,4 +107,12 @@ class SmsLogAdmin(admin.ModelAdmin):
 
 @admin.register(YandexAiSettings)
 class YandexAiSettingsAdmin(admin.ModelAdmin):
-    list_display = ("enabled", "folder_id", "model_name", "report_hour_msk", "last_report_date", "updated_at")
+    list_display = (
+        "enabled",
+        "folder_id",
+        "model_name",
+        "report_hour_msk",
+        "report_minute_msk",
+        "last_report_date",
+        "updated_at",
+    )

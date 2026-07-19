@@ -295,6 +295,31 @@ def send_report_to_admin(report: str, *, username: str = "ai-report") -> tuple[b
         return False, str(exc)
 
 
+def report_schedule_parts(cfg) -> tuple[int, int]:
+    hour = int(cfg.report_hour_msk if getattr(cfg, "report_hour_msk", None) is not None else 20)
+    minute = int(getattr(cfg, "report_minute_msk", 0) or 0)
+    return max(0, min(23, hour)), max(0, min(59, minute))
+
+
+def should_send_daily_report(cfg, now_msk: datetime | None = None) -> bool:
+    """True when today's report is due and has not been sent yet.
+
+    Uses catch-up: after the configured MSK time, keep trying until success
+    (or until the calendar day ends), instead of a narrow 3-minute window.
+    """
+    if not getattr(cfg, "enabled", False):
+        return False
+    if now_msk is None:
+        now_msk = timezone.now().astimezone(MSK)
+    else:
+        now_msk = now_msk.astimezone(MSK)
+    if cfg.last_report_date == now_msk.date():
+        return False
+    hour, minute = report_schedule_parts(cfg)
+    scheduled = now_msk.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return now_msk >= scheduled
+
+
 def run_daily_ai_report(*, day=None, force: bool = False) -> dict[str, Any]:
     cfg = get_or_create_ai_settings()
     if not cfg.enabled and not force:
@@ -337,13 +362,18 @@ def _scheduler_loop(stop_event: threading.Event) -> None:
                 stop_event.wait(30.0)
                 continue
             now = timezone.now().astimezone(MSK)
-            hour = int(cfg.report_hour_msk if cfg.report_hour_msk is not None else 20)
-            # Trigger in the first 3 minutes of the hour once per day.
-            if now.hour == hour and now.minute < 3 and cfg.last_report_date != now.date():
-                logger.info("Starting daily Yandex AI report for %s", now.date())
+            if should_send_daily_report(cfg, now):
+                hour, minute = report_schedule_parts(cfg)
+                logger.info(
+                    "Starting daily Yandex AI report for %s (schedule %02d:%02d MSK)",
+                    now.date(),
+                    hour,
+                    minute,
+                )
                 result = run_daily_ai_report(day=now.date(), force=False)
                 logger.info("Daily AI report result: %s", result.get("detail"))
-                stop_event.wait(120.0)
+                # After success wait a bit; on failure retry in ~5 minutes.
+                stop_event.wait(60.0 if result.get("ok") else 300.0)
                 continue
         except (OperationalError, ProgrammingError):
             logger.warning("AI scheduler: database not ready")
