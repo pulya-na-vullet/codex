@@ -904,3 +904,123 @@ class StaffAclAndModelingTests(TestCase):
             )
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.content.decode(), "duplicate")
+
+
+class HubStlUploadTests(TestCase):
+    def setUp(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from workshop.models import HubConnectionSettings, ModelingBrief, ModelingBriefStatus
+
+        self.client_obj = Client.objects.create(name="STL Client", phone="+79990000111")
+        hub = HubConnectionSettings.get_solo()
+        hub.enabled = True
+        hub.hub_base_url = "https://hub.example.test"
+        hub.site_id = "site-1"
+        hub.site_token = "token-abc"
+        hub.site_secret = "secret-xyz"
+        hub.save()
+        self.hub = hub
+        self.brief = ModelingBrief.objects.create(
+            brief_number="3D-STL001",
+            client=self.client_obj,
+            agreed_price=Decimal("5000"),
+            designer_share_amount=Decimal("3500"),
+            site_share_amount=Decimal("1500"),
+            status=ModelingBriefStatus.DRAFT,
+            stl_file=SimpleUploadedFile("part.stl", b"solid test\nendsolid test\n", content_type="application/sla"),
+        )
+
+    def test_sign_body_stream_matches_sign_body(self):
+        from io import BytesIO
+
+        from workshop.hub import sign_body, sign_body_stream
+
+        raw = b"multipart-bytes-here"
+        ts = "1710000000"
+        self.assertEqual(sign_body("secret", ts, raw), sign_body_stream("secret", ts, BytesIO(raw)))
+
+    def test_push_brief_uploads_stl_with_hmac_multipart(self):
+        from unittest.mock import MagicMock, patch
+        from urllib import request as urlrequest
+
+        from workshop.hub import push_brief_to_hub, sign_body, verify_signature
+
+        captured: list[tuple[urlrequest.Request, bytes | None]] = []
+
+        def fake_urlopen(req, timeout=None):
+            raw_body = None
+            data = req.data
+            if hasattr(data, "read"):
+                pos = data.tell() if hasattr(data, "tell") else 0
+                data.seek(0)
+                raw_body = data.read()
+                data.seek(pos)
+            elif isinstance(data, (bytes, bytearray)):
+                raw_body = bytes(data)
+            captured.append((req, raw_body))
+            resp = MagicMock()
+            if len(captured) == 1:
+                body = b'{"brief_id":"hub-stl-42","status":"queued"}'
+            else:
+                body = b'{"ok":true,"source_stl_file":"part.stl"}'
+            resp.read.return_value = body
+            resp.__enter__.return_value = resp
+            resp.__exit__.return_value = None
+            return resp
+
+        with patch("workshop.hub.urlrequest.urlopen", side_effect=fake_urlopen):
+            ok, detail, data = push_brief_to_hub(self.brief)
+
+        self.assertTrue(ok, detail)
+        self.assertEqual(data.get("brief_id"), "hub-stl-42")
+        self.assertEqual(len(captured), 2)
+
+        json_req, _ = captured[0]
+        stl_req, raw = captured[1]
+        self.assertTrue(json_req.full_url.endswith("/api/v1/briefs"))
+        self.assertTrue(stl_req.full_url.endswith("/api/v1/briefs/hub-stl-42/source-stl"))
+        ctype = stl_req.get_header("Content-type") or stl_req.headers.get("Content-Type", "")
+        self.assertIn("multipart/form-data", ctype)
+
+        self.assertIsNotNone(raw)
+        self.assertIn(b'name="file"', raw)
+        self.assertIn(b".stl", raw)
+        self.assertIn(b"solid test", raw)
+        ts = stl_req.get_header("X-timestamp") or stl_req.headers.get("X-Timestamp")
+        sig = stl_req.get_header("X-signature") or stl_req.headers.get("X-Signature")
+        self.assertTrue(verify_signature(self.hub.site_secret, ts, raw, sig))
+        self.assertEqual(sig, sign_body(self.hub.site_secret, ts, raw))
+
+    def test_push_brief_json_ok_stl_fail_keeps_brief_id(self):
+        from unittest.mock import MagicMock, patch
+        from urllib.error import HTTPError
+        from io import BytesIO
+
+        from workshop.hub import push_brief_to_hub
+
+        calls = {"n": 0}
+
+        def fake_urlopen(req, timeout=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                resp = MagicMock()
+                resp.read.return_value = b'{"brief_id":"hub-partial","id":"hub-partial"}'
+                resp.__enter__.return_value = resp
+                resp.__exit__.return_value = None
+                return resp
+            raise HTTPError(
+                req.full_url,
+                400,
+                "bad stl",
+                hdrs=None,
+                fp=BytesIO(b'{"detail":"invalid stl"}'),
+            )
+
+        with patch("workshop.hub.urlrequest.urlopen", side_effect=fake_urlopen):
+            ok, detail, data = push_brief_to_hub(self.brief)
+
+        self.assertFalse(ok)
+        self.assertEqual(data.get("brief_id"), "hub-partial")
+        self.assertIn("STL не загружен", detail)
+        self.assertIn("hub-partial", detail)

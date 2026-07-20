@@ -1930,11 +1930,11 @@ def modeling_detail(request: HttpRequest, brief_id: int):
                     brief.manager_alert = False
                     brief.save(update_fields=["status", "manager_alert", "updated_at"])
                 ok, detail, data = push_brief_to_hub(brief)
-                if ok:
-                    hub_id = str(data.get("brief_id") or data.get("id") or "").strip()
-                    if hub_id:
-                        brief.hub_brief_id = hub_id
-                    if brief.status == ModelingBriefStatus.DRAFT:
+                hub_id = str(data.get("brief_id") or data.get("id") or "").strip()
+                if hub_id:
+                    brief.hub_brief_id = hub_id
+                if ok or hub_id:
+                    if brief.status == ModelingBriefStatus.DRAFT and hub_id:
                         brief.status = ModelingBriefStatus.QUEUED
                     brief.save()
                     log_action(
@@ -1942,9 +1942,13 @@ def modeling_detail(request: HttpRequest, brief_id: int):
                         "modeling_push_hub",
                         entity_type="modeling",
                         entity_id=brief.id,
-                        details=f"{brief.brief_number} hub={brief.hub_brief_id}",
+                        details=f"{brief.brief_number} hub={brief.hub_brief_id} ok={ok} {detail}",
                     )
-                    messages.success(request, "Отправлено в HUB")
+                if ok:
+                    messages.success(
+                        request,
+                        "Отправлено в HUB" + (" (включая STL)" if brief.stl_file else ""),
+                    )
                 else:
                     messages.warning(request, f"Не удалось отправить в HUB: {detail}")
             else:
