@@ -1038,6 +1038,12 @@ def debtors_sms_one(request: HttpRequest, order_id: int):
     return redirect("debtors")
 
 
+@require_GET
+def api_docs(request: HttpRequest):
+    """Человекочитаемый справочник HTTP-методов сервиса."""
+    return render(request, "workshop/api_docs.html")
+
+
 @require_http_methods(["GET", "POST"])
 def admin_panel(request: HttpRequest):
     from workshop.models import SmsLog, SmsProvider, SmsSettings, YandexAiSettings

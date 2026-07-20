@@ -38,6 +38,7 @@ urlpatterns = [
     path("marketing/messages/<int:log_id>/delete", views.marketing_message_delete, name="marketing_message_delete"),
     path("marketing/bot-qr.png", views.max_bot_qr, name="max_bot_qr"),
     path("admin-panel", views.admin_panel, name="admin_panel"),
+    path("docs", views.api_docs, name="api_docs"),
     path("max/webhook", views.max_webhook, name="max_webhook"),
     path("work-queue", views.work_queue, name="work_queue"),
     path("orders/<int:order_id>/status", views.order_set_status, name="order_set_status"),

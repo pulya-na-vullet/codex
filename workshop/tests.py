@@ -489,6 +489,12 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Канал Max")
         self.assertContains(r, "Яндекс ИИ")
+        self.assertContains(r, "API docs")
+        r = self.http.get("/docs")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "API / HTTP Reference")
+        self.assertContains(r, "/max/webhook")
+        self.assertContains(r, "Public: Max Webhook")
         r = self.http.post(
             "/admin-panel",
             {

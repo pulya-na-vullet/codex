@@ -1,0 +1,240 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+        <h4 class="mb-0">API / HTTP Reference</h4>
+        <div class="small-muted">Справочник методов сервиса ИТ-мастерская</div>
+    </div>
+    <a class="btn btn-outline-light btn-sm" href="{% url 'admin_panel' %}">Админ</a>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-3">
+        <div class="card"><div class="card-body small api-toc">
+            <div class="fw-semibold mb-2">Разделы</div>
+            <a href="#auth">Авторизация</a>
+            <a href="#dashboard">Dashboard</a>
+            <a href="#clients">Clients</a>
+            <a href="#services">Services</a>
+            <a href="#orders">Orders</a>
+            <a href="#work">Work queue</a>
+            <a href="#debtors">Debtors</a>
+            <a href="#marketing">Marketing / Max</a>
+            <a href="#acceptance">Acceptance</a>
+            <a href="#admin">Admin / AI</a>
+            <a href="#audit">Audit</a>
+            <a href="#webhook">Webhook Max</a>
+            <a href="#workers">Workers / CLI</a>
+        </div></div>
+    </div>
+    <div class="col-lg-9">
+        <div class="card mb-3"><div class="card-body">
+            <p class="mb-2">Базовый URL: <code>http://&lt;host&gt;:8000</code></p>
+            <p class="mb-2 small-muted">Большинство методов — HTML/redirect с session-auth и CSRF. Публичный JSON-вход — только <code>/max/webhook</code>.</p>
+            <p class="mb-0 small">Полный markdown: <code>docs/API.md</code> в репозитории.</p>
+        </div></div>
+
+        <section id="auth" class="card mb-3"><div class="card-body">
+            <h5>Авторизация</h5>
+            <table class="table table-sm">
+                <thead><tr><th>Method</th><th>Path</th><th>Body</th><th>Response</th></tr></thead>
+                <tbody>
+                <tr><td><code>POST</code></td><td><code>/login</code></td><td><code>username</code>, <code>password</code>, <code>next?</code></td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/logout</code></td><td>—</td><td>302 → /login</td></tr>
+                </tbody>
+            </table>
+            <div class="small-muted">Session cookie. Default: ITM / pass. CSRF на всех POST кроме webhook. Idle 6ч.</div>
+        </div></section>
+
+        <section id="dashboard" class="card mb-3"><div class="card-body">
+            <h5>Dashboard &amp; Statistics</h5>
+            <table class="table table-sm">
+                <thead><tr><th>Method</th><th>Path</th><th>Params</th><th>Response</th></tr></thead>
+                <tbody>
+                <tr><td><code>GET</code></td><td><code>/</code></td><td>—</td><td>HTML</td></tr>
+                <tr><td><code>GET</code></td><td><code>/statistics</code></td><td><code>period=week|month|year</code></td><td>HTML</td></tr>
+                </tbody>
+            </table>
+        </div></section>
+
+        <section id="clients" class="card mb-3"><div class="card-body">
+            <h5>Clients</h5>
+            <table class="table table-sm">
+                <thead><tr><th>Method</th><th>Path</th><th>Params</th><th>Response</th></tr></thead>
+                <tbody>
+                <tr><td><code>GET</code></td><td><code>/clients</code></td><td><code>q</code></td><td>HTML</td></tr>
+                <tr><td><code>POST</code></td><td><code>/clients</code></td><td><code>name</code>, <code>phone</code>, <code>comment</code></td><td>302</td></tr>
+                <tr><td><code>GET/POST</code></td><td><code>/clients/{id}</code></td><td>comment, max_user_id, allow_marketing_sms, discount_percent</td><td>HTML/302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/clients/{id}/delete</code></td><td>—</td><td>302</td></tr>
+                <tr><td><code>GET</code></td><td><code>/clients/export.xlsx</code></td><td>—</td><td>xlsx</td></tr>
+                <tr><td><code>POST</code></td><td><code>/clients/import</code></td><td><code>excel_file</code></td><td>302</td></tr>
+                </tbody>
+            </table>
+        </div></section>
+
+        <section id="services" class="card mb-3"><div class="card-body">
+            <h5>Services</h5>
+            <table class="table table-sm">
+                <thead><tr><th>Method</th><th>Path</th><th>Params</th><th>Response</th></tr></thead>
+                <tbody>
+                <tr><td><code>GET/POST</code></td><td><code>/services</code></td><td>GET <code>status</code>; POST name/price/category</td><td>HTML/302</td></tr>
+                <tr><td><code>GET</code></td><td><code>/services/print</code></td><td>—</td><td>HTML прайс</td></tr>
+                <tr><td><code>POST</code></td><td><code>/services/{id}/toggle-active</code></td><td><code>status</code></td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/services/{id}/delete</code></td><td><code>status</code></td><td>302</td></tr>
+                </tbody>
+            </table>
+        </div></section>
+
+        <section id="orders" class="card mb-3"><div class="card-body">
+            <h5>Orders</h5>
+            <table class="table table-sm">
+                <thead><tr><th>Method</th><th>Path</th><th>Params</th><th>Response</th></tr></thead>
+                <tbody>
+                <tr><td><code>GET</code></td><td><code>/orders</code></td><td>—</td><td>HTML</td></tr>
+                <tr><td><code>GET</code></td><td><code>/orders/export.xlsx</code></td><td>—</td><td>xlsx</td></tr>
+                <tr><td><code>GET/POST</code></td><td><code>/orders/new</code></td><td><code>client_id?</code></td><td>HTML/302</td></tr>
+                <tr><td><code>GET</code></td><td><code>/orders/{id}</code></td><td>—</td><td>HTML</td></tr>
+                <tr><td><code>POST</code></td><td><code>/orders/{id}/meta</code></td><td>device_type, periphery, notes</td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/orders/{id}/add-service</code></td><td>service_name, quantity</td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/orders/{id}/line/{line_id}/delete</code></td><td>—</td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/orders/{id}/delete</code></td><td>—</td><td>302</td></tr>
+                <tr><td><code>GET</code></td><td><code>/orders/{id}/print</code></td><td>—</td><td>HTML</td></tr>
+                <tr><td><code>GET</code></td><td><code>/orders/{id}/pdf</code></td><td>—</td><td>PDF</td></tr>
+                <tr><td><code>POST</code></td><td><code>/orders/{id}/print-direct</code></td><td>—</td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/orders/{id}/payment</code></td><td>payment_method, note, receipt</td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/orders/{id}/mytax</code></td><td>mytax_issued, receipt</td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/orders/{id}/status</code></td><td>status, next?</td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/orders/{id}/mark-called</code></td><td>next?</td><td>302</td></tr>
+                </tbody>
+            </table>
+            <div class="small-muted">status: <code>active</code> | <code>ready_call</code> | <code>done</code> | <code>cancelled</code> · payment: <code>unpaid</code> | <code>cash</code> | <code>transfer</code></div>
+        </div></section>
+
+        <section id="work" class="card mb-3"><div class="card-body">
+            <h5>Work queue</h5>
+            <table class="table table-sm">
+                <thead><tr><th>Method</th><th>Path</th><th>Response</th></tr></thead>
+                <tbody>
+                <tr><td><code>GET</code></td><td><code>/work-queue</code></td><td>HTML</td></tr>
+                </tbody>
+            </table>
+        </div></section>
+
+        <section id="debtors" class="card mb-3"><div class="card-body">
+            <h5>Debtors</h5>
+            <table class="table table-sm">
+                <thead><tr><th>Method</th><th>Path</th><th>Response</th></tr></thead>
+                <tbody>
+                <tr><td><code>GET</code></td><td><code>/debtors</code></td><td>HTML</td></tr>
+                <tr><td><code>POST</code></td><td><code>/debtors/sms-all</code></td><td>302 Max all</td></tr>
+                <tr><td><code>POST</code></td><td><code>/debtors/{order_id}/sms</code></td><td>302 Max one</td></tr>
+                </tbody>
+            </table>
+        </div></section>
+
+        <section id="marketing" class="card mb-3"><div class="card-body">
+            <h5>Marketing / Max</h5>
+            <table class="table table-sm">
+                <thead><tr><th>Method</th><th>Path</th><th>Params</th><th>Response</th></tr></thead>
+                <tbody>
+                <tr><td><code>GET/POST</code></td><td><code>/marketing</code></td><td>GET q/sort; POST text, client_ids[]</td><td>HTML/302</td></tr>
+                <tr><td><code>GET</code></td><td><code>/marketing/poster</code></td><td>—</td><td>HTML плакат</td></tr>
+                <tr><td><code>POST</code></td><td><code>/marketing/blasts/{id}/delete</code></td><td>—</td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/marketing/messages/{id}/delete</code></td><td>—</td><td>302</td></tr>
+                <tr><td><code>GET</code></td><td><code>/marketing/bot-qr.png</code></td><td><code>size</code> 4–16</td><td>PNG</td></tr>
+                </tbody>
+            </table>
+            <div class="small-muted">Плейсхолдеры: {name} {phone} {company} {company_phone}</div>
+        </div></section>
+
+        <section id="acceptance" class="card mb-3"><div class="card-body">
+            <h5>Acceptance</h5>
+            <table class="table table-sm">
+                <thead><tr><th>Method</th><th>Path</th><th>Params</th><th>Response</th></tr></thead>
+                <tbody>
+                <tr><td><code>GET/POST</code></td><td><code>/acceptance</code></td><td>client_id, declared_defect*, …</td><td>HTML/302</td></tr>
+                <tr><td><code>GET</code></td><td><code>/acceptance/{id}</code></td><td>—</td><td>HTML</td></tr>
+                <tr><td><code>POST</code></td><td><code>/acceptance/{id}/status</code></td><td>status, next?</td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/acceptance/{id}/mark-called</code></td><td>next?</td><td>302</td></tr>
+                <tr><td><code>GET</code></td><td><code>/acceptance/{id}/print|pdf</code></td><td>—</td><td>HTML/PDF</td></tr>
+                <tr><td><code>POST</code></td><td><code>/acceptance/{id}/print-direct</code></td><td>—</td><td>302</td></tr>
+                <tr><td><code>POST</code></td><td><code>/acceptance/{id}/delete</code></td><td>—</td><td>302</td></tr>
+                </tbody>
+            </table>
+            <div class="small-muted">status: diagnostics | diagnostics_done | done</div>
+        </div></section>
+
+        <section id="admin" class="card mb-3"><div class="card-body">
+            <h5>Admin / AI</h5>
+            <p class="small-muted"><code>POST /admin-panel</code> с полем <code>section</code>:</p>
+            <ul class="small mb-2">
+                <li><code>max</code> — токен, шаблоны, long-poll</li>
+                <li><code>ai</code> — Yandex AI, время <code>report_time_msk=HH:MM</code></li>
+                <li><code>ai_report_now</code> — тестовая отправка (не блокирует расписание)</li>
+                <li><code>ai_report_reset_today</code> — снова разрешить автоотправку сегодня</li>
+            </ul>
+        </div></section>
+
+        <section id="audit" class="card mb-3"><div class="card-body">
+            <h5>Audit</h5>
+            <table class="table table-sm">
+                <thead><tr><th>Method</th><th>Path</th><th>Params</th><th>Response</th></tr></thead>
+                <tbody>
+                <tr><td><code>GET</code></td><td><code>/audit-log</code></td><td><code>q</code></td><td>HTML</td></tr>
+                <tr><td><code>GET</code></td><td><code>/audit-log/export.log</code></td><td><code>q</code></td><td>TSV</td></tr>
+                </tbody>
+            </table>
+        </div></section>
+
+        <section id="webhook" class="card mb-3"><div class="card-body">
+            <h5>Public: Max Webhook</h5>
+            <p><code>GET/POST /max/webhook</code> — без session, CSRF exempt.</p>
+            <pre class="api-pre mb-2">{
+  "updates": [
+    {
+      "update_type": "message_created",
+      "message": {
+        "sender": { "user_id": 7344745 },
+        "body": { "text": "+79991234567" }
+      }
+    }
+  ]
+}</pre>
+            <div class="small-muted">Ответ: <code>200 ok</code> или <code>400 bad json</code>. Связывает клиента по телефону → <code>max_user_id</code>.</div>
+        </div></section>
+
+        <section id="workers" class="card mb-3"><div class="card-body">
+            <h5>Workers / CLI</h5>
+            <ul class="small mb-2">
+                <li>Print queue — <code>IT_MASTER_PRINT_WORKER</code></li>
+                <li>Max long-poll — <code>GET {MAX_API_BASE}/updates</code></li>
+                <li>AI daily report — по времени МСК из админки</li>
+            </ul>
+            <pre class="api-pre mb-0">python manage.py send_ai_daily_report [--force]
+python manage.py seed_catalog
+python manage.py import_legacy_db [db] [--clear]</pre>
+        </div></section>
+    </div>
+</div>
+
+<style>
+.api-toc a {
+    display: block;
+    color: #93c5fd;
+    text-decoration: none;
+    padding: .2rem 0;
+}
+.api-toc a:hover { color: #fff; }
+.api-pre {
+    background: #0b1220;
+    border: 1px solid #334155;
+    border-radius: .4rem;
+    padding: .75rem .9rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: .8rem;
+    color: #e2e8f0;
+}
+code { color: #93c5fd; }
+</style>
+{% endblock %}

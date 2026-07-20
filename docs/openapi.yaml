@@ -1,0 +1,204 @@
+openapi: 3.0.3
+info:
+  title: IT Workshop (ИТ-мастерская) HTTP API
+  version: "1.0"
+  description: |
+    Session-authenticated Django workshop app. Most endpoints return HTML/redirects.
+    The only public JSON-style integration endpoint is Max webhook.
+servers:
+  - url: http://192.168.101.9:8000
+    description: LAN default
+paths:
+  /login:
+    post:
+      summary: Create workshop session
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+                next: { type: string }
+      responses:
+        "302": { description: Redirect after login }
+  /logout:
+    post:
+      summary: Destroy workshop session
+      tags: [Auth]
+      responses:
+        "302": { description: Redirect to /login }
+  /max/webhook:
+    get:
+      summary: Health check for Max webhook
+      tags: [Max]
+      security: []
+      responses:
+        "200":
+          description: Plain text ok
+          content:
+            text/plain:
+              schema: { type: string, example: max webhook ok }
+    post:
+      summary: Receive Max bot updates and link client by phone
+      tags: [Max]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  properties:
+                    updates:
+                      type: array
+                      items: { $ref: "#/components/schemas/MaxUpdate" }
+                - $ref: "#/components/schemas/MaxUpdate"
+                - type: array
+                  items: { $ref: "#/components/schemas/MaxUpdate" }
+            examples:
+              message:
+                value:
+                  updates:
+                    - update_type: message_created
+                      message:
+                        sender: { user_id: 7344745 }
+                        body: { text: "+79991234567" }
+      responses:
+        "200":
+          description: Accepted
+          content:
+            text/plain:
+              schema: { type: string, example: ok }
+        "400":
+          description: Invalid JSON
+          content:
+            text/plain:
+              schema: { type: string, example: bad json }
+  /marketing/bot-qr.png:
+    get:
+      summary: QR PNG for configured Max bot link
+      tags: [Marketing]
+      parameters:
+        - in: query
+          name: size
+          schema: { type: integer, minimum: 4, maximum: 16, default: 8 }
+      responses:
+        "200":
+          description: PNG image
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+        "404": { description: Bot link not configured }
+  /marketing:
+    get:
+      summary: Marketing page
+      tags: [Marketing]
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [name, -name, date, -date, max, -max, regular, -regular]
+      responses:
+        "200": { description: HTML }
+    post:
+      summary: Send marketing blast to selected clients
+      tags: [Marketing]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+                client_ids:
+                  type: array
+                  items: { type: integer }
+      responses:
+        "302": { description: Redirect back to marketing }
+  /admin-panel:
+    post:
+      summary: Admin actions (Max settings / AI report)
+      tags: [Admin]
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [section]
+              properties:
+                section:
+                  type: string
+                  enum: [max, ai, ai_report_now, ai_report_reset_today]
+                report_time_msk: { type: string, example: "20:00" }
+                ai_enabled: { type: string, example: "1" }
+                bot_token: { type: string }
+      responses:
+        "302": { description: Redirect }
+  /orders/{order_id}/status:
+    post:
+      summary: Change order status
+      tags: [Orders]
+      parameters:
+        - in: path
+          name: order_id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [active, ready_call, done, cancelled]
+                next: { type: string }
+      responses:
+        "302": { description: Redirect }
+  /docs:
+    get:
+      summary: Human-readable API docs page
+      tags: [Docs]
+      responses:
+        "200": { description: HTML }
+components:
+  schemas:
+    MaxUpdate:
+      type: object
+      properties:
+        update_type:
+          type: string
+          example: message_created
+        message:
+          type: object
+          properties:
+            sender:
+              type: object
+              properties:
+                user_id: { type: integer }
+            body:
+              type: object
+              properties:
+                text: { type: string }
+                attachments:
+                  type: array
+                  items: { type: object }
+  securitySchemes:
+    workshopSession:
+      type: apiKey
+      in: cookie
+      name: sessionid
+security:
+  - workshopSession: []
