@@ -73,17 +73,21 @@ def dashboard(request: HttpRequest):
         Order.objects.filter(status=OrderStatus.READY_CALL).count()
         + AcceptanceAct.objects.filter(status=AcceptanceActStatus.DIAGNOSTICS_DONE).count()
     )
-    modeling_in_work = ModelingBrief.objects.filter(
+    # 3D open pipeline (not done/cancelled)
+    modeling_unassigned = ModelingBrief.objects.filter(
+        status__in=[ModelingBriefStatus.DRAFT, ModelingBriefStatus.QUEUED]
+    ).count()
+    modeling_with_designer = ModelingBrief.objects.filter(
         status__in=[
-            ModelingBriefStatus.QUEUED,
             ModelingBriefStatus.ASSIGNED,
             ModelingBriefStatus.IN_PROGRESS,
             ModelingBriefStatus.CLARIFICATION_PROVIDED,
         ]
     ).count()
-    modeling_attention = ModelingBrief.objects.filter(manager_alert=True).exclude(
-        status=ModelingBriefStatus.CANCELLED
+    modeling_clarification = ModelingBrief.objects.filter(
+        status=ModelingBriefStatus.NEEDS_CLARIFICATION
     ).count()
+    modeling_open = modeling_unassigned + modeling_with_designer + modeling_clarification
     return render(
         request,
         "workshop/dashboard.html",
@@ -91,8 +95,10 @@ def dashboard(request: HttpRequest):
             "orders_in_work": orders_in_work,
             "diagnostics_in_work": diagnostics_in_work,
             "calls_needed": calls_needed,
-            "modeling_in_work": modeling_in_work,
-            "modeling_attention": modeling_attention,
+            "modeling_unassigned": modeling_unassigned,
+            "modeling_with_designer": modeling_with_designer,
+            "modeling_clarification": modeling_clarification,
+            "modeling_open": modeling_open,
         },
     )
 

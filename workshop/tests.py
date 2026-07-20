@@ -812,6 +812,12 @@ class StaffAclAndModelingTests(TestCase):
         r = self.http.get("/modeling")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, brief.brief_number)
+        r = self.http.get("/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "не назначена")
+        self.assertContains(r, "у дизайнера")
+        self.assertContains(r, "на уточнении")
+        self.assertNotContains(r, "3D: внимание")
 
     @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
     def test_hub_webhook_taken_and_done(self):
