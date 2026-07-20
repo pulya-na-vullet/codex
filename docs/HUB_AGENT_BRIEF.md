@@ -202,11 +202,19 @@ Prefer **A** for first vertical slice if time-boxed; add **B** next.
 
 ## 5. Max bot on HUB (MVP flows)
 
+### Long-poll is mandatory for live registration
+
+SITE CRM bot long-poll and HUB designer long-poll **cannot share one Max token**.
+
+When HUB is live: enable HUB `MaxBotSettings.long_poll_enabled` + token; **disable** SITE Max long-poll for that bot.
+
+If HUB only exposes `POST /api/v1/max/webhook` without a poller/proxy, writing `Регистрация: Дизайнер` in Max does nothing.
+
 ### Designer registration
 
 1. User sends exactly: `Регистрация: Дизайнер`
 2. Bot asks sequentially: ФИО → телефон СБП → опыт → ссылка на портфолио
-3. Create/update `Designer` linked to `max_user_id`
+3. Create/update `Designer` linked to `max_user_id`; reply with web login/password in Max
 
 ### Designer work (commands or buttons)
 

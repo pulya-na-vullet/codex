@@ -1,0 +1,623 @@
+From 3208ce543116f76913888fbcf39d090b931cd924 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Mon, 20 Jul 2026 11:52:07 +0000
+Subject: [PATCH] Add Max long-poll so designer registration works in chat.
+
+HUB now polls Max /updates, runs the registration FSM, and sends
+login/password replies into the bot chat. Document that SITE long-poll
+must be disabled on the same bot token.
+---
+ README.md                               |  53 ++++--
+ hub/admin.py                            |  19 ++
+ hub/apps.py                             |  16 +-
+ hub/max_bot.py                          | 239 ++++++++++++++++++++++++
+ hub/migrations/0003_max_bot_settings.py |  29 +++
+ hub/models.py                           |  32 ++++
+ hub/services.py                         |   7 +-
+ hub/tests.py                            |  32 ++++
+ hub/views.py                            |  36 +++-
+ hub_portal/settings.py                  |  12 +-
+ 10 files changed, 444 insertions(+), 31 deletions(-)
+ create mode 100644 hub/max_bot.py
+ create mode 100644 hub/migrations/0003_max_bot_settings.py
+
+diff --git a/README.md b/README.md
+index cb3ec42..e66c9a6 100644
+--- a/README.md
++++ b/README.md
+@@ -15,24 +15,29 @@ MVP-портал для сети CRM-точек и дизайнеров 3D-мо
+   - `X-Timestamp`
+   - `X-Signature = hex(hmac_sha256(site_secret, timestamp + "\n" + raw_body))`
+ - Модель зарегистрированных через Max дизайнеров.
+-- Bot webhook endpoint `POST /api/v1/max/webhook` с FSM-регистрацией:
+-  - `Регистрация: Дизайнер` → ФИО → телефон СБП → опыт → портфолио
+-  - после завершения регистрации бот выдаёт web-логин и пароль для входа в портал
+-- Команды дизайнера:
++- **Max long-poll воркер** (основной путь для LAN/без публичного webhook):
++  - слушает `GET /updates` у Max API
++  - фраза `Регистрация: Дизайнер` → ФИО → телефон СБП → опыт → портфолио
++  - после регистрации бот **присылает в Max** web-логин и пароль
++- Endpoint `POST /api/v1/max/webhook` (для тестов / публичного webhook Max):
++  - упрощённый JSON `{user_id, text}`
++  - или нативный update Max (`update_type` / `message`)
++- Команды дизайнера в Max:
+   - `Очередь`
+   - `Беру <brief_id> <срок>`
+   - `Уточнение <brief_id> <текст>`
+   - `Готово <brief_id>`
+ - Web API для кабинета дизайнера:
+   - `POST /api/v1/designer/auth/login`
+-  - `GET /api/v1/designer/briefs` (общая очередь + уже взятые задачи + кто исполнитель)
+-  - `POST /api/v1/designer/briefs/{brief_id}/claim` (атомарное назначение, второй дизайнер получит `409`)
+-- Django admin для управления точками, дизайнерами, заявками и событиями.
+-- Веб-кабинет дизайнеров на Django templates + Bootstrap 5:
+-  - `/designer/login` — вход по кредам от бота,
+-  - `/designer/queue` — общая очередь для всех дизайнеров,
+-  - видно, кто взял задачу в работу,
+-  - повторный захват уже взятой задачи блокируется.
++  - `GET /api/v1/designer/briefs`
++  - `POST /api/v1/designer/briefs/{brief_id}/claim`
++- Django admin + веб-кабинет `/designer/login`, `/designer/queue`
++
++## Важно про один бот
++
++На **одном** токене Max может работать только **один** long-poll.
++
++Если HUB слушает бота — **выключите** long-poll в SITE (мастерской), иначе обновления «съест» другой процесс и регистрация дизайнера не стартует.
+ 
+ ## Быстрый старт
+ 
+@@ -50,17 +55,27 @@ python manage.py runserver
+ - `http://127.0.0.1:8000/designer/login` — кабинет дизайнера
+ - `http://127.0.0.1:8000/admin/` — админка
+ 
+-## Настройки
++## Как включить регистрацию дизайнера в Max
++
++1. `python manage.py runserver` (воркер long-poll стартует вместе с приложением).
++2. Admin → **Настройки Max-бота** → вставить токен бота, включить Long Poll, сохранить.
++3. В Max написать боту точно: `Регистрация: Дизайнер`
++4. Пройти шаги; бот пришлёт логин/пароль для `/designer/login`.
++
++Переменные:
++
++- `MAX_LONG_POLL_WORKER=0` — полностью выключить фоновый воркер
++- `MAX_API_BASE` — по умолчанию `https://platform-api2.max.ru`
+ 
+-Переменные окружения:
++## Настройки Django
+ 
+-- `DJANGO_SECRET_KEY` — секретный ключ Django.
+-- `DJANGO_DEBUG` — `1` или `0`.
+-- `DJANGO_ALLOWED_HOSTS` — список хостов через запятую.
+-- `DJANGO_TIMEZONE` — часовой пояс (по умолчанию `UTC`).
++- `DJANGO_SECRET_KEY`
++- `DJANGO_DEBUG` — `1` или `0`
++- `DJANGO_ALLOWED_HOSTS`
++- `DJANGO_TIMEZONE` — по умолчанию `UTC`
+ 
+ ## Порядок подключения CRM
+ 
+-1. В админке HUB создать `SiteNode` с `site_id`, `site_token`, `site_secret`.
++1. В админке HUB создать `SiteNode` с `site_id`, `site_token`, `site_secret`, `callback_base_url`.
+ 2. В CRM прописать те же `site_id/token/secret` и адрес HUB.
+ 3. Отправлять заявки в `POST /api/v1/briefs` в формате из `openapi-hub.yaml`.
+diff --git a/hub/admin.py b/hub/admin.py
+index cdddfae..4f53b7d 100644
+--- a/hub/admin.py
++++ b/hub/admin.py
+@@ -6,6 +6,7 @@ from .models import (
+     DesignerSessionToken,
+     HubBrief,
+     HubBriefEvent,
++    MaxBotSettings,
+     SiteNode,
+ )
+ 
+@@ -50,3 +51,21 @@ class DesignerSessionTokenAdmin(admin.ModelAdmin):
+     list_display = ("designer", "key", "expires_at", "is_revoked", "created_at")
+     search_fields = ("designer__full_name", "designer__max_user_id", "key")
+     list_filter = ("is_revoked",)
++
++
++@admin.register(MaxBotSettings)
++class MaxBotSettingsAdmin(admin.ModelAdmin):
++    list_display = ("id", "bot_username", "long_poll_enabled", "updates_marker", "updated_at")
++    fields = ("bot_token", "bot_username", "long_poll_enabled", "welcome_text", "updates_marker")
++
++    def has_add_permission(self, request):
++        return not MaxBotSettings.objects.exists()
++
++    def save_model(self, request, obj, form, change):
++        super().save_model(request, obj, form, change)
++        try:
++            from .max_bot import restart_max_long_poll_worker
++
++            restart_max_long_poll_worker()
++        except Exception:
++            pass
+diff --git a/hub/apps.py b/hub/apps.py
+index 8b03cfb..f73f5de 100644
+--- a/hub/apps.py
++++ b/hub/apps.py
+@@ -2,4 +2,18 @@ from django.apps import AppConfig
+ 
+ 
+ class HubConfig(AppConfig):
+-    name = 'hub'
++    default_auto_field = "django.db.models.BigAutoField"
++    name = "hub"
++
++    def ready(self) -> None:
++        # Start Max long-poll so "Регистрация: Дизайнер" works without a public webhook.
++        try:
++            from django.conf import settings
++
++            if getattr(settings, "MAX_LONG_POLL_WORKER", True):
++                from .max_bot import start_max_long_poll_worker
++
++                start_max_long_poll_worker()
++        except Exception:
++            # Avoid crashing migrate/collectstatic if DB is not ready yet.
++            pass
+diff --git a/hub/max_bot.py b/hub/max_bot.py
+new file mode 100644
+index 0000000..8611ec4
+--- /dev/null
++++ b/hub/max_bot.py
+@@ -0,0 +1,239 @@
++"""Max messenger client + long-poll for HUB designer bot."""
++
++from __future__ import annotations
++
++import json
++import logging
++import threading
++import urllib.error
++import urllib.parse
++import urllib.request
++from typing import Any
++
++from django.conf import settings
++
++from .services import process_bot_message
++
++logger = logging.getLogger(__name__)
++
++
++def _api_base() -> str:
++    return getattr(settings, "MAX_API_BASE", "https://platform-api2.max.ru").rstrip("/")
++
++
++def _json_request(
++    method: str,
++    path: str,
++    *,
++    token: str,
++    query: dict[str, Any] | None = None,
++    body: dict[str, Any] | None = None,
++    timeout: int = 35,
++) -> dict[str, Any]:
++    query = query or {}
++    url = f"{_api_base()}{path}"
++    if query:
++        url = f"{url}?{urllib.parse.urlencode(query)}"
++    data = None
++    headers = {
++        "Authorization": token,
++        "Content-Type": "application/json",
++        "Accept": "application/json",
++    }
++    if body is not None:
++        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
++    req = urllib.request.Request(url, data=data, headers=headers, method=method)
++    try:
++        with urllib.request.urlopen(req, timeout=timeout) as resp:
++            raw = resp.read().decode("utf-8") or "{}"
++            return json.loads(raw) if raw.strip() else {}
++    except urllib.error.HTTPError as exc:
++        detail = exc.read().decode("utf-8", errors="replace")[:500]
++        raise RuntimeError(f"max_http_{exc.code}: {detail}") from exc
++    except urllib.error.URLError as exc:
++        raise RuntimeError(f"network_error: {exc.reason}") from exc
++
++
++def send_max_message(*, token: str, user_id: int | str, text: str) -> dict[str, Any]:
++    return _json_request(
++        "POST",
++        "/messages",
++        token=token,
++        query={"user_id": int(user_id)},
++        body={"text": text},
++    )
++
++
++def extract_user_and_text(update: dict[str, Any]) -> tuple[str, str, str]:
++    """Return (user_id, text, update_type) from a Max update object."""
++    update_type = str(update.get("update_type") or "")
++    message = update.get("message") or {}
++    sender = message.get("sender") or update.get("user") or {}
++    user_id = sender.get("user_id")
++    if user_id is None:
++        user_id = ""
++    text = (message.get("body") or {}).get("text") or ""
++    return str(user_id).strip(), str(text).strip(), update_type
++
++
++def process_max_update(update: dict[str, Any], *, token: str = "", welcome_text: str = "") -> str | None:
++    """Handle one Max update; send reply to chat when token is set. Returns reply text."""
++    user_id, text, update_type = extract_user_and_text(update)
++    if not user_id:
++        return None
++
++    if update_type == "bot_started" or (
++        update_type == "message_created" and text.lower() in {"/start", "start"}
++    ):
++        reply = (welcome_text or "").strip() or (
++            "Здравствуйте! Для регистрации дизайнера отправьте точно:\nРегистрация: Дизайнер"
++        )
++        if token:
++            try:
++                send_max_message(token=token, user_id=user_id, text=reply)
++            except Exception:
++                logger.exception("Failed Max welcome to user_id=%s", user_id)
++        return reply
++
++    if update_type and update_type != "message_created":
++        return None
++    if not text:
++        return None
++
++    reply = process_bot_message(max_user_id=user_id, text=text).text
++    if token and reply:
++        try:
++            send_max_message(token=token, user_id=user_id, text=reply)
++        except Exception:
++            logger.exception("Failed Max reply to user_id=%s", user_id)
++    return reply
++
++
++def process_updates_payload(payload: dict[str, Any] | list[Any], *, token: str = "", welcome_text: str = "") -> list[str]:
++    updates: list[Any]
++    if isinstance(payload, list):
++        updates = payload
++    elif isinstance(payload, dict):
++        if "updates" in payload:
++            updates = payload.get("updates") or []
++        elif payload.get("update_type"):
++            updates = [payload]
++        elif payload.get("user_id") and payload.get("text"):
++            # Simplified test/manual format
++            return [
++                process_bot_message(
++                    max_user_id=str(payload["user_id"]).strip(),
++                    text=str(payload["text"]).strip(),
++                ).text
++            ]
++        else:
++            updates = []
++    else:
++        updates = []
++
++    replies: list[str] = []
++    for update in updates:
++        if not isinstance(update, dict):
++            continue
++        try:
++            reply = process_max_update(update, token=token, welcome_text=welcome_text)
++            if reply:
++                replies.append(reply)
++        except Exception:
++            logger.exception("Failed to process Max update")
++    return replies
++
++
++def _max_long_poll_loop(stop_event: threading.Event) -> None:
++    from django.db import close_old_connections
++    from django.db.utils import OperationalError, ProgrammingError
++
++    from .models import MaxBotSettings
++
++    marker: int | None = None
++    while not stop_event.is_set():
++        try:
++            close_old_connections()
++            cfg = MaxBotSettings.get_solo()
++            token = (cfg.bot_token or "").strip()
++            if not cfg.long_poll_enabled or not token:
++                stop_event.wait(3.0)
++                continue
++
++            if marker is None and cfg.updates_marker is not None:
++                marker = int(cfg.updates_marker)
++
++            query: dict[str, Any] = {"limit": 100, "timeout": 25}
++            if marker is not None:
++                query["marker"] = marker
++
++            try:
++                payload = _json_request("GET", "/updates", token=token, query=query, timeout=35)
++            except Exception:
++                logger.exception("Max long-poll /updates failed")
++                stop_event.wait(5.0)
++                continue
++
++            updates = payload.get("updates") or []
++            new_marker = payload.get("marker")
++            for update in updates:
++                try:
++                    process_max_update(update, token=token, welcome_text=cfg.welcome_text or "")
++                except Exception:
++                    logger.exception("Failed to process Max update")
++            if new_marker is not None:
++                try:
++                    marker = int(new_marker)
++                except (TypeError, ValueError):
++                    marker = None
++                if marker is not None:
++                    MaxBotSettings.objects.filter(pk=cfg.pk).update(updates_marker=marker)
++        except (OperationalError, ProgrammingError):
++            logger.warning("Max long-poll: database not ready, retrying")
++            stop_event.wait(5.0)
++        except Exception:
++            logger.exception("Max long-poll worker crashed iteration")
++            stop_event.wait(5.0)
++
++
++_worker_stop: threading.Event | None = None
++_worker_thread: threading.Thread | None = None
++_worker_lock = threading.Lock()
++
++
++def start_max_long_poll_worker() -> None:
++    global _worker_stop, _worker_thread
++    if not getattr(settings, "MAX_LONG_POLL_WORKER", True):
++        return
++    with _worker_lock:
++        if _worker_thread is not None and _worker_thread.is_alive():
++            return
++        _worker_stop = threading.Event()
++        _worker_thread = threading.Thread(
++            target=_max_long_poll_loop,
++            args=(_worker_stop,),
++            name="hub-max-long-poll",
++            daemon=True,
++        )
++        _worker_thread.start()
++        logger.info("HUB Max long-poll worker started")
++
++
++def stop_max_long_poll_worker() -> None:
++    global _worker_stop, _worker_thread
++    with _worker_lock:
++        if _worker_stop is not None:
++            _worker_stop.set()
++        if _worker_thread is not None:
++            _worker_thread.join(timeout=2.0)
++        _worker_stop = None
++        _worker_thread = None
++
++
++def restart_max_long_poll_worker() -> None:
++    stop_max_long_poll_worker()
++    start_max_long_poll_worker()
++
++
++def is_max_long_poll_running() -> bool:
++    return bool(_worker_thread and _worker_thread.is_alive())
+diff --git a/hub/migrations/0003_max_bot_settings.py b/hub/migrations/0003_max_bot_settings.py
+new file mode 100644
+index 0000000..d9f7b92
+--- /dev/null
++++ b/hub/migrations/0003_max_bot_settings.py
+@@ -0,0 +1,29 @@
++# Generated by Django 6.0.7 on 2026-07-20 11:51
++
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ('hub', '0002_designer_web_login_designer_web_password_hash_and_more'),
++    ]
++
++    operations = [
++        migrations.CreateModel(
++            name='MaxBotSettings',
++            fields=[
++                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
++                ('bot_token', models.CharField(blank=True, default='', max_length=255, verbose_name='Токен бота Max')),
++                ('bot_username', models.CharField(blank=True, default='', max_length=128, verbose_name='Username бота')),
++                ('long_poll_enabled', models.BooleanField(default=True, verbose_name='Long Poll включён')),
++                ('updates_marker', models.BigIntegerField(blank=True, null=True, verbose_name='Marker /updates')),
++                ('welcome_text', models.TextField(blank=True, default='Здравствуйте! Для регистрации дизайнера отправьте точно:\nРегистрация: Дизайнер', verbose_name='Приветствие')),
++                ('updated_at', models.DateTimeField(auto_now=True)),
++            ],
++            options={
++                'verbose_name': 'Настройки Max-бота',
++                'verbose_name_plural': 'Настройки Max-бота',
++            },
++        ),
++    ]
+diff --git a/hub/models.py b/hub/models.py
+index f52aeb5..cf02ee6 100644
+--- a/hub/models.py
++++ b/hub/models.py
+@@ -107,3 +107,35 @@ class DesignerSessionToken(models.Model):
+     created_at = models.DateTimeField(auto_now_add=True)
+     expires_at = models.DateTimeField()
+     is_revoked = models.BooleanField(default=False)
++
++
++class MaxBotSettings(models.Model):
++    """Singleton: Max bot token + long-poll for designer registration."""
++
++    bot_token = models.CharField("Токен бота Max", max_length=255, blank=True, default="")
++    bot_username = models.CharField("Username бота", max_length=128, blank=True, default="")
++    long_poll_enabled = models.BooleanField("Long Poll включён", default=True)
++    updates_marker = models.BigIntegerField("Marker /updates", null=True, blank=True)
++    welcome_text = models.TextField(
++        "Приветствие",
++        blank=True,
++        default=(
++            "Здравствуйте! Для регистрации дизайнера отправьте точно:\n"
++            "Регистрация: Дизайнер"
++        ),
++    )
++    updated_at = models.DateTimeField(auto_now=True)
++
++    class Meta:
++        verbose_name = "Настройки Max-бота"
++        verbose_name_plural = "Настройки Max-бота"
++
++    def __str__(self) -> str:
++        return "Max bot settings"
++
++    @classmethod
++    def get_solo(cls) -> "MaxBotSettings":
++        obj = cls.objects.first()
++        if obj:
++            return obj
++        return cls.objects.create()
+diff --git a/hub/services.py b/hub/services.py
+index 4342227..8808902 100644
+--- a/hub/services.py
++++ b/hub/services.py
+@@ -34,7 +34,12 @@ def _create_event(brief: HubBrief, event: str, message: str = "") -> None:
+     )
+ 
+ 
++def _normalize_bot_text(text: str) -> str:
++    return " ".join((text or "").replace("\u00a0", " ").strip().split())
++
++
+ def _handle_registration(max_user_id: str, text: str) -> BotReply | None:
++    text = _normalize_bot_text(text)
+     if text == "Регистрация: Дизайнер":
+         BotConversationState.objects.update_or_create(
+             max_user_id=max_user_id,
+@@ -100,7 +105,7 @@ def _format_brief_line(brief: HubBrief) -> str:
+ 
+ 
+ def process_bot_message(max_user_id: str, text: str) -> BotReply:
+-    text = text.strip()
++    text = _normalize_bot_text(text)
+     registration_reply = _handle_registration(max_user_id=max_user_id, text=text)
+     if registration_reply:
+         return registration_reply
+diff --git a/hub/tests.py b/hub/tests.py
+index 125ae5a..615f9df 100644
+--- a/hub/tests.py
++++ b/hub/tests.py
+@@ -260,3 +260,35 @@ class DesignerBootstrapPortalTests(TestCase):
+         self.brief.refresh_from_db()
+         self.assertEqual(self.brief.designer, self.designer)
+         self.assertEqual(self.brief.status, HubBrief.Status.ASSIGNED)
++
++
++class MaxUpdateParsingTests(TestCase):
++    def test_process_max_update_registration_without_sending(self):
++        from .max_bot import process_max_update
++
++        update = {
++            "update_type": "message_created",
++            "message": {
++                "sender": {"user_id": 4242},
++                "body": {"text": "Регистрация: Дизайнер"},
++            },
++        }
++        reply = process_max_update(update, token="", welcome_text="")
++        self.assertIsNotNone(reply)
++        self.assertIn("ФИО", reply or "")
++
++    def test_webhook_accepts_native_max_update(self):
++        client = APIClient()
++        response = client.post(
++            "/api/v1/max/webhook",
++            {
++                "update_type": "message_created",
++                "message": {
++                    "sender": {"user_id": 777},
++                    "body": {"text": "Регистрация: Дизайнер"},
++                },
++            },
++            format="json",
++        )
++        self.assertEqual(response.status_code, 200)
++        self.assertIn("ФИО", response.data.get("reply", ""))
+diff --git a/hub/views.py b/hub/views.py
+index 4479b30..07df011 100644
+--- a/hub/views.py
++++ b/hub/views.py
+@@ -162,15 +162,33 @@ class MaxWebhookView(APIView):
+     permission_classes = []
+ 
+     def post(self, request):
+-        user_id = str(request.data.get("user_id", "")).strip()
+-        text = str(request.data.get("text", "")).strip()
+-        if not user_id or not text:
+-            return Response(
+-                {"detail": "user_id and text are required."},
+-                status=status.HTTP_400_BAD_REQUEST,
+-            )
+-        reply = process_bot_message(max_user_id=user_id, text=text)
+-        return Response({"reply": reply.text}, status=status.HTTP_200_OK)
++        from .max_bot import process_updates_payload, send_max_message
++        from .models import MaxBotSettings
++
++        cfg = MaxBotSettings.get_solo()
++        token = (cfg.bot_token or "").strip()
++        payload = request.data
++
++        # Simplified manual/test format: {user_id, text}
++        user_id = str(payload.get("user_id", "")).strip() if isinstance(payload, dict) else ""
++        text = str(payload.get("text", "")).strip() if isinstance(payload, dict) else ""
++        if user_id and text and not payload.get("update_type") and "updates" not in payload:
++            reply = process_bot_message(max_user_id=user_id, text=text)
++            if token:
++                try:
++                    send_max_message(token=token, user_id=user_id, text=reply.text)
++                except Exception:
++                    pass
++            return Response({"reply": reply.text}, status=status.HTTP_200_OK)
++
++        replies = process_updates_payload(
++            payload if isinstance(payload, (dict, list)) else {},
++            token=token,
++            welcome_text=cfg.welcome_text or "",
++        )
++        if not replies:
++            return Response({"detail": "no actionable updates"}, status=status.HTTP_200_OK)
++        return Response({"replies": replies, "reply": replies[-1]}, status=status.HTTP_200_OK)
+ 
+ 
+ class DesignerLoginView(APIView):
+diff --git a/hub_portal/settings.py b/hub_portal/settings.py
+index 1b603d2..49c5299 100644
+--- a/hub_portal/settings.py
++++ b/hub_portal/settings.py
+@@ -22,9 +22,19 @@ INSTALLED_APPS = [
+     'django.contrib.messages',
+     'django.contrib.staticfiles',
+     'rest_framework',
+-    'hub',
++    'hub.apps.HubConfig',
+ ]
+ 
++# Background Max long-poll (disable in tests via override_settings / env).
++MAX_LONG_POLL_WORKER = os.getenv("MAX_LONG_POLL_WORKER", "1") == "1"
++MAX_API_BASE = os.getenv("MAX_API_BASE", "https://platform-api2.max.ru")
++
++# Avoid starting a live Max poller during `manage.py test`.
++import sys
++
++if "test" in sys.argv:
++    MAX_LONG_POLL_WORKER = False
++
+ MIDDLEWARE = [
+     'django.middleware.security.SecurityMiddleware',
+     'django.contrib.sessions.middleware.SessionMiddleware',
+-- 
+2.43.0
+
