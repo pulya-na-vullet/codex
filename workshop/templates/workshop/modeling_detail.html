@@ -60,6 +60,11 @@
                     <textarea class="form-control" name="description" rows="5">{{ brief.description }}</textarea>
                 </div>
                 <div>
+                    <label class="form-label">Адрес доставки напечатанной модели</label>
+                    <textarea class="form-control" name="delivery_address" rows="2" placeholder="Куда отправлять готовую печать">{{ brief.delivery_address }}</textarea>
+                    <div class="small-muted mt-1">Локально в мастерской; в HUB не отправляется</div>
+                </div>
+                <div>
                     <label class="form-label">Согласованная сумма</label>
                     <input class="form-control" name="agreed_price" value="{{ brief.agreed_price }}" inputmode="decimal">
                 </div>
@@ -86,6 +91,7 @@
             <div class="small mb-1">hub_brief_id: <code>{{ brief.hub_brief_id|default:"—" }}</code></div>
             <div class="small mb-1">Дизайнер: {{ brief.designer_name|default:"—" }} {% if brief.designer_id %}(id {{ brief.designer_id }}){% endif %}</div>
             <div class="small mb-1">Срок: {{ brief.eta|default:"—" }}</div>
+            <div class="small mb-1">Адрес доставки (локально): {{ brief.delivery_address|default:"—" }}</div>
             <div class="small">Сообщение: {{ brief.last_hub_message|default:"—" }}</div>
         </div></div>
     </div>

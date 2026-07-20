@@ -909,6 +909,12 @@ class ModelingBrief(models.Model):
     model_url = models.URLField("Ссылка на модель", blank=True, default="")
     stl_file = models.FileField("STL", upload_to="modeling/stl/%Y/%m/", blank=True)
     description = models.TextField("ТЗ / комментарий", blank=True, default="")
+    delivery_address = models.TextField(
+        "Адрес доставки напечатанной модели",
+        blank=True,
+        default="",
+        help_text="Только для мастерской; в HUB не отправляется",
+    )
     agreed_price = models.DecimalField("Сумма с клиентом", max_digits=12, decimal_places=2, default=Decimal("0"))
     designer_share_amount = models.DecimalField(
         "Доля дизайнера", max_digits=12, decimal_places=2, default=Decimal("0")

@@ -37,11 +37,21 @@ No separate `accepted` — **`done` is terminal success**.
 
 - `client` (local FK; hub gets only `client_ref` = local id)
 - `model_url`, `stl_file`, `screenshots[]`
+- `delivery_address` — **SITE only** (where to ship the printed model); never sent to HUB
 - `agreed_price`, shares 70/30
 - `hub_brief_id`, `status`
 - `designer_name`, `designer_id`, `eta` (when taken in work)
 - `manager_alert` (clarification / done attention)
 - `created_by`, `updated_by` (staff user)
+
+## SITE roles
+
+| Role | Access |
+|------|--------|
+| `admin` | Full + admin panel + delete entities + create staff users |
+| `manager` | No admin panel; no delete of clients/orders/acts/services catalog/blasts/briefs; **may add/remove service lines inside an order** |
+
+All mutating actions record **which staff user** performed them.
 
 ## Hub → Site events
 
@@ -51,15 +61,6 @@ No separate `accepted` — **`done` is terminal success**.
 | needs_clarification | Max → **client**; `manager_alert`; list alert |
 | clarification resubmit | Same brief updated → POST update to hub |
 | done | Max → **client**; manager alerts on dashboard + list; include in revenue reports |
-
-## SITE roles
-
-| Role | Access |
-|------|--------|
-| `admin` | Full + admin panel + delete + create staff users |
-| `manager` | No admin panel; no delete anywhere; can create orders/acts/3D briefs |
-
-All mutating actions record **which staff user** performed them.
 
 ## Auth SITE → HUB
 

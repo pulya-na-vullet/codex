@@ -752,12 +752,31 @@ class StaffAclAndModelingTests(TestCase):
 
     @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
     def test_manager_cannot_open_admin_or_delete(self):
+        from workshop.services import ensure_category_path
+
         self._login("mgr", "mgrpass")
         r = self.http.get("/admin-panel")
         self.assertEqual(r.status_code, 302)
         self.assertIn("/", r.url)
 
         order = Order.objects.create(order_number="ORD-DEL001", client=self.client_obj)
+        cat = ensure_category_path(("Диагностика", "Прочее"))
+        service = Service.objects.create(name="Услуга менеджера", price=Decimal("500"), category=cat)
+        line = OrderLine.objects.create(
+            order=order,
+            service=service,
+            service_name=service.name,
+            unit_price=service.price,
+            quantity=1,
+        )
+        order.recalculate_totals()
+
+        # Manager may remove service lines from an order.
+        r = self.http.post(f"/orders/{order.id}/line/{line.id}/delete")
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(OrderLine.objects.filter(pk=line.id).exists())
+
+        # Manager may not delete the whole order.
         r = self.http.post(f"/orders/{order.id}/delete")
         self.assertEqual(r.status_code, 302)
         self.assertTrue(Order.objects.filter(pk=order.id).exists())
@@ -777,6 +796,7 @@ class StaffAclAndModelingTests(TestCase):
                 "client_id": str(self.client_obj.id),
                 "model_url": "https://example.com/model",
                 "description": "Тест",
+                "delivery_address": "г. Казань, ул. Примерная, 1",
                 "agreed_price": "1000.00",
             },
         )
@@ -784,6 +804,11 @@ class StaffAclAndModelingTests(TestCase):
         brief = ModelingBrief.objects.get()
         self.assertEqual(brief.designer_share_amount, Decimal("700.00"))
         self.assertEqual(brief.site_share_amount, Decimal("300.00"))
+        self.assertEqual(brief.delivery_address, "г. Казань, ул. Примерная, 1")
+        from workshop.hub import brief_payload
+
+        payload = brief_payload(brief)
+        self.assertNotIn("delivery_address", payload)
         r = self.http.get("/modeling")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, brief.brief_number)

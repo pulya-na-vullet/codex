@@ -926,8 +926,8 @@ def order_add_service(request: HttpRequest, order_id: int):
 
 
 @require_POST
-@require_delete_permission
 def order_line_delete(request: HttpRequest, order_id: int, line_id: int):
+    """Managers may edit order composition (add/remove service lines)."""
     order = get_object_or_404(Order, pk=order_id)
     OrderLine.objects.filter(pk=line_id, order=order).delete()
     order.recalculate_totals()
@@ -1850,6 +1850,7 @@ def modeling_create(request: HttpRequest):
             client=client,
             model_url=request.POST.get("model_url", "").strip(),
             description=request.POST.get("description", "").strip(),
+            delivery_address=request.POST.get("delivery_address", "").strip(),
             agreed_price=price,
             created_by=staff,
             updated_by=staff,
@@ -1906,6 +1907,7 @@ def modeling_detail(request: HttpRequest, brief_id: int):
                 price = brief.agreed_price
             brief.model_url = request.POST.get("model_url", brief.model_url).strip()
             brief.description = request.POST.get("description", brief.description).strip()
+            brief.delivery_address = request.POST.get("delivery_address", brief.delivery_address).strip()
             brief.agreed_price = price
             brief.apply_shares(hub_cfg.designer_share_percent)
             brief.updated_by = staff

@@ -100,12 +100,10 @@
                                 <td class="text-center">{{ s.quantity }}</td>
                                 <td class="text-end">{{ s.line_total|money }}</td>
                                 <td class="text-end">
-                                    {% if can_workshop_delete %}
                                     <form method="post" action="{% url 'order_line_delete' order.id s.id %}">
                                         {% csrf_token %}
                                         <button class="btn btn-outline-danger btn-sm">Удалить</button>
                                     </form>
-                                    {% endif %}
                                 </td>
                             </tr>
                         {% empty %}
