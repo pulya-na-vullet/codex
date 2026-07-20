@@ -83,3 +83,13 @@ X-Signature: hex(hmac_sha256(site_secret, timestamp + "\n" + raw_body))
 `POST /hooks/hub/briefs` — HMAC, idempotent by `event_id`.
 
 Never send client PII to designers.
+
+---
+
+## Handoff to HUB thread
+
+Full build brief + paste-ready agent prompt:
+
+- `docs/HUB_AGENT_BRIEF.md`
+- `docs/HUB_AGENT_PROMPT.md`
+

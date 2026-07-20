@@ -1,0 +1,187 @@
+openapi: 3.0.3
+info:
+  title: Franchise 3D HUB API
+  version: "1.0"
+  description: |
+    Public HUB endpoints consumed by SITE workshops.
+    Auth: Bearer site_token + X-Site-Id + HMAC (X-Timestamp, X-Signature).
+servers:
+  - url: https://hub.example.com
+paths:
+  /api/v1/briefs:
+    post:
+      summary: Create brief from SITE
+      security:
+        - SiteHmac: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BriefIn"
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BriefCreateOut"
+  /api/v1/briefs/{brief_id}:
+    get:
+      summary: Get brief
+      parameters:
+        - $ref: "#/components/parameters/BriefId"
+      security:
+        - SiteHmac: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BriefOut"
+    post:
+      summary: Update / clarification resubmit
+      parameters:
+        - $ref: "#/components/parameters/BriefId"
+      security:
+        - SiteHmac: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BriefIn"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BriefOut"
+  /api/v1/briefs/{brief_id}/messages:
+    post:
+      summary: Clarification note from SITE
+      parameters:
+        - $ref: "#/components/parameters/BriefId"
+      security:
+        - SiteHmac: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+      responses:
+        "200":
+          description: Accepted
+components:
+  securitySchemes:
+    SiteHmac:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        Also send X-Site-Id, X-Timestamp, X-Signature=
+        hex(hmac_sha256(site_secret, timestamp + "\\n" + raw_body))
+  parameters:
+    BriefId:
+      name: brief_id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    BriefIn:
+      type: object
+      required:
+        - local_brief_id
+        - brief_number
+        - client_ref
+        - agreed_price
+      properties:
+        local_brief_id:
+          type: integer
+        brief_number:
+          type: string
+        client_ref:
+          type: string
+          description: Opaque SITE client id — never expand to PII on HUB
+        model_url:
+          type: string
+        description:
+          type: string
+        agreed_price:
+          type: string
+        designer_share_amount:
+          type: string
+        site_share_amount:
+          type: string
+        has_stl:
+          type: boolean
+        screenshots_count:
+          type: integer
+    BriefCreateOut:
+      type: object
+      required: [brief_id]
+      properties:
+        brief_id:
+          type: string
+        id:
+          type: string
+        status:
+          type: string
+          enum: [queued]
+    BriefOut:
+      allOf:
+        - $ref: "#/components/schemas/BriefCreateOut"
+        - type: object
+          properties:
+            local_brief_id:
+              type: integer
+            status:
+              type: string
+              enum:
+                - queued
+                - assigned
+                - in_progress
+                - needs_clarification
+                - clarification_provided
+                - done
+                - cancelled
+    HubToSiteWebhook:
+      type: object
+      description: POST to SITE /hooks/hub/briefs
+      required: [event_id, event]
+      properties:
+        event_id:
+          type: string
+        event:
+          type: string
+          enum:
+            - taken_in_work
+            - assigned
+            - in_progress
+            - needs_clarification
+            - clarification
+            - done
+            - completed
+            - cancelled
+            - canceled
+            - queued
+        local_brief_id:
+          type: integer
+        brief_id:
+          type: string
+        designer_name:
+          type: string
+        designer_id:
+          type: string
+        eta:
+          type: string
+        message:
+          type: string
