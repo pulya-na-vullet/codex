@@ -200,6 +200,10 @@
 | `POST` | `/modeling/{id}/delete` | — | `302` (только admin) |
 | `POST` | `/hooks/hub/briefs` | HMAC + JSON event | `200` |
 
+При `push`/`resubmit` CRM сначала шлёт JSON brief в HUB, затем при наличии `stl_file` —
+`POST /api/v1/briefs/{brief_id}/source-stl` (multipart `file`, HMAC по сырым bytes тела).
+
+
 ### `section=max`
 
 | Поле | Описание |
