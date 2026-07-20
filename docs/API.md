@@ -13,7 +13,7 @@
 | **Схема** | Cookie session (`workshop_authenticated`) |
 | **Логин по умолчанию** | `ITM` / `pass` (env: `IT_MASTER_USER`, `IT_MASTER_PASSWORD`) |
 | **Idle timeout** | 6 часов (`IT_MASTER_IDLE_SECONDS`) |
-| **CSRF** | Обязателен для всех POST, кроме `/max/webhook` |
+| **CSRF** | Обязателен для всех POST, кроме `/max/webhook` и `/hooks/hub/briefs` |
 | **Исключения middleware** | `/login`, `/logout`, `/static/`, `/admin/`, `/max/` |
 
 ### `POST /login`
@@ -192,8 +192,13 @@
 
 | Method | Path | Params | Response |
 |--------|------|--------|----------|
-| `GET` | `/admin-panel` | — | HTML |
-| `POST` | `/admin-panel` | `section=max\|ai\|ai_report_now\|ai_report_reset_today` + поля секции | `302` |
+| `GET` | `/admin-panel` | — | HTML (только admin) |
+| `POST` | `/admin-panel` | `section=max\|ai\|ai_report_now\|ai_report_reset_today\|hub\|staff_create\|staff_update` + поля секции | `302` |
+| `GET` | `/modeling` | `status` | HTML |
+| `GET/POST` | `/modeling/new` | клиент, URL, STL, скрины, сумма | HTML/`302` |
+| `GET/POST` | `/modeling/{id}` | save / push / resubmit / ack_alert | HTML/`302` |
+| `POST` | `/modeling/{id}/delete` | — | `302` (только admin) |
+| `POST` | `/hooks/hub/briefs` | HMAC + JSON event | `200` |
 
 ### `section=max`
 
