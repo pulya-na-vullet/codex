@@ -33,6 +33,7 @@ urlpatterns = [
     path("debtors/sms-all", views.debtors_sms_all, name="debtors_sms_all"),
     path("debtors/<int:order_id>/sms", views.debtors_sms_one, name="debtors_sms_one"),
     path("marketing", views.marketing_sms, name="marketing_sms"),
+    path("marketing/poster", views.max_bot_poster, name="max_bot_poster"),
     path("marketing/blasts/<int:blast_id>/delete", views.marketing_blast_delete, name="marketing_blast_delete"),
     path("marketing/messages/<int:log_id>/delete", views.marketing_message_delete, name="marketing_message_delete"),
     path("marketing/bot-qr.png", views.max_bot_qr, name="max_bot_qr"),

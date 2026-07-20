@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Плакат Max — {{ company_name }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Unbounded:wght@600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --ink: #0a0a0a;
+            --muted: #3a3a3a;
+            --line: #111;
+            --paper: #fff;
+        }
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #e8e8e8;
+            color: var(--ink);
+            font-family: "Manrope", "Segoe UI", sans-serif;
+        }
+        .actions {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            display: flex;
+            gap: .6rem;
+            justify-content: center;
+            padding: .75rem;
+            background: #111;
+            color: #fff;
+        }
+        .actions button, .actions a {
+            appearance: none;
+            border: 1px solid #ccc;
+            background: #fff;
+            color: #111;
+            font: inherit;
+            font-weight: 700;
+            padding: .45rem .9rem;
+            border-radius: .35rem;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .sheet {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 12px auto 24px;
+            background: var(--paper);
+            color: var(--ink);
+            padding: 14mm 14mm 12mm;
+            box-shadow: 0 8px 28px rgba(0,0,0,.18);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .sheet::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(circle at 12% 18%, rgba(0,0,0,.05), transparent 42%),
+                repeating-linear-gradient(
+                    -18deg,
+                    rgba(0,0,0,.035) 0,
+                    rgba(0,0,0,.035) 1px,
+                    transparent 1px,
+                    transparent 14px
+                );
+            pointer-events: none;
+        }
+        .inner {
+            position: relative;
+            z-index: 1;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border: 2.5px solid var(--ink);
+            padding: 10mm 9mm;
+        }
+        .brand {
+            font-family: "Unbounded", Impact, sans-serif;
+            font-weight: 800;
+            font-size: 34px;
+            letter-spacing: .02em;
+            line-height: 1.05;
+            text-transform: uppercase;
+            margin: 0 0 4mm;
+        }
+        .eyebrow {
+            display: inline-block;
+            border: 1.5px solid var(--ink);
+            padding: .2rem .55rem;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            margin-bottom: 5mm;
+        }
+        .headline {
+            font-family: "Unbounded", Impact, sans-serif;
+            font-weight: 800;
+            font-size: 28px;
+            line-height: 1.15;
+            margin: 0 0 4mm;
+            max-width: 22ch;
+        }
+        .lead {
+            font-size: 15px;
+            line-height: 1.45;
+            color: var(--muted);
+            margin: 0 0 8mm;
+            max-width: 46ch;
+            font-weight: 500;
+        }
+        .layout {
+            display: grid;
+            grid-template-columns: 1.05fr .95fr;
+            gap: 8mm;
+            align-items: stretch;
+            flex: 1;
+        }
+        .steps {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4.5mm;
+        }
+        .steps li {
+            display: grid;
+            grid-template-columns: 11mm 1fr;
+            gap: 3.5mm;
+            align-items: start;
+        }
+        .num {
+            width: 11mm;
+            height: 11mm;
+            border: 2px solid var(--ink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: "Unbounded", Impact, sans-serif;
+            font-weight: 800;
+            font-size: 16px;
+            background: #f3f3f3;
+        }
+        .step-title {
+            font-weight: 800;
+            font-size: 15px;
+            margin: 0 0 1mm;
+        }
+        .step-text {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.4;
+            color: var(--muted);
+        }
+        .qr-panel {
+            border: 2.5px solid var(--ink);
+            padding: 5mm;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            background:
+                linear-gradient(#fff, #fff) padding-box,
+                repeating-linear-gradient(
+                    45deg,
+                    #111 0,
+                    #111 3px,
+                    #fff 3px,
+                    #fff 8px
+                ) border-box;
+            outline: 6px solid #fff;
+            box-shadow: inset 0 0 0 1px #111;
+        }
+        .qr-panel img {
+            width: 68mm;
+            height: 68mm;
+            image-rendering: pixelated;
+            background: #fff;
+            border: 1px solid #111;
+            padding: 2mm;
+        }
+        .qr-caption {
+            margin-top: 3.5mm;
+            font-family: "Unbounded", Impact, sans-serif;
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+        }
+        .benefits {
+            margin-top: 8mm;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 3.5mm;
+            border-top: 2px solid var(--ink);
+            padding-top: 5mm;
+        }
+        .benefit {
+            border-left: 3px solid var(--ink);
+            padding-left: 3mm;
+        }
+        .benefit strong {
+            display: block;
+            font-size: 13px;
+            margin-bottom: 1mm;
+        }
+        .benefit span {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.35;
+        }
+        .footer {
+            margin-top: auto;
+            padding-top: 6mm;
+            display: flex;
+            justify-content: space-between;
+            gap: 6mm;
+            align-items: end;
+            border-top: 2px solid var(--ink);
+        }
+        .link-block {
+            font-size: 12px;
+            line-height: 1.4;
+            word-break: break-all;
+            max-width: 70%;
+        }
+        .link-block strong {
+            display: block;
+            font-size: 13px;
+            margin-bottom: 1mm;
+        }
+        .contacts {
+            text-align: right;
+            font-size: 12px;
+            line-height: 1.4;
+            white-space: nowrap;
+        }
+        .contacts .phone {
+            font-family: "Unbounded", Impact, sans-serif;
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: .02em;
+        }
+        .warn {
+            margin: 20px auto;
+            max-width: 210mm;
+            padding: 12px 14px;
+            background: #fff3cd;
+            border: 1px solid #856404;
+            color: #333;
+            font-size: 14px;
+        }
+        @media print {
+            @page { size: A4 portrait; margin: 0; }
+            html, body { background: #fff; }
+            .actions, .warn { display: none !important; }
+            .sheet {
+                margin: 0;
+                box-shadow: none;
+                width: 210mm;
+                min-height: 297mm;
+                page-break-after: avoid;
+            }
+            .sheet::before {
+                background:
+                    repeating-linear-gradient(
+                        -18deg,
+                        rgba(0,0,0,.04) 0,
+                        rgba(0,0,0,.04) 1px,
+                        transparent 1px,
+                        transparent 14px
+                    );
+            }
+        }
+        @media screen and (max-width: 900px) {
+            .sheet { width: min(100% - 16px, 210mm); min-height: auto; padding: 10mm; }
+            .layout, .benefits { grid-template-columns: 1fr; }
+            .footer { flex-direction: column; align-items: start; }
+            .contacts { text-align: left; white-space: normal; }
+            .link-block { max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+<div class="actions">
+    <button type="button" onclick="window.print()">Печать плаката</button>
+    <a href="{% url 'marketing_sms' %}">К маркетингу</a>
+    <a href="{% url 'admin_panel' %}">В админку</a>
+</div>
+
+{% if not bot_link %}
+<div class="warn">
+    Ссылка на бота Max не задана. Укажите её в админ-панели (Max → ссылка / username), затем откройте плакат снова.
+</div>
+{% endif %}
+
+<main class="sheet" aria-label="Плакат регистрации в Max">
+    <div class="inner">
+        <div class="eyebrow">Мессенджер Max</div>
+        <h1 class="brand">{{ company_name }}</h1>
+        <h2 class="headline">Подключите уведомления о ремонте за 30 секунд</h2>
+        <p class="lead">
+            Напишите нашему боту в Max — и мы будем присылать статус заказа, готовность устройства и полезные акции прямо в мессенджер.
+        </p>
+
+        <div class="layout">
+            <ol class="steps">
+                <li>
+                    <div class="num">1</div>
+                    <div>
+                        <p class="step-title">Откройте Max</p>
+                        <p class="step-text">Приложение Max на телефоне или камеру смартфона.</p>
+                    </div>
+                </li>
+                <li>
+                    <div class="num">2</div>
+                    <div>
+                        <p class="step-title">Сканируйте QR-код</p>
+                        <p class="step-text">Наведите камеру на код справа — откроется наш бот.</p>
+                    </div>
+                </li>
+                <li>
+                    <div class="num">3</div>
+                    <div>
+                        <p class="step-title">Отправьте свой телефон</p>
+                        <p class="step-text">Напишите боту номер телефона — так мы привяжем чат к вашей карточке клиента.</p>
+                    </div>
+                </li>
+            </ol>
+
+            <div class="qr-panel">
+                {% if bot_link %}
+                    <img src="{% url 'max_bot_qr' %}?size=12" alt="QR-код бота Max {{ company_name }}">
+                    <div class="qr-caption">Сканируйте QR</div>
+                {% else %}
+                    <div class="qr-caption">QR недоступен<br>нет ссылки на бота</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="benefits">
+            <div class="benefit">
+                <strong>Статус ремонта</strong>
+                <span>Сообщения, когда работа выполнена или нужна ваша реакция.</span>
+            </div>
+            <div class="benefit">
+                <strong>Без спама</strong>
+                <span>Только сервисные уведомления и редкие акции мастерской.</span>
+            </div>
+            <div class="benefit">
+                <strong>Быстрый ответ</strong>
+                <span>Пишите в Max — мы видим обращение в системе.</span>
+            </div>
+        </div>
+
+        <div class="footer">
+            <div class="link-block">
+                <strong>Ссылка на бота</strong>
+                {% if bot_link %}{{ bot_link }}{% else %}задайте ссылку в админ-панели{% endif %}
+                {% if bot_username %}<br>@{{ bot_username }}{% endif %}
+            </div>
+            <div class="contacts">
+                <div class="phone">{{ company_phone }}</div>
+                <div>{{ company_address }}</div>
+            </div>
+        </div>
+    </div>
+</main>
+</body>
+</html>

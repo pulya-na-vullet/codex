@@ -1359,7 +1359,13 @@ def max_bot_qr(request: HttpRequest):
     if not link:
         return HttpResponse("Ссылка на бота не задана", status=404, content_type="text/plain")
 
-    qr = qrcode.QRCode(version=None, box_size=8, border=2)
+    try:
+        box_size = int(request.GET.get("size", "8") or 8)
+    except ValueError:
+        box_size = 8
+    box_size = max(4, min(16, box_size))
+
+    qr = qrcode.QRCode(version=None, box_size=box_size, border=2)
     qr.add_data(link)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
@@ -1368,6 +1374,29 @@ def max_bot_qr(request: HttpRequest):
     response = HttpResponse(buf.getvalue(), content_type="image/png")
     response["Cache-Control"] = "no-store"
     return response
+
+
+@require_GET
+def max_bot_poster(request: HttpRequest):
+    """Печатный плакат для клиентской зоны: регистрация в боте Max."""
+    from workshop.models import SmsSettings
+
+    cfg = SmsSettings.get_solo()
+    link = (cfg.bot_link or "").strip()
+    if not link and cfg.bot_username:
+        link = f"https://max.ru/{cfg.bot_username.lstrip('@')}"
+    log_action(request, "max_bot_poster_view", entity_type="marketing", details=link or "no-link")
+    return render(
+        request,
+        "workshop/print_max_bot_poster.html",
+        {
+            "bot_link": link,
+            "bot_username": (cfg.bot_username or "").lstrip("@"),
+            "company_name": settings.COMPANY_NAME,
+            "company_phone": settings.COMPANY_PHONE,
+            "company_address": settings.COMPANY_ADDRESS,
+        },
+    )
 
 
 @csrf_exempt

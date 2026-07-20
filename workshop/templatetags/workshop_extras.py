@@ -28,9 +28,15 @@ _NAV_SECTIONS: dict[str, frozenset[str]] = {
     ),
     "work_queue": frozenset({"work_queue"}),
     "debtors": frozenset({"debtors", "debtors_sms_all", "debtors_sms_one"}),
-    "marketing": frozenset(
-        {"marketing_sms", "marketing_blast_delete", "marketing_message_delete", "max_bot_qr"}
-    ),
+        "marketing": frozenset(
+            {
+                "marketing_sms",
+                "marketing_blast_delete",
+                "marketing_message_delete",
+                "max_bot_qr",
+                "max_bot_poster",
+            }
+        ),
     "clients": frozenset(
         {
             "clients",
