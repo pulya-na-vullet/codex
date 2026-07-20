@@ -39,7 +39,7 @@ def msk_day_bounds(day=None) -> tuple[datetime, datetime]:
 
 def collect_day_facts(day=None) -> dict[str, Any]:
     """Collect revenue + audit anomalies for a Moscow working day."""
-    from workshop.models import AuditLog, Order, OrderStatus, PaymentMethod
+    from workshop.models import AuditLog, ModelingBrief, ModelingBriefStatus, Order, OrderStatus, PaymentMethod
 
     start, end = msk_day_bounds(day)
     day = start.date()
@@ -57,6 +57,17 @@ def collect_day_facts(day=None) -> dict[str, Any]:
     revenue = sum((o.total_sum for o in paid_orders), Decimal("0"))
     created_sum = sum((o.total_sum for o in created_orders), Decimal("0"))
 
+    done_briefs = list(
+        ModelingBrief.objects.filter(
+            status=ModelingBriefStatus.DONE,
+            done_at__gte=start,
+            done_at__lt=end,
+        )
+    )
+    modeling_agreed = sum((b.agreed_price for b in done_briefs), Decimal("0"))
+    modeling_site = sum((b.site_share_amount for b in done_briefs), Decimal("0"))
+    modeling_designer = sum((b.designer_share_amount for b in done_briefs), Decimal("0"))
+
     logs = list(
         AuditLog.objects.filter(created_at__gte=start, created_at__lt=end).order_by("created_at")[:5000]
     )
@@ -66,6 +77,7 @@ def collect_day_facts(day=None) -> dict[str, Any]:
         "client_delete",
         "service_delete",
         "order_line_delete",
+        "modeling_delete",
     }
     anomalies = [log for log in logs if log.action in anomaly_actions]
     action_counts: dict[str, int] = {}
@@ -86,6 +98,10 @@ def collect_day_facts(day=None) -> dict[str, Any]:
         "created_orders_sum": created_sum,
         "paid_orders_count": len(paid_orders),
         "done_orders_count": done_today,
+        "modeling_done_count": len(done_briefs),
+        "modeling_agreed_sum": modeling_agreed,
+        "modeling_site_share": modeling_site,
+        "modeling_designer_share": modeling_designer,
         "audit_total": len(logs),
         "action_counts": action_counts,
         "anomalies": [
@@ -122,6 +138,10 @@ def build_fallback_report(facts: dict[str, Any]) -> str:
     return (
         f"День: {facts['day_display']}\n"
         f"Выручка: {facts['revenue']:.2f} руб.\n"
+        f"3D выполнено: {facts.get('modeling_done_count', 0)} "
+        f"(клиент {facts.get('modeling_agreed_sum', 0):.2f}, "
+        f"точка {facts.get('modeling_site_share', 0):.2f}, "
+        f"дизайнер {facts.get('modeling_designer_share', 0):.2f})\n"
         f"Аномалии работы:\n{anomaly_text}\n\n"
         f"(создано заказов: {facts['created_orders_count']}, "
         f"оплачено: {facts['paid_orders_count']}, "
@@ -197,6 +217,10 @@ def build_ai_prompt(facts: dict[str, Any]) -> str:
         f"Создано заказ-нарядов: {facts['created_orders_count']} на сумму {facts['created_orders_sum']:.2f}\n"
         f"Оплачено заказов: {facts['paid_orders_count']}\n"
         f"Завершено заказов: {facts['done_orders_count']}\n"
+        f"3D выполнено: {facts.get('modeling_done_count', 0)}, "
+        f"сумма клиента {facts.get('modeling_agreed_sum', 0):.2f}, "
+        f"доля точки {facts.get('modeling_site_share', 0):.2f}, "
+        f"дизайнеру {facts.get('modeling_designer_share', 0):.2f}\n"
         f"Всего событий журнала: {facts['audit_total']}\n"
         f"Счётчики действий: {json.dumps(facts['action_counts'], ensure_ascii=False)}\n\n"
         f"Удаления и аномальные действия:\n{json.dumps(facts['anomalies'], ensure_ascii=False)}\n\n"

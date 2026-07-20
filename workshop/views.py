@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
@@ -16,6 +15,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from workshop.audit import log_action
+from workshop.authz import require_admin, require_delete_permission
 from workshop.models import (
     AcceptanceAct,
     AcceptanceActStatus,
@@ -36,18 +36,20 @@ from workshop.utils import normalize_rf_phone
 
 
 def login_view(request: HttpRequest):
+    from workshop.authz import login_staff
+    from workshop.models import StaffUser
+
     next_url = request.GET.get("next") or request.POST.get("next") or "/"
     if request.session.get("workshop_authenticated"):
         return redirect(next_url)
     if request.method == "POST":
         username = request.POST.get("username", "").strip()
         password = request.POST.get("password", "")
-        if username == settings.WORKSHOP_USERNAME and password == settings.WORKSHOP_PASSWORD:
-            request.session.flush()
-            request.session["workshop_authenticated"] = True
-            request.session["workshop_username"] = username
-            request.session["workshop_last_active"] = time.time()
-            log_action(request, "login", details=f"user={username}")
+        StaffUser.ensure_bootstrap_admin()
+        staff = StaffUser.objects.filter(username=username, is_active=True).first()
+        if staff and staff.check_password(password):
+            login_staff(request, staff)
+            log_action(request, "login", details=f"user={username} role={staff.role}")
             messages.success(request, "Вход выполнен")
             return redirect(next_url)
         messages.error(request, "Неверный логин или пароль")
@@ -63,7 +65,7 @@ def logout_view(request: HttpRequest):
 
 
 def dashboard(request: HttpRequest):
-    from workshop.models import AcceptanceActStatus
+    from workshop.models import AcceptanceActStatus, ModelingBrief, ModelingBriefStatus
 
     orders_in_work = Order.objects.filter(status=OrderStatus.ACTIVE).count()
     diagnostics_in_work = AcceptanceAct.objects.filter(status=AcceptanceActStatus.DIAGNOSTICS).count()
@@ -71,6 +73,17 @@ def dashboard(request: HttpRequest):
         Order.objects.filter(status=OrderStatus.READY_CALL).count()
         + AcceptanceAct.objects.filter(status=AcceptanceActStatus.DIAGNOSTICS_DONE).count()
     )
+    modeling_in_work = ModelingBrief.objects.filter(
+        status__in=[
+            ModelingBriefStatus.QUEUED,
+            ModelingBriefStatus.ASSIGNED,
+            ModelingBriefStatus.IN_PROGRESS,
+            ModelingBriefStatus.CLARIFICATION_PROVIDED,
+        ]
+    ).count()
+    modeling_attention = ModelingBrief.objects.filter(manager_alert=True).exclude(
+        status=ModelingBriefStatus.CANCELLED
+    ).count()
     return render(
         request,
         "workshop/dashboard.html",
@@ -78,6 +91,8 @@ def dashboard(request: HttpRequest):
             "orders_in_work": orders_in_work,
             "diagnostics_in_work": diagnostics_in_work,
             "calls_needed": calls_needed,
+            "modeling_in_work": modeling_in_work,
+            "modeling_attention": modeling_attention,
         },
     )
 
@@ -109,6 +124,8 @@ def statistics(request: HttpRequest):
     acts = list(
         AcceptanceAct.objects.select_related("client").filter(created_at__gte=start, created_at__lte=end).order_by("-id")
     )
+    from workshop.models import ModelingBrief, ModelingBriefStatus
+
     total_sum = sum((o.total_sum for o in orders), Decimal("0"))
     total_orders = len(orders)
     paid_sum = sum((o.total_sum for o in orders if o.is_paid), Decimal("0"))
@@ -120,6 +137,18 @@ def statistics(request: HttpRequest):
     # Справочная сумма трёх групп (пересечения возможны: «в работе» может быть и долгом).
     breakdown_total = paid_sum + debt_sum + in_progress_sum
     avg_check = (paid_sum / paid_count) if paid_count else Decimal("0")
+
+    done_briefs = list(
+        ModelingBrief.objects.filter(
+            status=ModelingBriefStatus.DONE,
+            done_at__gte=start,
+            done_at__lte=end,
+        )
+    )
+    modeling_agreed_sum = sum((b.agreed_price for b in done_briefs), Decimal("0"))
+    modeling_site_share = sum((b.site_share_amount for b in done_briefs), Decimal("0"))
+    modeling_designer_share = sum((b.designer_share_amount for b in done_briefs), Decimal("0"))
+    modeling_done_count = len(done_briefs)
 
     # Unique contacted clients (orders + acceptance acts)
     visitors_map: dict[int, dict] = {}
@@ -253,6 +282,10 @@ def statistics(request: HttpRequest):
                 "in_progress_sum": in_progress_sum,
                 "in_progress_count": in_progress_count,
                 "breakdown_total": breakdown_total,
+                "modeling_done_count": modeling_done_count,
+                "modeling_agreed_sum": modeling_agreed_sum,
+                "modeling_site_share": modeling_site_share,
+                "modeling_designer_share": modeling_designer_share,
             },
             "orders": orders,
             "visitors": visitors,
@@ -497,12 +530,13 @@ def client_detail(request: HttpRequest, client_id: int):
 
 
 @require_POST
+@require_delete_permission
 def client_delete(request: HttpRequest, client_id: int):
     client = get_object_or_404(Client, pk=client_id)
-    if client.orders.exists() or client.acceptance_acts.exists():
+    if client.orders.exists() or client.acceptance_acts.exists() or client.modeling_briefs.exists():
         messages.warning(
             request,
-            "Нельзя удалить клиента: есть связанные заказ-наряды или акты. Сначала удалите их.",
+            "Нельзя удалить клиента: есть связанные заказ-наряды, акты или 3D-заявки. Сначала удалите их.",
         )
         return redirect("client_detail", client_id=client_id)
     details = f"{client.name} {client.phone}"
@@ -679,6 +713,7 @@ def services_print(request: HttpRequest):
 
 
 @require_POST
+@require_delete_permission
 def service_delete(request: HttpRequest, service_id: int):
     service = get_object_or_404(Service, pk=service_id)
     details = service.name
@@ -891,6 +926,7 @@ def order_add_service(request: HttpRequest, order_id: int):
 
 
 @require_POST
+@require_delete_permission
 def order_line_delete(request: HttpRequest, order_id: int, line_id: int):
     order = get_object_or_404(Order, pk=order_id)
     OrderLine.objects.filter(pk=line_id, order=order).delete()
@@ -901,6 +937,7 @@ def order_line_delete(request: HttpRequest, order_id: int, line_id: int):
 
 
 @require_POST
+@require_delete_permission
 def order_delete(request: HttpRequest, order_id: int):
     order = get_object_or_404(Order, pk=order_id)
     details = order.order_number
@@ -1045,8 +1082,17 @@ def api_docs(request: HttpRequest):
 
 
 @require_http_methods(["GET", "POST"])
+@require_admin
 def admin_panel(request: HttpRequest):
-    from workshop.models import SmsLog, SmsProvider, SmsSettings, YandexAiSettings
+    from workshop.models import (
+        HubConnectionSettings,
+        SmsLog,
+        SmsProvider,
+        SmsSettings,
+        StaffRole,
+        StaffUser,
+        YandexAiSettings,
+    )
     from workshop.messaging import start_max_long_poll_worker
     from workshop.yandex_ai import (
         clear_today_scheduled_mark,
@@ -1059,9 +1105,74 @@ def admin_panel(request: HttpRequest):
 
     cfg = SmsSettings.get_solo()
     ai_cfg = YandexAiSettings.get_solo()
+    hub_cfg = HubConnectionSettings.get_solo()
+    staff_users = list(StaffUser.objects.order_by("username"))
 
     if request.method == "POST":
         section = request.POST.get("section", "max").strip()
+        if section == "hub":
+            hub_cfg.site_id = request.POST.get("site_id", "").strip()
+            hub_cfg.hub_base_url = request.POST.get("hub_base_url", "").strip()
+            hub_cfg.site_token = request.POST.get("site_token", "").strip()
+            hub_cfg.site_secret = request.POST.get("site_secret", "").strip()
+            try:
+                pct = int(request.POST.get("designer_share_percent", "70") or 70)
+            except ValueError:
+                pct = 70
+            hub_cfg.designer_share_percent = max(0, min(100, pct))
+            hub_cfg.enabled = request.POST.get("hub_enabled") == "1"
+            hub_cfg.save()
+            log_action(request, "hub_settings_update", entity_type="hub", details=f"site={hub_cfg.site_id}")
+            messages.success(request, "Настройки HUB сохранены")
+            return redirect("admin_panel")
+
+        if section == "staff_create":
+            username = request.POST.get("username", "").strip()
+            password = request.POST.get("password", "")
+            full_name = request.POST.get("full_name", "").strip()
+            role = request.POST.get("role", StaffRole.MANAGER).strip()
+            max_user_id = request.POST.get("max_user_id", "").strip()
+            if role not in dict(StaffRole.choices):
+                role = StaffRole.MANAGER
+            if not username or not password:
+                messages.warning(request, "Укажите логин и пароль сотрудника")
+                return redirect("admin_panel")
+            if StaffUser.objects.filter(username=username).exists():
+                messages.warning(request, "Такой логин уже есть")
+                return redirect("admin_panel")
+            user = StaffUser(
+                username=username,
+                full_name=full_name,
+                role=role,
+                max_user_id=max_user_id,
+                is_active=True,
+            )
+            user.set_password(password)
+            user.save()
+            log_action(request, "staff_create", entity_type="staff", entity_id=user.id, details=f"{username}/{role}")
+            messages.success(request, f"Сотрудник {username} создан")
+            return redirect("admin_panel")
+
+        if section == "staff_update":
+            staff_id = request.POST.get("staff_id", "").strip()
+            user = StaffUser.objects.filter(pk=staff_id).first()
+            if not user:
+                messages.warning(request, "Сотрудник не найден")
+                return redirect("admin_panel")
+            user.full_name = request.POST.get("full_name", "").strip()
+            role = request.POST.get("role", user.role).strip()
+            if role in dict(StaffRole.choices):
+                user.role = role
+            user.max_user_id = request.POST.get("max_user_id", "").strip()
+            user.is_active = request.POST.get("is_active") == "1"
+            new_password = request.POST.get("password", "")
+            if new_password:
+                user.set_password(new_password)
+            user.save()
+            log_action(request, "staff_update", entity_type="staff", entity_id=user.id, details=user.username)
+            messages.success(request, f"Сотрудник {user.username} обновлён")
+            return redirect("admin_panel")
+
         if section == "ai_report_now":
             result = run_daily_ai_report(force=True)
             log_action(
@@ -1195,6 +1306,9 @@ def admin_panel(request: HttpRequest):
         {
             "cfg": cfg,
             "ai_cfg": ai_cfg,
+            "hub_cfg": hub_cfg,
+            "staff_users": staff_users,
+            "staff_roles": StaffRole.choices,
             "report_time_msk": f"{int(ai_cfg.report_hour_msk or 0):02d}:{int(ai_cfg.report_minute_msk or 0):02d}",
             "ai_scheduler": scheduler_status(),
             "providers": SmsProvider.choices,
@@ -1315,6 +1429,7 @@ def marketing_sms(request: HttpRequest):
 
 
 @require_POST
+@require_delete_permission
 def marketing_blast_delete(request: HttpRequest, blast_id: int):
     from workshop.models import MarketingBlast
 
@@ -1327,6 +1442,7 @@ def marketing_blast_delete(request: HttpRequest, blast_id: int):
 
 
 @require_POST
+@require_delete_permission
 def marketing_message_delete(request: HttpRequest, log_id: int):
     """Совместимость: удаление одиночного лога или всей рассылки, если лог к ней привязан."""
     from workshop.models import SmsKind, SmsLog
@@ -1651,6 +1767,7 @@ def acceptance_print_direct(request: HttpRequest, act_id: int):
 
 
 @require_POST
+@require_delete_permission
 def acceptance_delete(request: HttpRequest, act_id: int):
     act = get_object_or_404(AcceptanceAct, pk=act_id)
     details = act.act_number
@@ -1658,3 +1775,201 @@ def acceptance_delete(request: HttpRequest, act_id: int):
     log_action(request, "acceptance_delete", entity_type="acceptance", entity_id=act_id, details=details)
     messages.success(request, "Акт удалён")
     return redirect("acceptance_acts")
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def hub_briefs_webhook(request: HttpRequest):
+    """Inbound webhook from HUB for modeling brief status updates."""
+    from workshop.hub import apply_hub_brief_event, verify_signature
+    from workshop.models import HubConnectionSettings
+
+    cfg = HubConnectionSettings.get_solo()
+    if not (cfg.site_secret or "").strip():
+        return HttpResponse("hub secret not configured", status=503)
+
+    raw = request.body or b"{}"
+    ts = request.headers.get("X-Timestamp") or request.META.get("HTTP_X_TIMESTAMP", "")
+    sig = request.headers.get("X-Signature") or request.META.get("HTTP_X_SIGNATURE", "")
+    if not verify_signature(cfg.site_secret, ts, raw, sig):
+        return HttpResponse("invalid signature", status=401)
+
+    try:
+        payload = json.loads(raw.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return HttpResponse("bad json", status=400)
+    if not isinstance(payload, dict):
+        return HttpResponse("bad payload", status=400)
+
+    ok, detail = apply_hub_brief_event(payload)
+    if not ok:
+        return HttpResponse(detail, status=400)
+    return HttpResponse(detail)
+
+
+def modeling_list(request: HttpRequest):
+    from workshop.models import ModelingBrief, ModelingBriefStatus
+
+    status = request.GET.get("status", "").strip()
+    qs = ModelingBrief.objects.select_related("client").order_by("-id")
+    if status and status in dict(ModelingBriefStatus.choices):
+        qs = qs.filter(status=status)
+    attention = qs.filter(manager_alert=True)
+    return render(
+        request,
+        "workshop/modeling_list.html",
+        {
+            "briefs": list(qs[:200]),
+            "attention_count": attention.count(),
+            "status_filter": status,
+            "statuses": ModelingBriefStatus.choices,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def modeling_create(request: HttpRequest):
+    from workshop.authz import current_staff
+    from workshop.models import HubConnectionSettings, ModelingBrief, ModelingBriefScreenshot
+
+    clients = list(Client.objects.order_by("name")[:500])
+    if request.method == "POST":
+        client_id = request.POST.get("client_id", "").strip()
+        client = Client.objects.filter(pk=client_id).first()
+        if not client:
+            messages.warning(request, "Выберите клиента")
+            return redirect("modeling_create")
+        try:
+            price = Decimal((request.POST.get("agreed_price") or "0").replace(",", "."))
+        except (InvalidOperation, ValueError):
+            price = Decimal("0")
+        hub_cfg = HubConnectionSettings.get_solo()
+        staff = current_staff(request)
+        brief = ModelingBrief(
+            brief_number=next_numbered("3D", ModelingBrief, "brief_number"),
+            client=client,
+            model_url=request.POST.get("model_url", "").strip(),
+            description=request.POST.get("description", "").strip(),
+            agreed_price=price,
+            created_by=staff,
+            updated_by=staff,
+        )
+        brief.apply_shares(hub_cfg.designer_share_percent)
+        stl = request.FILES.get("stl_file")
+        if stl:
+            brief.stl_file = stl
+        brief.save()
+        for img in request.FILES.getlist("screenshots"):
+            ModelingBriefScreenshot.objects.create(brief=brief, image=img)
+        log_action(
+            request,
+            "modeling_create",
+            entity_type="modeling",
+            entity_id=brief.id,
+            details=f"{brief.brief_number} price={brief.agreed_price}",
+        )
+        messages.success(request, f"Заявка {brief.brief_number} создана")
+        return redirect("modeling_detail", brief_id=brief.id)
+
+    return render(request, "workshop/modeling_form.html", {"clients": clients, "brief": None})
+
+
+@require_http_methods(["GET", "POST"])
+def modeling_detail(request: HttpRequest, brief_id: int):
+    from workshop.authz import current_staff
+    from workshop.hub import push_brief_to_hub
+    from workshop.models import (
+        HubConnectionSettings,
+        ModelingBrief,
+        ModelingBriefScreenshot,
+        ModelingBriefStatus,
+    )
+
+    brief = get_object_or_404(ModelingBrief.objects.select_related("client"), pk=brief_id)
+    hub_cfg = HubConnectionSettings.get_solo()
+
+    if request.method == "POST":
+        action = request.POST.get("action", "save").strip()
+        staff = current_staff(request)
+
+        if action == "ack_alert":
+            brief.manager_alert = False
+            brief.updated_by = staff
+            brief.save(update_fields=["manager_alert", "updated_by", "updated_at"])
+            messages.success(request, "Отметка внимания снята")
+            return redirect("modeling_detail", brief_id=brief.id)
+
+        if action in {"save", "push", "resubmit"}:
+            try:
+                price = Decimal((request.POST.get("agreed_price") or str(brief.agreed_price)).replace(",", "."))
+            except (InvalidOperation, ValueError):
+                price = brief.agreed_price
+            brief.model_url = request.POST.get("model_url", brief.model_url).strip()
+            brief.description = request.POST.get("description", brief.description).strip()
+            brief.agreed_price = price
+            brief.apply_shares(hub_cfg.designer_share_percent)
+            brief.updated_by = staff
+            stl = request.FILES.get("stl_file")
+            if stl:
+                brief.stl_file = stl
+            brief.save()
+            for img in request.FILES.getlist("screenshots"):
+                ModelingBriefScreenshot.objects.create(brief=brief, image=img)
+
+            if action in {"push", "resubmit"}:
+                if action == "resubmit" and brief.status == ModelingBriefStatus.NEEDS_CLARIFICATION:
+                    brief.status = ModelingBriefStatus.CLARIFICATION_PROVIDED
+                    brief.manager_alert = False
+                    brief.save(update_fields=["status", "manager_alert", "updated_at"])
+                ok, detail, data = push_brief_to_hub(brief)
+                if ok:
+                    hub_id = str(data.get("brief_id") or data.get("id") or "").strip()
+                    if hub_id:
+                        brief.hub_brief_id = hub_id
+                    if brief.status == ModelingBriefStatus.DRAFT:
+                        brief.status = ModelingBriefStatus.QUEUED
+                    brief.save()
+                    log_action(
+                        request,
+                        "modeling_push_hub",
+                        entity_type="modeling",
+                        entity_id=brief.id,
+                        details=f"{brief.brief_number} hub={brief.hub_brief_id}",
+                    )
+                    messages.success(request, "Отправлено в HUB")
+                else:
+                    messages.warning(request, f"Не удалось отправить в HUB: {detail}")
+            else:
+                log_action(
+                    request,
+                    "modeling_update",
+                    entity_type="modeling",
+                    entity_id=brief.id,
+                    details=brief.brief_number,
+                )
+                messages.success(request, "Заявка сохранена")
+            return redirect("modeling_detail", brief_id=brief.id)
+
+    return render(
+        request,
+        "workshop/modeling_detail.html",
+        {
+            "brief": brief,
+            "hub_cfg": hub_cfg,
+            "screenshots": list(brief.screenshots.all()),
+            "statuses": ModelingBriefStatus.choices,
+        },
+    )
+
+
+@require_POST
+@require_delete_permission
+def modeling_delete(request: HttpRequest, brief_id: int):
+    from workshop.models import ModelingBrief
+
+    brief = get_object_or_404(ModelingBrief, pk=brief_id)
+    details = brief.brief_number
+    brief.delete()
+    log_action(request, "modeling_delete", entity_type="modeling", entity_id=brief_id, details=details)
+    messages.success(request, "3D-заявка удалена")
+    return redirect("modeling_list")

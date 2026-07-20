@@ -254,10 +254,14 @@
             <a class="btn btn-sm nav-page-btn {% nav_active 'clients' %}" href="{% url 'clients' %}">Клиенты</a>
             <a class="btn btn-sm nav-page-btn {% nav_active 'services' %}" href="{% url 'services' %}">Услуги</a>
             <a class="btn btn-sm nav-page-btn {% nav_active 'acceptance' %}" href="{% url 'acceptance_acts' %}">Акты приёма</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'modeling' %}" href="{% url 'modeling_list' %}">3D моделирование</a>
             <a class="btn btn-sm nav-page-btn {% nav_active 'statistics' %}" href="{% url 'statistics' %}">Статистика</a>
             <a class="btn btn-sm nav-page-btn {% nav_active 'audit' %}" href="{% url 'audit_log' %}">Журнал</a>
+            {% if is_workshop_admin %}
             <a class="btn btn-sm nav-page-btn {% nav_active 'admin' %}" href="{% url 'admin_panel' %}">Админ</a>
+            {% endif %}
             <a class="btn btn-sm nav-page-btn {% nav_active 'create_order' %}" href="{% url 'create_order' %}">Новый заказ</a>
+            {% if workshop_user %}<span class="small text-secondary align-self-center">{{ workshop_user }}</span>{% endif %}
             <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}
                 <button class="btn btn-outline-warning btn-sm" type="submit">Выйти</button>
             </form>

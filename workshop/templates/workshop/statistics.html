@@ -20,6 +20,13 @@
     <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">Обратившихся клиентов</div><div class="fs-3 fw-bold">{{ stats.visitors_count }}</div></div></div></div>
 </div>
 
+<div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">3D выполнено</div><div class="fs-3 fw-bold">{{ stats.modeling_done_count }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">3D сумма с клиентом</div><div class="fs-3 fw-bold">{{ stats.modeling_agreed_sum|money }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">3D доля точки (30%)</div><div class="fs-3 fw-bold">{{ stats.modeling_site_share|money }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">3D дизайнеру (70%)</div><div class="fs-3 fw-bold">{{ stats.modeling_designer_share|money }}</div></div></div></div>
+</div>
+
 {% if period == 'week' %}
 <div class="row g-3">
     <div class="col-xl-7">

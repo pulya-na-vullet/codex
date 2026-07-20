@@ -802,3 +802,184 @@ def next_numbered(prefix: str, model, field: str = "order_number") -> str:
     except Exception:
         value = model.objects.count() + 1
     return f"{prefix}-{value:06d}"
+
+
+class StaffRole(models.TextChoices):
+    ADMIN = "admin", "Админ"
+    MANAGER = "manager", "Менеджер"
+
+
+class StaffUser(models.Model):
+    username = models.CharField("Логин", max_length=64, unique=True)
+    password_hash = models.CharField("Хэш пароля", max_length=128)
+    full_name = models.CharField("ФИО", max_length=200, blank=True, default="")
+    role = models.CharField("Роль", max_length=20, choices=StaffRole.choices, default=StaffRole.MANAGER)
+    is_active = models.BooleanField("Активен", default=True)
+    max_user_id = models.CharField("Max user_id", max_length=64, blank=True, default="")
+    created_at = models.DateTimeField("Создан", default=timezone.now)
+
+    class Meta:
+        ordering = ["username"]
+        verbose_name = "Сотрудник"
+        verbose_name_plural = "Сотрудники"
+
+    def __str__(self) -> str:
+        return f"{self.username} ({self.get_role_display()})"
+
+    def set_password(self, raw: str) -> None:
+        from django.contrib.auth.hashers import make_password
+
+        self.password_hash = make_password(raw)
+
+    def check_password(self, raw: str) -> bool:
+        from django.contrib.auth.hashers import check_password
+
+        return check_password(raw, self.password_hash)
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == StaffRole.ADMIN
+
+    @classmethod
+    def ensure_bootstrap_admin(cls) -> "StaffUser":
+        """Create default admin from settings if no staff exists."""
+        existing = cls.objects.first()
+        if existing:
+            return existing
+        user = cls(
+            username=getattr(settings, "WORKSHOP_USERNAME", "ITM") or "ITM",
+            full_name="Администратор",
+            role=StaffRole.ADMIN,
+            is_active=True,
+        )
+        user.set_password(getattr(settings, "WORKSHOP_PASSWORD", "pass") or "pass")
+        user.save()
+        return user
+
+
+class HubConnectionSettings(models.Model):
+    """Singleton: связь точки с 3D HUB."""
+
+    site_id = models.CharField("Номер точки", max_length=64, blank=True, default="")
+    hub_base_url = models.CharField("URL хаба", max_length=255, blank=True, default="")
+    site_token = models.CharField("Token точки", max_length=255, blank=True, default="")
+    site_secret = models.CharField("Secret HMAC", max_length=255, blank=True, default="")
+    designer_share_percent = models.PositiveSmallIntegerField(
+        "Доля дизайнера %",
+        default=70,
+        help_text="От agreed_price; остаток — доля точки",
+    )
+    enabled = models.BooleanField("Интеграция с хабом включена", default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Настройки HUB"
+        verbose_name_plural = "Настройки HUB"
+
+    def __str__(self) -> str:
+        return f"HUB {self.site_id or '-'}"
+
+    @classmethod
+    def get_solo(cls) -> "HubConnectionSettings":
+        obj = cls.objects.first()
+        if obj:
+            return obj
+        return cls.objects.create()
+
+
+class ModelingBriefStatus(models.TextChoices):
+    DRAFT = "draft", "Черновик"
+    QUEUED = "queued", "В очереди"
+    ASSIGNED = "assigned", "Назначен"
+    IN_PROGRESS = "in_progress", "В работе"
+    NEEDS_CLARIFICATION = "needs_clarification", "Переуточнение"
+    CLARIFICATION_PROVIDED = "clarification_provided", "Уточнение отправлено"
+    DONE = "done", "Выполнен"
+    CANCELLED = "cancelled", "Отменён"
+
+
+class ModelingBrief(models.Model):
+    brief_number = models.CharField("Номер", max_length=32, unique=True)
+    client = models.ForeignKey(
+        Client,
+        on_delete=models.PROTECT,
+        related_name="modeling_briefs",
+        verbose_name="Клиент",
+    )
+    model_url = models.URLField("Ссылка на модель", blank=True, default="")
+    stl_file = models.FileField("STL", upload_to="modeling/stl/%Y/%m/", blank=True)
+    description = models.TextField("ТЗ / комментарий", blank=True, default="")
+    agreed_price = models.DecimalField("Сумма с клиентом", max_digits=12, decimal_places=2, default=Decimal("0"))
+    designer_share_amount = models.DecimalField(
+        "Доля дизайнера", max_digits=12, decimal_places=2, default=Decimal("0")
+    )
+    site_share_amount = models.DecimalField("Доля точки", max_digits=12, decimal_places=2, default=Decimal("0"))
+    status = models.CharField(
+        "Статус", max_length=32, choices=ModelingBriefStatus.choices, default=ModelingBriefStatus.DRAFT, db_index=True
+    )
+    hub_brief_id = models.CharField("ID на хабе", max_length=64, blank=True, default="", db_index=True)
+    designer_name = models.CharField("Дизайнер ФИО", max_length=200, blank=True, default="")
+    designer_id = models.CharField("Дизайнер ID", max_length=64, blank=True, default="")
+    eta = models.CharField("Ориентировочный срок", max_length=200, blank=True, default="")
+    last_hub_message = models.TextField("Последнее сообщение с хаба", blank=True, default="")
+    manager_alert = models.BooleanField("Нужно внимание менеджера", default=False, db_index=True)
+    created_by = models.ForeignKey(
+        StaffUser,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_briefs",
+        verbose_name="Создал",
+    )
+    updated_by = models.ForeignKey(
+        StaffUser,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="updated_briefs",
+        verbose_name="Изменил",
+    )
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    done_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "3D заявка"
+        verbose_name_plural = "3D заявки"
+
+    def __str__(self) -> str:
+        return self.brief_number
+
+    def apply_shares(self, designer_percent: int | None = None) -> None:
+        pct = int(designer_percent if designer_percent is not None else 70)
+        pct = max(0, min(100, pct))
+        price = Decimal(self.agreed_price or 0)
+        self.designer_share_amount = (price * Decimal(pct) / Decimal(100)).quantize(Decimal("0.01"))
+        self.site_share_amount = (price - self.designer_share_amount).quantize(Decimal("0.01"))
+
+    @property
+    def is_in_work(self) -> bool:
+        return self.status in {
+            ModelingBriefStatus.ASSIGNED,
+            ModelingBriefStatus.IN_PROGRESS,
+            ModelingBriefStatus.CLARIFICATION_PROVIDED,
+        }
+
+
+class ModelingBriefScreenshot(models.Model):
+    brief = models.ForeignKey(ModelingBrief, on_delete=models.CASCADE, related_name="screenshots")
+    image = models.ImageField("Скриншот", upload_to="modeling/screens/%Y/%m/")
+    uploaded_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["id"]
+
+
+class HubWebhookEvent(models.Model):
+    event_id = models.CharField(max_length=64, unique=True)
+    payload = models.TextField(blank=True, default="")
+    received_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-id"]

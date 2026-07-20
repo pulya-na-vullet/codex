@@ -39,10 +39,12 @@
                                             {% if s.is_active %}Отключить{% else %}Включить{% endif %}
                                         </button>
                                     </form>
+                                    {% if can_workshop_delete %}
                                     <form method="post" action="{% url 'service_delete' s.id %}" onsubmit="return confirm('Удалить услугу?');">{% csrf_token %}
                                         <input type="hidden" name="status" value="{{ status_filter }}">
                                         <button class="btn btn-outline-danger btn-sm" type="submit">Удалить</button>
                                     </form>
+                                    {% endif %}
                                 </div>
                             </td>
                         </tr>

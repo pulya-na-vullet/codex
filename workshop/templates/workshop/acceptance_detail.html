@@ -45,9 +45,11 @@
             </form>
             <a class="btn btn-outline-light btn-sm" target="_blank" href="{% url 'acceptance_print' act.id %}">Просмотр</a>
             <a class="btn btn-outline-warning btn-sm" href="{% url 'acceptance_pdf' act.id %}">PDF</a>
+            {% if can_workshop_delete %}
             <form method="post" action="{% url 'acceptance_delete' act.id %}" onsubmit="return confirm('Удалить акт?');">{% csrf_token %}
                 <button class="btn btn-outline-danger btn-sm">Удалить</button>
             </form>
+            {% endif %}
         </div>
     </div>
     <dl class="row mb-0">

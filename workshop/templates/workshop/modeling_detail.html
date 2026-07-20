@@ -1,0 +1,93 @@
+{% extends "workshop/base.html" %}
+{% load workshop_extras %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+        <h4 class="mb-0">{{ brief.brief_number }}</h4>
+        <div class="small-muted">
+            {{ brief.get_status_display }}
+            {% if brief.manager_alert %}<span class="badge text-bg-warning ms-1">внимание менеджера</span>{% endif %}
+            · клиент <a href="{% url 'client_detail' brief.client_id %}">{{ brief.client.name }}</a>
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-light btn-sm" href="{% url 'modeling_list' %}">К списку</a>
+        {% if can_workshop_delete %}
+        <form method="post" action="{% url 'modeling_delete' brief.id %}" onsubmit="return confirm('Удалить заявку?');">
+            {% csrf_token %}
+            <button class="btn btn-outline-danger btn-sm" type="submit">Удалить</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+{% if brief.manager_alert %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center">
+    <div>Нужно внимание: {{ brief.last_hub_message|default:"событие с хаба" }}</div>
+    <form method="post">{% csrf_token %}
+        <input type="hidden" name="action" value="ack_alert">
+        <button class="btn btn-sm btn-outline-dark" type="submit">Снять отметку</button>
+    </form>
+</div>
+{% endif %}
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card"><div class="card-body">
+            <form method="post" enctype="multipart/form-data" class="vstack gap-3">
+                {% csrf_token %}
+                <div>
+                    <label class="form-label">Ссылка на модель</label>
+                    <input class="form-control" type="url" name="model_url" value="{{ brief.model_url }}">
+                </div>
+                <div>
+                    <label class="form-label">STL{% if brief.stl_file %} · <a href="{{ brief.stl_file.url }}" target="_blank">скачать</a>{% endif %}</label>
+                    <input class="form-control" type="file" name="stl_file" accept=".stl">
+                </div>
+                <div>
+                    <label class="form-label">Добавить скриншоты</label>
+                    <input class="form-control" type="file" name="screenshots" accept="image/*" multiple>
+                    {% if screenshots %}
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        {% for s in screenshots %}
+                        <a href="{{ s.image.url }}" target="_blank"><img src="{{ s.image.url }}" alt="" style="height:72px;object-fit:cover;border-radius:4px;border:1px solid #333"></a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                <div>
+                    <label class="form-label">ТЗ / комментарий</label>
+                    <textarea class="form-control" name="description" rows="5">{{ brief.description }}</textarea>
+                </div>
+                <div>
+                    <label class="form-label">Согласованная сумма</label>
+                    <input class="form-control" name="agreed_price" value="{{ brief.agreed_price }}" inputmode="decimal">
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-outline-light" type="submit" name="action" value="save">Сохранить</button>
+                    <button class="btn btn-success" type="submit" name="action" value="push">Отправить в HUB</button>
+                    {% if brief.status == 'needs_clarification' %}
+                    <button class="btn btn-warning" type="submit" name="action" value="resubmit">Отправить уточнение</button>
+                    {% endif %}
+                </div>
+            </form>
+        </div></div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card mb-3"><div class="card-body">
+            <h6>Экономика</h6>
+            <div class="d-flex justify-content-between"><span>С клиентом</span><strong>{{ brief.agreed_price|money }}</strong></div>
+            <div class="d-flex justify-content-between"><span>Дизайнеру ({{ hub_cfg.designer_share_percent }}%)</span><strong>{{ brief.designer_share_amount|money }}</strong></div>
+            <div class="d-flex justify-content-between"><span>Доля точки</span><strong>{{ brief.site_share_amount|money }}</strong></div>
+            <div class="small-muted mt-2">HUB {% if hub_cfg.enabled %}включён{% else %}выключен{% endif %} · {{ hub_cfg.site_id|default:"без номера точки" }}</div>
+        </div></div>
+        <div class="card"><div class="card-body">
+            <h6>Хаби статус</h6>
+            <div class="small mb-1">hub_brief_id: <code>{{ brief.hub_brief_id|default:"—" }}</code></div>
+            <div class="small mb-1">Дизайнер: {{ brief.designer_name|default:"—" }} {% if brief.designer_id %}(id {{ brief.designer_id }}){% endif %}</div>
+            <div class="small mb-1">Срок: {{ brief.eta|default:"—" }}</div>
+            <div class="small">Сообщение: {{ brief.last_hub_message|default:"—" }}</div>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

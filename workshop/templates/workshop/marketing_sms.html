@@ -97,8 +97,10 @@
                                     </div>
                                 </td>
                                 <td class="text-end align-top">
+                                    {% if can_workshop_delete %}
                                     <button form="delete-blast-{{ b.id }}" class="btn btn-outline-danger btn-sm" type="submit"
                                             onclick="return confirm('Удалить всю рассылку из очереди?');">Удалить</button>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% else %}
@@ -110,8 +112,10 @@
                                     <div class="marketing-msg-text" title="{% if log %}{{ log.text }}{% else %}{{ b.template_text }}{% endif %}">{% if log %}{{ log.text }}{% else %}{{ b.template_text }}{% endif %}</div>
                                 </td>
                                 <td class="text-end align-top">
+                                    {% if can_workshop_delete %}
                                     <button form="delete-blast-{{ b.id }}" class="btn btn-outline-danger btn-sm" type="submit"
                                             onclick="return confirm('Удалить сообщение из очереди?');">Удалить</button>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endwith %}

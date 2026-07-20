@@ -1,0 +1,56 @@
+{% extends "workshop/base.html" %}
+{% load workshop_extras %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="mb-0">3D моделирование</h4>
+        <div class="small-muted">Заявки на хаб · {% if attention_count %}<span class="text-warning">требуют внимания: {{ attention_count }}</span>{% else %}без срочных отметок{% endif %}</div>
+    </div>
+    <a class="btn btn-violet btn-sm" href="{% url 'modeling_create' %}">Новая заявка</a>
+</div>
+
+<form method="get" class="mb-3 d-flex flex-wrap gap-2 align-items-end">
+    <div>
+        <label class="form-label small mb-1">Статус</label>
+        <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
+            <option value="">Все</option>
+            {% for value, label in statuses %}
+            <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</form>
+
+<div class="card"><div class="card-body p-0">
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+            <tr>
+                <th>Номер</th>
+                <th>Клиент</th>
+                <th>Статус</th>
+                <th>Дизайнер</th>
+                <th class="text-end">Сумма</th>
+                <th class="text-end">Доля точки</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for b in briefs %}
+                <tr class="{% if b.manager_alert %}table-warning{% endif %}">
+                    <td><a href="{% url 'modeling_detail' b.id %}">{{ b.brief_number }}</a></td>
+                    <td>{{ b.client.name }}</td>
+                    <td>{{ b.get_status_display }}{% if b.manager_alert %} · <span class="text-warning">!</span>{% endif %}</td>
+                    <td>{{ b.designer_name|default:"—" }}</td>
+                    <td class="text-end">{{ b.agreed_price|money }}</td>
+                    <td class="text-end">{{ b.site_share_amount|money }}</td>
+                    <td class="text-end"><a class="btn btn-outline-light btn-sm" href="{% url 'modeling_detail' b.id %}">Открыть</a></td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="7" class="text-center text-secondary py-4">Заявок пока нет</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div></div>
+{% endblock %}

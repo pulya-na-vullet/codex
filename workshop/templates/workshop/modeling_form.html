@@ -1,0 +1,46 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="mb-3">
+    <h4 class="mb-0">Новая 3D-заявка</h4>
+    <div class="small-muted">Клиент, ссылка/STL, скриншоты и согласованная сумма (70% дизайнеру через хаб)</div>
+</div>
+<div class="card"><div class="card-body">
+    <form method="post" enctype="multipart/form-data" class="vstack gap-3">
+        {% csrf_token %}
+        <div>
+            <label class="form-label">Клиент</label>
+            <select class="form-select" name="client_id" required>
+                <option value="">— выберите —</option>
+                {% for c in clients %}
+                <option value="{{ c.id }}">{{ c.name }} · {{ c.phone }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label">Ссылка на модель</label>
+            <input class="form-control" type="url" name="model_url" placeholder="https://...">
+        </div>
+        <div>
+            <label class="form-label">STL-файл</label>
+            <input class="form-control" type="file" name="stl_file" accept=".stl">
+        </div>
+        <div>
+            <label class="form-label">Скриншоты</label>
+            <input class="form-control" type="file" name="screenshots" accept="image/*" multiple>
+        </div>
+        <div>
+            <label class="form-label">ТЗ / комментарий</label>
+            <textarea class="form-control" name="description" rows="4"></textarea>
+        </div>
+        <div>
+            <label class="form-label">Согласованная сумма с клиентом</label>
+            <input class="form-control" name="agreed_price" inputmode="decimal" placeholder="0.00" required>
+            <div class="small-muted mt-1">Дизайнеру уйдёт 70%, точке останется 30% (настраивается в админке HUB)</div>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-success" type="submit">Создать</button>
+            <a class="btn btn-outline-light" href="{% url 'modeling_list' %}">Отмена</a>
+        </div>
+    </form>
+</div></div>
+{% endblock %}

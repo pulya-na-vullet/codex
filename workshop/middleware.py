@@ -10,7 +10,7 @@ from django.urls import reverse
 class IdleLogoutMiddleware:
     """Require workshop login and expire idle sessions after N hours."""
 
-    EXEMPT_PREFIXES = ("/login", "/logout", "/static/", "/admin/", "/max/")
+    EXEMPT_PREFIXES = ("/login", "/logout", "/static/", "/admin/", "/max/", "/hooks/")
 
     def __init__(self, get_response):
         self.get_response = get_response

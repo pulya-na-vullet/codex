@@ -43,5 +43,27 @@
             </div>
         </a>
     </div>
+    <div class="col-md-4">
+        <a href="{% url 'modeling_list' %}" class="text-decoration-none">
+            <div class="card h-100 {% if modeling_in_work %}border-primary{% endif %}">
+                <div class="card-body text-center py-4">
+                    <div class="display-5 fw-bold {% if modeling_in_work %}text-primary{% else %}text-secondary{% endif %}">{{ modeling_in_work }}</div>
+                    <div class="mt-2">3D в работе</div>
+                    <div class="small-muted">очередь и дизайнеры</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a href="{% url 'modeling_list' %}?status=" class="text-decoration-none">
+            <div class="card h-100 {% if modeling_attention %}border-warning{% endif %}">
+                <div class="card-body text-center py-4">
+                    <div class="display-5 fw-bold {% if modeling_attention %}text-warning{% else %}text-secondary{% endif %}">{{ modeling_attention }}</div>
+                    <div class="mt-2">3D: внимание</div>
+                    <div class="small-muted">переуточнение / готово</div>
+                </div>
+            </div>
+        </a>
+    </div>
 </div>
 {% endblock %}

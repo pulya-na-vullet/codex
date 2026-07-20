@@ -728,3 +728,148 @@ class AuthAndPagesTests(TestCase):
         actions = set(AuditLog.objects.values_list("action", flat=True))
         self.assertIn("order_print_done", actions)
         self.assertIn("acceptance_print_done", actions)
+
+
+class StaffAclAndModelingTests(TestCase):
+    def setUp(self):
+        from workshop.models import StaffRole, StaffUser
+
+        self.http = HttpClient()
+        StaffUser.ensure_bootstrap_admin()
+        self.admin = StaffUser.objects.get(username="ITM")
+        self.manager = StaffUser(
+            username="mgr",
+            full_name="Менеджер",
+            role=StaffRole.MANAGER,
+            is_active=True,
+        )
+        self.manager.set_password("mgrpass")
+        self.manager.save()
+        self.client_obj = Client.objects.create(name="3D Клиент", phone="+79990000099", max_user_id="max99")
+
+    def _login(self, username: str, password: str):
+        return self.http.post("/login", {"username": username, "password": password, "next": "/"})
+
+    @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
+    def test_manager_cannot_open_admin_or_delete(self):
+        self._login("mgr", "mgrpass")
+        r = self.http.get("/admin-panel")
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/", r.url)
+
+        order = Order.objects.create(order_number="ORD-DEL001", client=self.client_obj)
+        r = self.http.post(f"/orders/{order.id}/delete")
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(Order.objects.filter(pk=order.id).exists())
+
+    @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
+    def test_modeling_shares_and_list(self):
+        from workshop.models import HubConnectionSettings, ModelingBrief
+
+        self._login("ITM", "pass")
+        hub = HubConnectionSettings.get_solo()
+        hub.designer_share_percent = 70
+        hub.save()
+
+        r = self.http.post(
+            "/modeling/new",
+            {
+                "client_id": str(self.client_obj.id),
+                "model_url": "https://example.com/model",
+                "description": "Тест",
+                "agreed_price": "1000.00",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        brief = ModelingBrief.objects.get()
+        self.assertEqual(brief.designer_share_amount, Decimal("700.00"))
+        self.assertEqual(brief.site_share_amount, Decimal("300.00"))
+        r = self.http.get("/modeling")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, brief.brief_number)
+
+    @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
+    def test_hub_webhook_taken_and_done(self):
+        from unittest.mock import patch
+
+        from workshop.hub import sign_body
+        from workshop.models import HubConnectionSettings, ModelingBrief, ModelingBriefStatus
+
+        self._login("ITM", "pass")
+        hub = HubConnectionSettings.get_solo()
+        hub.site_secret = "test-secret"
+        hub.enabled = True
+        hub.save()
+        brief = ModelingBrief.objects.create(
+            brief_number="3D-000001",
+            client=self.client_obj,
+            agreed_price=Decimal("1000"),
+            designer_share_amount=Decimal("700"),
+            site_share_amount=Decimal("300"),
+            status=ModelingBriefStatus.QUEUED,
+        )
+
+        import json
+        import time
+
+        payload = {
+            "event_id": "evt-1",
+            "event": "taken_in_work",
+            "local_brief_id": brief.id,
+            "brief_id": "hub-42",
+            "designer_name": "Иван Дизайнер",
+            "designer_id": "d1",
+            "eta": "2 дня",
+        }
+        body = json.dumps(payload).encode("utf-8")
+        ts = str(int(time.time()))
+        sig = sign_body("test-secret", ts, body)
+        with patch("workshop.hub.notify_staff_max", return_value=(True, "sent")):
+            r = self.http.post(
+                "/hooks/hub/briefs",
+                data=body,
+                content_type="application/json",
+                headers={"X-Timestamp": ts, "X-Signature": sig},
+            )
+        self.assertEqual(r.status_code, 200)
+        brief.refresh_from_db()
+        self.assertEqual(brief.status, ModelingBriefStatus.ASSIGNED)
+        self.assertEqual(brief.designer_name, "Иван Дизайнер")
+        self.assertEqual(brief.hub_brief_id, "hub-42")
+
+        payload2 = {
+            "event_id": "evt-2",
+            "event": "done",
+            "local_brief_id": brief.id,
+            "message": "Готово",
+        }
+        body2 = json.dumps(payload2).encode("utf-8")
+        ts2 = str(int(time.time()))
+        sig2 = sign_body("test-secret", ts2, body2)
+        with patch("workshop.hub.notify_staff_max", return_value=(True, "sent")), patch(
+            "workshop.hub.notify_client_max", return_value=(True, "sent")
+        ) as mock_client:
+            r = self.http.post(
+                "/hooks/hub/briefs",
+                data=body2,
+                content_type="application/json",
+                headers={"X-Timestamp": ts2, "X-Signature": sig2},
+            )
+        self.assertEqual(r.status_code, 200)
+        brief.refresh_from_db()
+        self.assertEqual(brief.status, ModelingBriefStatus.DONE)
+        self.assertTrue(brief.manager_alert)
+        mock_client.assert_called_once()
+
+        # idempotent duplicate
+        with patch("workshop.hub.notify_staff_max", return_value=(True, "sent")), patch(
+            "workshop.hub.notify_client_max", return_value=(True, "sent")
+        ):
+            r = self.http.post(
+                "/hooks/hub/briefs",
+                data=body2,
+                content_type="application/json",
+                headers={"X-Timestamp": ts2, "X-Signature": sig2},
+            )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.content.decode(), "duplicate")
