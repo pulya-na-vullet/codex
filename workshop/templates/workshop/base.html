@@ -238,6 +238,24 @@
         .stats-day.intensity-2 { background: rgba(37, 99, 235, 0.32); }
         .stats-day.intensity-3 { background: rgba(37, 99, 235, 0.48); }
         .stats-day.intensity-4 { background: rgba(37, 99, 235, 0.68); }
+        .rating-star-input { position: absolute; opacity: 0; width: 0; height: 0; }
+        .rating-stars { display: inline-flex; flex-direction: row-reverse; gap: .15rem; }
+        .rating-stars label {
+            cursor: pointer;
+            font-size: 2rem;
+            line-height: 1;
+            color: #475569;
+            transition: color .15s ease, transform .15s ease;
+            user-select: none;
+        }
+        .rating-stars label:hover,
+        .rating-stars label:hover ~ label,
+        .rating-stars input:checked ~ label,
+        .rating-stars input:checked ~ label ~ label {
+            color: #fbbf24;
+        }
+        .rating-stars label:hover { transform: scale(1.08); }
+        .rating-stars-readonly { color: #fbbf24; letter-spacing: .05rem; }
     </style>
 </head>
 <body>
@@ -279,5 +297,57 @@
     {% endif %}
     {% block content %}{% endblock %}
 </main>
+
+{% if pending_rating_brief %}
+<div class="modal fade" id="hubRatingModal" tabindex="-1" aria-labelledby="hubRatingModalLabel" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:#1e293b;color:#e2e8f0;border:1px solid #334155;">
+      <div class="modal-header border-secondary">
+        <h5 class="modal-title" id="hubRatingModalLabel">Оценка 3D-заказа</h5>
+      </div>
+      <form method="post" action="{% url 'modeling_rate' pending_rating_brief.id %}" id="hubRatingForm">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <div class="modal-body">
+          <p class="mb-1">Заявка <strong>{{ pending_rating_brief.brief_number }}</strong> выполнена.</p>
+          <p class="small text-secondary mb-3">
+            Клиент: {{ pending_rating_brief.client.name }}
+            {% if pending_rating_brief.designer_name %} · дизайнер {{ pending_rating_brief.designer_name }}{% endif %}
+          </p>
+          <div class="mb-3 text-center">
+            <div class="small text-secondary mb-2">Оцените работу дизайнера</div>
+            <div class="rating-stars" role="radiogroup" aria-label="Оценка от 1 до 5">
+              {% for s in "54321" %}
+              <input class="rating-star-input" type="radio" name="score" id="hub-star-{{ s }}" value="{{ s }}" required>
+              <label for="hub-star-{{ s }}" title="{{ s }}">★</label>
+              {% endfor %}
+            </div>
+          </div>
+          <div>
+            <label class="form-label small" for="hubRatingComment">Комментарий (необязательно)</label>
+            <textarea class="form-control" id="hubRatingComment" name="comment" rows="2" maxlength="1000" placeholder="Краткий отзыв для HUB"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button class="btn btn-outline-secondary" type="submit" formaction="{% url 'modeling_rate_later' pending_rating_brief.id %}" formnovalidate>Позже</button>
+          <button class="btn btn-warning" type="submit">Отправить оценку</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+{% if pending_rating_brief %}
+<script>
+(function () {
+  var el = document.getElementById('hubRatingModal');
+  if (!el || !window.bootstrap) return;
+  var modal = bootstrap.Modal.getOrCreateInstance(el);
+  modal.show();
+})();
+</script>
+{% endif %}
 </body>
 </html>

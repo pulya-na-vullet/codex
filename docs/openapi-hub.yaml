@@ -79,6 +79,28 @@ paths:
       responses:
         "200":
           description: Accepted
+  /api/v1/briefs/{brief_id}/ratings:
+    post:
+      summary: Manager star rating from SITE after brief is done
+      parameters:
+        - $ref: "#/components/parameters/BriefId"
+      security:
+        - SiteHmac: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BriefRatingIn"
+      responses:
+        "200":
+          description: created or duplicate (idempotent by event_id)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BriefRatingOut"
+        "400":
+          description: Brief has no assigned designer
 components:
   securitySchemes:
     SiteHmac:
@@ -153,6 +175,37 @@ components:
                 - clarification_provided
                 - done
                 - cancelled
+    BriefRatingIn:
+      type: object
+      required: [event_id, score, local_brief_id]
+      properties:
+        event_id:
+          type: string
+          description: "rating-{site_id}-{local_brief_id}-{version}"
+        score:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        rated_by:
+          type: string
+          description: Manager display name
+        local_brief_id:
+          type: integer
+    BriefRatingOut:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [created, duplicate]
+        avg_rating:
+          type: number
+        ratings_count:
+          type: integer
+        event_id:
+          type: string
     HubToSiteWebhook:
       type: object
       description: POST to SITE /hooks/hub/briefs

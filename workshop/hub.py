@@ -160,6 +160,7 @@ def apply_hub_brief_snapshot(
             brief.manager_alert = True
             if not brief.done_at:
                 brief.done_at = timezone.now()
+            brief.mark_rating_pending_if_needed()
         elif new_status == ModelingBriefStatus.NEEDS_CLARIFICATION:
             brief.manager_alert = True
         elif new_status in {
@@ -252,6 +253,105 @@ def sync_open_briefs_from_hub(*, limit: int = 30) -> tuple[int, int, list[str]]:
             details.append(f"{brief.brief_number}: {detail}")
     return ok_n, fail_n, details
 
+
+def rating_event_id(brief: ModelingBrief, *, version: int = 1) -> str:
+    cfg = HubConnectionSettings.get_solo()
+    site = (cfg.site_id or "site").strip() or "site"
+    return f"rating-{site}-{brief.id}-{version}"
+
+
+def push_brief_rating_to_hub(
+    brief: ModelingBrief,
+    *,
+    score: int,
+    comment: str = "",
+    rated_by: str = "менеджер",
+) -> tuple[bool, str, dict[str, Any]]:
+    """POST /api/v1/briefs/{id}/ratings — manager star rating after done."""
+    cfg, err = _hub_configured()
+    if not cfg:
+        return False, err, {}
+    hub_brief_id = (brief.hub_brief_id or "").strip()
+    if not hub_brief_id:
+        return False, "Заявка ещё не связана с HUB (нет hub_brief_id)", {}
+    try:
+        score_i = int(score)
+    except (TypeError, ValueError):
+        return False, "Оценка должна быть числом от 1 до 5", {}
+    if score_i < 1 or score_i > 5:
+        return False, "Оценка должна быть от 1 до 5", {}
+
+    event_id = (brief.rating_event_id or "").strip() or rating_event_id(brief, version=1)
+    payload = {
+        "event_id": event_id,
+        "score": score_i,
+        "comment": (comment or "").strip(),
+        "rated_by": (rated_by or "менеджер").strip() or "менеджер",
+        "local_brief_id": brief.id,
+    }
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    url = f"{cfg.hub_base_url.rstrip('/')}/api/v1/briefs/{hub_brief_id}/ratings"
+    req = urlrequest.Request(url, data=body, headers=_headers(cfg, body), method="POST")
+    try:
+        with urlrequest.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode("utf-8") or "{}"
+            data = json.loads(raw) if raw else {}
+            if not isinstance(data, dict):
+                data = {}
+            data.setdefault("event_id", event_id)
+            return True, str(data.get("status") or "ok"), data
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        logger.warning("HUB rating failed HTTP %s: %s", exc.code, detail)
+        if exc.code == 400:
+            return False, detail or "У брифа нет назначенного дизайнера (HUB 400)", {}
+        return False, f"HUB HTTP {exc.code}: {detail}", {}
+    except Exception as exc:
+        logger.warning("HUB rating failed: %s", exc)
+        return False, str(exc)[:500], {}
+
+
+def submit_brief_rating(
+    brief: ModelingBrief,
+    *,
+    score: int,
+    comment: str = "",
+    rated_by: str = "менеджер",
+) -> tuple[bool, str]:
+    """Persist local rating and push to HUB. Returns (ok, detail for UI)."""
+    from decimal import Decimal, InvalidOperation
+
+    from django.utils import timezone
+
+    ok, detail, data = push_brief_rating_to_hub(
+        brief, score=score, comment=comment, rated_by=rated_by
+    )
+    if not ok:
+        return False, detail
+
+    brief.rating_score = int(score)
+    brief.rating_comment = (comment or "").strip()
+    brief.rating_event_id = str(data.get("event_id") or brief.rating_event_id or rating_event_id(brief, version=1))
+    brief.rating_sent_at = timezone.now()
+    brief.rating_pending = False
+    avg = data.get("avg_rating")
+    count = data.get("ratings_count")
+    if avg is not None and avg != "":
+        try:
+            brief.rating_hub_avg = Decimal(str(avg)).quantize(Decimal("0.01"))
+        except (InvalidOperation, ValueError, TypeError):
+            pass
+    if count is not None and count != "":
+        try:
+            brief.rating_hub_count = int(count)
+        except (TypeError, ValueError):
+            pass
+    brief.save()
+    status = str(data.get("status") or detail or "created")
+    if status == "duplicate":
+        return True, "Оценка уже была принята HUB (duplicate)"
+    avg_s = f", avg={brief.rating_hub_avg}" if brief.rating_hub_avg is not None else ""
+    return True, f"Оценка {brief.rating_score}/5 отправлена в HUB{avg_s}"
 
 
 def brief_payload(brief: ModelingBrief) -> dict[str, Any]:
@@ -417,6 +517,7 @@ def apply_hub_brief_event(payload: dict[str, Any]) -> tuple[bool, str]:
         brief.status = ModelingBriefStatus.DONE
         brief.manager_alert = True
         brief.done_at = timezone.now()
+        brief.mark_rating_pending_if_needed()
         brief.save()
         notify_client_max(
             brief.client,

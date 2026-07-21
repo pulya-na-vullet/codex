@@ -2069,6 +2069,64 @@ def modeling_detail(request: HttpRequest, brief_id: int):
 
 
 @require_POST
+def modeling_rate(request: HttpRequest, brief_id: int):
+    from workshop.authz import current_staff
+    from workshop.hub import submit_brief_rating
+    from workshop.models import ModelingBrief, ModelingBriefStatus
+
+    brief = get_object_or_404(ModelingBrief.objects.select_related("client"), pk=brief_id)
+    next_url = (request.POST.get("next") or "").strip() or request.META.get("HTTP_REFERER") or "/modeling"
+    if brief.status != ModelingBriefStatus.DONE:
+        messages.warning(request, "Оценивать можно только выполненную заявку")
+        return redirect(next_url)
+
+    try:
+        score = int((request.POST.get("score") or "").strip())
+    except (TypeError, ValueError):
+        score = 0
+    if score < 1 or score > 5:
+        messages.warning(request, "Выберите оценку от 1 до 5 звёзд")
+        return redirect(next_url)
+
+    comment = (request.POST.get("comment") or "").strip()
+    staff = current_staff(request)
+    rated_by = ""
+    if staff:
+        rated_by = (getattr(staff, "full_name", "") or getattr(staff, "username", "") or "").strip()
+    if not rated_by:
+        rated_by = (request.session.get("workshop_username") or "менеджер").strip() or "менеджер"
+
+    ok, detail = submit_brief_rating(brief, score=score, comment=comment, rated_by=rated_by)
+    log_action(
+        request,
+        "modeling_rate",
+        entity_type="modeling",
+        entity_id=brief.id,
+        details=f"{brief.brief_number} score={score} ok={ok} {detail[:200]}",
+    )
+    # Clear session skip for this brief either way.
+    skipped = [i for i in (request.session.get("rating_skip_ids") or []) if i != brief.id]
+    request.session["rating_skip_ids"] = skipped
+    if ok:
+        messages.success(request, detail)
+    else:
+        messages.warning(request, f"Не удалось отправить оценку в HUB: {detail}")
+    return redirect(next_url)
+
+
+@require_POST
+def modeling_rate_later(request: HttpRequest, brief_id: int):
+    """Dismiss rating popup for this browser session."""
+    next_url = (request.POST.get("next") or "").strip() or request.META.get("HTTP_REFERER") or "/modeling"
+    skipped = list(request.session.get("rating_skip_ids") or [])
+    if brief_id not in skipped:
+        skipped.append(brief_id)
+        request.session["rating_skip_ids"] = skipped[-50:]
+    messages.info(request, "Оценку можно выставить позже — откройте заявку или обновите страницу позже.")
+    return redirect(next_url)
+
+
+@require_POST
 @require_delete_permission
 def modeling_delete(request: HttpRequest, brief_id: int):
     from workshop.models import ModelingBrief

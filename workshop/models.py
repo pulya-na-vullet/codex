@@ -963,6 +963,24 @@ class ModelingBrief(models.Model):
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
     done_at = models.DateTimeField(null=True, blank=True)
+    rating_pending = models.BooleanField(
+        "Нужна оценка менеджера",
+        default=False,
+        db_index=True,
+        help_text="Показать всплывашку со звёздами после выполнения",
+    )
+    rating_score = models.PositiveSmallIntegerField("Оценка 1–5", null=True, blank=True)
+    rating_comment = models.TextField("Комментарий к оценке", blank=True, default="")
+    rating_event_id = models.CharField("event_id оценки в HUB", max_length=128, blank=True, default="")
+    rating_sent_at = models.DateTimeField("Оценка отправлена", null=True, blank=True)
+    rating_hub_avg = models.DecimalField(
+        "Средняя оценка дизайнера (с HUB)",
+        max_digits=4,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    rating_hub_count = models.PositiveIntegerField("Число оценок дизайнера (с HUB)", null=True, blank=True)
 
     class Meta:
         ordering = ["-id"]
@@ -978,6 +996,14 @@ class ModelingBrief(models.Model):
         price = Decimal(self.agreed_price or 0)
         self.designer_share_amount = (price * Decimal(pct) / Decimal(100)).quantize(Decimal("0.01"))
         self.site_share_amount = (price - self.designer_share_amount).quantize(Decimal("0.01"))
+
+    def mark_rating_pending_if_needed(self) -> None:
+        """Queue star-rating popup after brief becomes done (once, until rated)."""
+        if self.rating_sent_at or self.rating_score:
+            self.rating_pending = False
+            return
+        if self.status == ModelingBriefStatus.DONE and (self.hub_brief_id or "").strip():
+            self.rating_pending = True
 
     @property
     def is_in_work(self) -> bool:
