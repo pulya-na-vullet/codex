@@ -9,6 +9,10 @@ def _run_migrate() -> None:
     from django.core.management import execute_from_command_line
 
     print("=== Миграции БД: python manage.py migrate --noinput ===", flush=True)
+    # Prevent AppConfig.ready() workers from touching DB during migrate
+    # (execute_from_command_line does not replace sys.argv when called from app.py).
+    prev = os.environ.get("IT_MASTER_SKIP_WORKERS")
+    os.environ["IT_MASTER_SKIP_WORKERS"] = "1"
     try:
         execute_from_command_line(["manage.py", "migrate", "--noinput"])
     except SystemExit as exc:
@@ -19,6 +23,11 @@ def _run_migrate() -> None:
     except Exception as exc:
         print(f"Ошибка миграции: {exc}", file=sys.stderr, flush=True)
         raise SystemExit(1) from exc
+    finally:
+        if prev is None:
+            os.environ.pop("IT_MASTER_SKIP_WORKERS", None)
+        else:
+            os.environ["IT_MASTER_SKIP_WORKERS"] = prev
 
 
 def main():
