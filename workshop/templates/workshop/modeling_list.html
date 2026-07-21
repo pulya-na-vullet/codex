@@ -6,7 +6,16 @@
         <h4 class="mb-0">3D моделирование</h4>
         <div class="small-muted">Заявки на хаб · {% if attention_count %}<span class="text-warning">требуют внимания: {{ attention_count }}</span>{% else %}без срочных отметок{% endif %}</div>
     </div>
-    <a class="btn btn-violet btn-sm" href="{% url 'modeling_create' %}">Новая заявка</a>
+    <div class="d-flex flex-wrap gap-2">
+        {% if hub_ready %}
+        <form method="post" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="sync_hub">
+            <button class="btn btn-outline-light btn-sm" type="submit" title="Подтянуть статусы с HUB (если webhook не доходит до LAN)">Синхронизировать с HUB</button>
+        </form>
+        {% endif %}
+        <a class="btn btn-violet btn-sm" href="{% url 'modeling_create' %}">Новая заявка</a>
+    </div>
 </div>
 
 <form method="get" class="mb-3 d-flex flex-wrap gap-2 align-items-end">

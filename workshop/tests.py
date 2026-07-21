@@ -905,6 +905,74 @@ class StaffAclAndModelingTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.content.decode(), "duplicate")
 
+    @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
+    def test_hub_pull_sync_marks_done_when_webhook_missed(self):
+        """LAN SITE often never receives HUB webhooks — pull GET /briefs/{id} instead."""
+        from unittest.mock import patch
+
+        from workshop.models import HubConnectionSettings, ModelingBrief, ModelingBriefStatus
+
+        self._login("ITM", "pass")
+        hub = HubConnectionSettings.get_solo()
+        hub.enabled = True
+        hub.hub_base_url = "https://hub.test"
+        hub.site_token = "tok"
+        hub.site_secret = "sec"
+        hub.save()
+
+        brief = ModelingBrief.objects.create(
+            brief_number="3D-000099",
+            client=self.client_obj,
+            agreed_price=Decimal("1000"),
+            designer_share_amount=Decimal("700"),
+            site_share_amount=Decimal("300"),
+            status=ModelingBriefStatus.IN_PROGRESS,
+            hub_brief_id="hub-done-1",
+            designer_name="Дизайнер",
+        )
+
+        hub_payload = {
+            "brief_id": "hub-done-1",
+            "status": "done",
+            "designer_name": "Дизайнер",
+            "last_message": "Модель готова",
+        }
+        with patch("workshop.hub.fetch_brief_from_hub", return_value=(True, "ok", hub_payload)), patch(
+            "workshop.hub.notify_staff_max", return_value=(True, "sent")
+        ), patch("workshop.hub.notify_client_max", return_value=(True, "sent")) as mock_client:
+            r = self.http.post(f"/modeling/{brief.id}", {"action": "sync_hub"}, follow=True)
+
+        self.assertEqual(r.status_code, 200)
+        brief.refresh_from_db()
+        self.assertEqual(brief.status, ModelingBriefStatus.DONE)
+        self.assertTrue(brief.manager_alert)
+        self.assertIsNotNone(brief.done_at)
+        self.assertEqual(brief.last_hub_message, "Модель готова")
+        mock_client.assert_called_once()
+        self.assertContains(r, "Статус обновлён с HUB")
+
+        # List sync also pulls open briefs.
+        brief2 = ModelingBrief.objects.create(
+            brief_number="3D-000100",
+            client=self.client_obj,
+            agreed_price=Decimal("500"),
+            designer_share_amount=Decimal("350"),
+            site_share_amount=Decimal("150"),
+            status=ModelingBriefStatus.ASSIGNED,
+            hub_brief_id="hub-done-2",
+        )
+        with patch(
+            "workshop.hub.fetch_brief_from_hub",
+            return_value=(True, "ok", {"brief_id": "hub-done-2", "status": "closed"}),
+        ), patch("workshop.hub.notify_staff_max", return_value=(True, "sent")), patch(
+            "workshop.hub.notify_client_max", return_value=(True, "sent")
+        ):
+            r = self.http.post("/modeling", {"action": "sync_hub"}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        brief2.refresh_from_db()
+        self.assertEqual(brief2.status, ModelingBriefStatus.DONE)
+        self.assertContains(r, "Синхронизировать с HUB")
+
 
 @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
 class OrderAdditiveServicesTests(TestCase):
