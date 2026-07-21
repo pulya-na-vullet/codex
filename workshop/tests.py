@@ -1273,3 +1273,37 @@ class MaxLongPollStabilityTests(TestCase):
         mock_ai.assert_not_called()
         self.assertEqual(source2, "fallback")
         yandex_ai._outbound_backoff_until = 0.0
+
+
+class DbBackupTests(TestCase):
+    def test_backup_writes_orders_db_into_dumpdb(self):
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from workshop.db_backup import backup_database_to_dumpdb
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "db.sqlite3"
+            conn = sqlite3.connect(src)
+            conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+            conn.execute("INSERT INTO t DEFAULT VALUES")
+            conn.commit()
+            conn.close()
+            dump = root / "dumpDB"
+            with patch("workshop.db_backup.live_db_path", return_value=src), patch(
+                "workshop.db_backup.dump_dir", return_value=dump
+            ):
+                latest = backup_database_to_dumpdb(keep_stamped=5)
+            self.assertIsNotNone(latest)
+            self.assertEqual(latest, dump / "orders.db")
+            self.assertTrue(latest.is_file())
+            self.assertGreater(latest.stat().st_size, 0)
+            stamped = list(dump.glob("orders_*.db"))
+            self.assertEqual(len(stamped), 1)
+            # Readable SQLite snapshot
+            check = sqlite3.connect(latest)
+            self.assertEqual(check.execute("SELECT COUNT(*) FROM t").fetchone()[0], 1)
+            check.close()

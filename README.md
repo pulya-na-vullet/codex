@@ -19,7 +19,8 @@ python manage.py import_legacy_db orders.db
 python app.py
 ```
 
-`python app.py` **сам** выполняет `migrate --noinput` при каждом старте.
+`python app.py` **сам** выполняет `migrate --noinput` при каждом старте
+и сохраняет копию рабочей БД в **`dumpDB/orders.db`** (плюс датированный файл).
 
 Или Windows: `start_lan_server.bat`
 
@@ -28,6 +29,12 @@ python app.py
 ```bash
 python manage.py migrate --noinput
 ```
+
+### Бэкап БД
+
+- Рабочая база: **`db.sqlite3`** (не кладите её в git / zip-архив репозитория).
+- Автобэкап при старте: **`dumpDB/orders.db`** и `dumpDB/orders_YYYYMMDD_HHMMSS.db`.
+- Старый Flask-файл `orders.db` в корне **больше не поставляется** в репозитории, чтобы при распаковке ZIP не затереть данные. Если он у вас остался локально — `start_lan_server.bat` может импортировать его только в пустую Django-БД.
 
 Сервер: `0.0.0.0:8000`. Вход: `ITM` / `pass` (выход через 6 ч бездействия).
 

@@ -34,6 +34,7 @@ if exist orders.db (
 echo.
 echo Сервер стартует. Не закрывайте окно.
 echo Данные хранятся в db.sqlite3 — при обновлении копируйте этот файл в новую папку.
+echo При каждом запуске копия БД пишется в dumpDB\orders.db
 echo.
 python app.py
 pause
