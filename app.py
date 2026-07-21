@@ -30,6 +30,16 @@ def _run_migrate() -> None:
             os.environ["IT_MASTER_SKIP_WORKERS"] = prev
 
 
+def _backup_db() -> None:
+    """Snapshot live DB into dumpDB/orders.db on every start."""
+    try:
+        from workshop.db_backup import backup_database_to_dumpdb
+
+        backup_database_to_dumpdb()
+    except Exception as exc:
+        print(f"Предупреждение: не удалось сделать бэкап БД в dumpDB/: {exc}", file=sys.stderr, flush=True)
+
+
 def main():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     host = os.getenv("IT_MASTER_HOST", "0.0.0.0")
@@ -39,6 +49,7 @@ def main():
 
     print_access_urls(host, port)
     _run_migrate()
+    _backup_db()
 
     from django.core.management import execute_from_command_line
 
