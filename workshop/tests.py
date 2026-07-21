@@ -461,7 +461,7 @@ class AuthAndPagesTests(TestCase):
             order_number="ORD-NOTIFY1",
             client=client,
             total_sum=Decimal("700"),
-            status="ready_call",
+            status="active",
         )
         act = AcceptanceAct.objects.create(
             act_number="ACT-NOTIFY1",
@@ -470,20 +470,71 @@ class AuthAndPagesTests(TestCase):
             declared_defect="Тест",
             status=AcceptanceActStatus.DIAGNOSTICS,
         )
-        r = self.http.post(f"/orders/{order.id}/mark-called", {"next": "/work-queue"})
-        self.assertEqual(r.status_code, 302)
+        # «Работа выполнена» (done → ready_call) — Max notify + явный flash
+        r = self.http.post(
+            f"/orders/{order.id}/status",
+            {"status": "done", "next": f"/orders/{order.id}"},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, "ready_call")
         self.assertTrue(
             SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client, success=True, text__icontains="ORD-NOTIFY1").exists()
         )
+        self.assertContains(r, "Max")
+        self.assertContains(r, "уведомление")
+
+        # mark-called → done: без повторной отправки
+        before = SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client).count()
+        r = self.http.post(f"/orders/{order.id}/mark-called", {"next": "/work-queue"}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client).count(), before)
+        self.assertNotContains(r, "уведомление о готовности")
+
         r = self.http.post(
             f"/acceptance/{act.id}/status",
             {"status": "diagnostics_done", "next": "/work-queue"},
+            follow=True,
         )
-        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.status_code, 200)
         self.assertTrue(
             SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client, success=True, text__icontains="ACT-NOTIFY1").exists()
         )
+        self.assertContains(r, "Max")
 
+    def test_max_status_notify_silent_without_max(self):
+        """Клиент без Max — статус меняется, всплывашек про Max нет."""
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        from workshop.models import SmsKind, SmsLog, SmsSettings
+
+        cfg = SmsSettings.get_solo()
+        cfg.enabled = True
+        cfg.provider = "log"
+        cfg.save()
+        client = Client.objects.create(name="Без Max", phone="+79990002200", max_user_id="")
+        order = Order.objects.create(
+            order_number="ORD-NOMAX1",
+            client=client,
+            total_sum=Decimal("300"),
+            status="active",
+        )
+        r = self.http.post(
+            f"/orders/{order.id}/status",
+            {"status": "done", "next": f"/orders/{order.id}"},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, "ready_call")
+        self.assertFalse(SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client).exists())
+        self.assertContains(r, "Статус заказа")
+        # Нет flash про Max (подсказка на карточке тоже не показывается без max_user_id)
+        self.assertNotContains(r, "уведомление записано")
+        self.assertNotContains(r, "уведомление о готовности")
+        self.assertNotContains(r, "не отправлено")
+        self.assertNotContains(r, "привязан")
+        self.assertNotContains(r, "Клиент в Max")
     def test_sms_admin_and_debt_send(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         from workshop.models import SmsLog, SmsSettings

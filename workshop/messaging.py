@@ -437,12 +437,31 @@ def send_marketing_message(
     )
 
 
+@dataclass(frozen=True)
+class StatusNotifyFlash:
+    """UI feedback for Max status notifies. None from helpers = stay silent."""
+
+    level: str  # success | warning | info
+    text: str
+
+
+def _flash_from_message_result(result: MessageResult, *, ok_text: str) -> StatusNotifyFlash:
+    if result.success:
+        if result.simulated:
+            return StatusNotifyFlash(
+                "info",
+                "Max (тест/журнал): уведомление записано локально, в мессенджер не уходило.",
+            )
+        return StatusNotifyFlash("success", ok_text)
+    return StatusNotifyFlash("warning", f"Max: не отправлено — {result.response}")
+
+
 def _client_linked_to_max(client: Client | None) -> bool:
     return bool(client and (client.max_user_id or "").strip())
 
 
 def send_order_done_message(order: Order, *, username: str = "") -> MessageResult:
-    """Notify client in Max when order becomes «Выполнена»."""
+    """Notify client in Max when order work is ready / completed."""
     client = order.client
     if not _client_linked_to_max(client):
         return MessageResult(success=False, response="Клиент не привязан к Max")
@@ -469,7 +488,7 @@ def send_diagnostics_done_message(act, *, username: str = "") -> MessageResult:
         "phone": client.phone,
         "act": act.act_number,
         "device": f"{act.device_type} {act.brand_model or ''}".strip(),
-        "company": getattr(settings, "COMPANY_NAME", "ИТ-мастерская"),
+        "company": getattr(settings, "COMPANY_NAME", "ИТ-М"),
         "company_phone": getattr(settings, "COMPANY_PHONE", ""),
     }
     text = render_template(cfg.diagnostics_done_template, **ctx)
@@ -482,26 +501,58 @@ def send_diagnostics_done_message(act, *, username: str = "") -> MessageResult:
     )
 
 
-def maybe_notify_order_done(order: Order, *, old_status: str, username: str = "") -> None:
+def maybe_notify_order_done(order: Order, *, old_status: str, username: str = "") -> StatusNotifyFlash | None:
+    """
+    Send Max «заказ готов» when work becomes ready.
+
+    - On «Работа выполнена — позвонить» (ready_call): notify if client has Max.
+    - On «Выполнена» (done): notify only if we skipped ready_call (avoid double send).
+    - No Max user_id: silent (no popup).
+    """
     from workshop.models import OrderStatus
 
-    if order.status != OrderStatus.DONE or old_status == OrderStatus.DONE:
-        return
+    should_send = False
+    if order.status == OrderStatus.READY_CALL and old_status != OrderStatus.READY_CALL:
+        should_send = True
+    elif (
+        order.status == OrderStatus.DONE
+        and old_status != OrderStatus.DONE
+        and old_status != OrderStatus.READY_CALL
+    ):
+        # Direct jump to done without ready_call step.
+        should_send = True
+
+    if not should_send:
+        return None
+    if not _client_linked_to_max(order.client):
+        return None
     try:
-        send_order_done_message(order, username=username)
+        result = send_order_done_message(order, username=username)
     except Exception:
         logger.exception("Failed Max notify for order done %s", order.order_number)
+        return StatusNotifyFlash("warning", "Max: ошибка отправки уведомления клиенту")
+    return _flash_from_message_result(
+        result,
+        ok_text="Max: уведомление о готовности заказа отправлено клиенту",
+    )
 
 
-def maybe_notify_diagnostics_done(act, *, old_status: str, username: str = "") -> None:
+def maybe_notify_diagnostics_done(act, *, old_status: str, username: str = "") -> StatusNotifyFlash | None:
     from workshop.models import AcceptanceActStatus
 
     if act.status != AcceptanceActStatus.DIAGNOSTICS_DONE or old_status == AcceptanceActStatus.DIAGNOSTICS_DONE:
-        return
+        return None
+    if not _client_linked_to_max(getattr(act, "client", None)):
+        return None
     try:
-        send_diagnostics_done_message(act, username=username)
+        result = send_diagnostics_done_message(act, username=username)
     except Exception:
         logger.exception("Failed Max notify for diagnostics done %s", act.act_number)
+        return StatusNotifyFlash("warning", "Max: ошибка отправки уведомления клиенту")
+    return _flash_from_message_result(
+        result,
+        ok_text="Max: уведомление о диагностике отправлено клиенту",
+    )
 
 
 def process_max_update(update: dict[str, Any], settings_obj: SmsSettings | None = None) -> None:

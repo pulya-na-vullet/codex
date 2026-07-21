@@ -53,6 +53,9 @@
                             </select>
                             <button class="btn btn-violet btn-sm" type="submit">Сохранить статус</button>
                         </form>
+                        {% if order.client.max_user_id %}
+                        <div class="small text-success mt-2">Клиент в Max — при «Работа выполнена» уйдёт уведомление в бот</div>
+                        {% endif %}
                         {% if order.needs_client_call %}
                         <form method="post" action="{% url 'order_mark_called' order.id %}" class="mt-2">
                             {% csrf_token %}

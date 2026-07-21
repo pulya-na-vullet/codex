@@ -627,7 +627,11 @@ class SmsSettings(models.Model):
             "{name}, заказ-наряд {order} выполнен. Сумма: {sum} руб. "
             "Ждём вас. {company}, {company_phone}"
         ),
-        help_text="Плейсхолдеры: {name} {phone} {order} {sum} {company} {company_phone}",
+        help_text=(
+            "Уходит в Max при статусе «Работа выполнена — позвонить», "
+            "только если у клиента есть Max user_id. "
+            "Плейсхолдеры: {name} {phone} {order} {sum} {company} {company_phone}"
+        ),
     )
     diagnostics_done_template = models.TextField(
         "Шаблон: диагностика выполнена",
