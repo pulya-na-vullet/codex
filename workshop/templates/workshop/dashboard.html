@@ -1,11 +1,15 @@
 {% extends "workshop/base.html" %}
+{% load static %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
-    <div>
-        <h4 class="mb-1">Сейчас в работе</h4>
-        {% if lan_urls %}
-        <div class="small-muted">LAN: {% for url in lan_urls %}<a class="text-decoration-none" href="{{ url }}">{{ url }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</div>
-        {% endif %}
+    <div class="d-flex align-items-center gap-3">
+        <img class="brand-mark d-none d-sm-block" src="{% static 'workshop/img/logo-mark.png' %}" width="44" height="44" alt="">
+        <div>
+            <h4 class="mb-1" style="font-family:'Manrope',sans-serif;font-weight:800;letter-spacing:.02em;">Сейчас в работе</h4>
+            {% if lan_urls %}
+            <div class="small-muted">LAN: {% for url in lan_urls %}<a class="text-decoration-none" href="{{ url }}">{{ url }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</div>
+            {% endif %}
+        </div>
     </div>
     <a class="btn btn-violet btn-sm" href="{% url 'work_queue' %}">Открыть очередь</a>
 </div>

@@ -32,7 +32,7 @@ def workshop_settings(request):
         except Exception:
             pending_rating = None
     return {
-        "COMPANY_NAME": getattr(settings, "COMPANY_NAME", "ИТ-мастерская"),
+        "COMPANY_NAME": getattr(settings, "COMPANY_NAME", "ИТ-М"),
         "lan_urls": lan_urls,
         "workshop_user": request.session.get("workshop_username", ""),
         "workshop_role": request.session.get("workshop_role", ""),

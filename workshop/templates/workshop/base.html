@@ -3,7 +3,15 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ title|default:"ИТ-мастерская" }}</title>
+    <title>{{ title|default:COMPANY_NAME }}</title>
+    {% load static %}
+    <link rel="icon" href="{% static 'workshop/img/favicon.ico' %}" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'workshop/img/favicon-32.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'workshop/img/favicon-16.png' %}">
+    <link rel="apple-touch-icon" href="{% static 'workshop/img/apple-touch-icon.png' %}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
@@ -17,9 +25,71 @@
             --primary-hover: #1d4ed8;
             --success: #059669;
             --warning: #d97706;
+            --brand-green: #2f8f4f;
+            --brand-green-deep: #1a5f32;
+            --brand-ink: #f8fafc;
         }
         body { background: var(--bg-main); color: var(--text-main); }
         .navbar { background: #111827; border-color: var(--border); }
+        .brand-lockup {
+            display: inline-flex;
+            align-items: center;
+            gap: .7rem;
+            text-decoration: none !important;
+            color: var(--brand-ink) !important;
+            font-family: "Manrope", sans-serif;
+            line-height: 1.05;
+            padding: .15rem 0;
+        }
+        .brand-lockup:hover { color: #fff !important; }
+        .brand-mark {
+            width: 2.35rem;
+            height: 2.35rem;
+            border-radius: 50%;
+            flex: 0 0 auto;
+            box-shadow: 0 0 0 1px rgba(47, 143, 79, 0.45), 0 6px 16px rgba(15, 23, 42, 0.45);
+            transition: transform .2s ease, box-shadow .2s ease;
+        }
+        .brand-lockup:hover .brand-mark {
+            transform: translateY(-1px) scale(1.03);
+            box-shadow: 0 0 0 1px rgba(47, 143, 79, 0.7), 0 8px 18px rgba(47, 143, 79, 0.25);
+        }
+        .brand-word {
+            display: flex;
+            flex-direction: column;
+            gap: .12rem;
+        }
+        .brand-word-title {
+            font-weight: 800;
+            font-size: 1.28rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        .brand-word-title span {
+            color: #7ddea0;
+        }
+        .brand-word-sub {
+            font-size: .68rem;
+            font-weight: 600;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+        .brand-hero {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: .85rem;
+            margin-bottom: 1.25rem;
+        }
+        .brand-hero .brand-mark {
+            width: 4.5rem;
+            height: 4.5rem;
+        }
+        .brand-hero .brand-word-title {
+            font-size: 1.85rem;
+        }
         .card { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); }
         .table { color: var(--text-main); margin-bottom: 0; }
         .table > :not(caption) > * > * {
@@ -260,11 +330,18 @@
 </head>
 <body>
 {% load workshop_extras %}
+{% load static %}
 <nav class="navbar navbar-expand-lg border-bottom mb-4">
     <div class="container-fluid">
-        <a class="navbar-brand text-light fw-bold" href="{% url 'dashboard' %}">ИТ-мастерская</a>
+        <a class="brand-lockup" href="{% url 'dashboard' %}" title="ИТ-М">
+            <img class="brand-mark" src="{% static 'workshop/img/logo-mark.png' %}" width="38" height="38" alt="ИТ-М">
+            <span class="brand-word">
+                <span class="brand-word-title">ИТ<span>-</span>М</span>
+                <span class="brand-word-sub">мастерская</span>
+            </span>
+        </a>
         {% if request.session.workshop_authenticated %}
-        <div class="navbar-nav flex-row gap-2 align-items-center flex-wrap">
+        <div class="navbar-nav flex-row gap-2 align-items-center flex-wrap ms-lg-3">
             <a class="btn btn-sm nav-page-btn {% nav_active 'orders' %}" href="{% url 'orders' %}">Заказы</a>
             <a class="btn btn-sm nav-page-btn {% nav_active 'work_queue' %}" href="{% url 'work_queue' %}">В работе</a>
             <a class="btn btn-sm nav-page-btn {% nav_active 'debtors' %}" href="{% url 'debtors' %}">Должники</a>
