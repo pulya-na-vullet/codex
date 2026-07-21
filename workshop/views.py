@@ -1119,7 +1119,7 @@ def admin_panel(request: HttpRequest):
         StaffUser,
         YandexAiSettings,
     )
-    from workshop.messaging import start_max_long_poll_worker
+    from workshop.messaging import restart_max_long_poll_worker
     from workshop.yandex_ai import (
         clear_today_scheduled_mark,
         now_msk,
@@ -1321,7 +1321,7 @@ def admin_panel(request: HttpRequest):
             request.POST.get("marketing_default_text", "").strip() or cfg.marketing_default_text
         )
         cfg.save()
-        start_max_long_poll_worker()
+        restart_max_long_poll_worker()
         log_action(request, "max_settings_update", entity_type="messaging", details=f"provider={cfg.provider}")
         messages.success(request, "Настройки Max сохранены")
         return redirect("admin_panel")

@@ -959,3 +959,17 @@ class OrderAdditiveServicesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Аддитивные услуги: 3D печать")
         self.assertNotContains(r, "Доп. периферия")
+
+
+class MaxLongPollStabilityTests(TestCase):
+    def test_transient_network_errors_detected(self):
+        from workshop.messaging import _is_transient_max_network_error
+
+        self.assertTrue(_is_transient_max_network_error(ConnectionResetError(10054, "closed")))
+        self.assertTrue(
+            _is_transient_max_network_error(
+                RuntimeError("network_error: [WinError 10054] Удаленный хост принудительно разорвал")
+            )
+        )
+        self.assertTrue(_is_transient_max_network_error(TimeoutError("timed out")))
+        self.assertFalse(_is_transient_max_network_error(RuntimeError("http_401: bad token")))
