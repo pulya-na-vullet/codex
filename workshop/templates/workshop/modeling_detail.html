@@ -100,6 +100,17 @@
             <div class="small mb-1">Срок: {{ brief.eta|default:"—" }}</div>
             <div class="small mb-1">Адрес доставки (локально): {{ brief.delivery_address|default:"—" }}</div>
             <div class="small mb-2">Сообщение: {{ brief.last_hub_message|default:"—" }}</div>
+            {% if brief.rating_score %}
+            <div class="small mb-1">
+                Оценка менеджера:
+                <span class="rating-stars-readonly">{% for i in "12345" %}{% if forloop.counter <= brief.rating_score %}★{% else %}☆{% endif %}{% endfor %}</span>
+                ({{ brief.rating_score }}/5)
+            </div>
+            {% if brief.rating_comment %}<div class="small mb-1 text-secondary">{{ brief.rating_comment }}</div>{% endif %}
+            {% if brief.rating_hub_avg %}<div class="small mb-1">Средняя по дизайнеру в HUB: {{ brief.rating_hub_avg }}{% if brief.rating_hub_count %} ({{ brief.rating_hub_count }}){% endif %}</div>{% endif %}
+            {% elif brief.rating_pending and brief.hub_brief_id %}
+            <div class="alert alert-warning py-2 small mb-2">Нужна оценка работы дизайнера — всплывающее окно откроется автоматически.</div>
+            {% endif %}
             {% if hub_ready and brief.hub_brief_id %}
             <div class="small-muted">Если HUB закрыл заказ, а статус здесь старый — нажмите «Синхронизировать с HUB» (webhook с HUB часто не доходит до LAN CRM).</div>
             {% elif not brief.hub_brief_id %}

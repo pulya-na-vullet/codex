@@ -904,6 +904,132 @@ class StaffAclAndModelingTests(TestCase):
             )
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.content.decode(), "duplicate")
+        brief.refresh_from_db()
+        self.assertTrue(brief.rating_pending)
+
+    @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
+    def test_manager_rating_popup_and_hub_post(self):
+        from unittest.mock import patch
+
+        from workshop.models import HubConnectionSettings, ModelingBrief, ModelingBriefStatus
+
+        self._login("ITM", "pass")
+        hub = HubConnectionSettings.get_solo()
+        hub.enabled = True
+        hub.hub_base_url = "https://hub.test"
+        hub.site_id = "site-1"
+        hub.site_token = "tok"
+        hub.site_secret = "sec"
+        hub.save()
+
+        brief = ModelingBrief.objects.create(
+            brief_number="3D-000201",
+            client=self.client_obj,
+            agreed_price=Decimal("1000"),
+            designer_share_amount=Decimal("700"),
+            site_share_amount=Decimal("300"),
+            status=ModelingBriefStatus.DONE,
+            hub_brief_id="hub-rate-1",
+            designer_name="Анна",
+            rating_pending=True,
+        )
+
+        r = self.http.get("/modeling")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Оценка 3D-заказа")
+        self.assertContains(r, brief.brief_number)
+        self.assertContains(r, 'name="score"')
+
+        with patch(
+            "workshop.hub.push_brief_rating_to_hub",
+            return_value=(
+                True,
+                "created",
+                {
+                    "status": "created",
+                    "avg_rating": "4.50",
+                    "ratings_count": 2,
+                    "event_id": f"rating-site-1-{brief.id}-1",
+                },
+            ),
+        ) as mock_push:
+            r = self.http.post(
+                f"/modeling/{brief.id}/rate",
+                {"score": "5", "comment": "Отлично", "next": "/modeling"},
+                follow=True,
+            )
+        self.assertEqual(r.status_code, 200)
+        mock_push.assert_called_once()
+        kwargs = mock_push.call_args.kwargs
+        self.assertEqual(kwargs["score"], 5)
+        self.assertEqual(kwargs["comment"], "Отлично")
+        brief.refresh_from_db()
+        self.assertEqual(brief.rating_score, 5)
+        self.assertFalse(brief.rating_pending)
+        self.assertIsNotNone(brief.rating_sent_at)
+        self.assertEqual(str(brief.rating_hub_avg), "4.50")
+        self.assertEqual(brief.rating_hub_count, 2)
+        self.assertEqual(brief.rating_event_id, f"rating-site-1-{brief.id}-1")
+        self.assertContains(r, "отправлена в HUB")
+
+        # After rating, popup should not show again.
+        r = self.http.get("/modeling")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, "Оценка 3D-заказа")
+
+    @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
+    def test_push_brief_rating_signs_json_body(self):
+        import json
+        from unittest.mock import patch
+
+        from workshop.hub import push_brief_rating_to_hub, verify_signature
+        from workshop.models import HubConnectionSettings, ModelingBrief, ModelingBriefStatus
+
+        self._login("ITM", "pass")
+        hub = HubConnectionSettings.get_solo()
+        hub.enabled = True
+        hub.hub_base_url = "https://hub.test"
+        hub.site_id = "S7"
+        hub.site_token = "tok"
+        hub.site_secret = "secret-hmac"
+        hub.save()
+        brief = ModelingBrief.objects.create(
+            brief_number="3D-000301",
+            client=self.client_obj,
+            agreed_price=Decimal("100"),
+            designer_share_amount=Decimal("70"),
+            site_share_amount=Decimal("30"),
+            status=ModelingBriefStatus.DONE,
+            hub_brief_id="hub-r2",
+        )
+
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return b'{"status":"created","avg_rating":5,"ratings_count":1}'
+
+        with patch("workshop.hub.urlrequest.urlopen", return_value=_Resp()) as mock_open:
+            ok, detail, data = push_brief_rating_to_hub(
+                brief, score=4, comment="ok", rated_by="Иван"
+            )
+        self.assertTrue(ok)
+        self.assertEqual(detail, "created")
+        req = mock_open.call_args[0][0]
+        self.assertTrue(req.full_url.endswith("/api/v1/briefs/hub-r2/ratings"))
+        body = req.data
+        ts = req.get_header("X-timestamp")
+        sig = req.get_header("X-signature")
+        self.assertTrue(verify_signature("secret-hmac", ts, body, sig))
+        payload = json.loads(body.decode("utf-8"))
+        self.assertEqual(payload["score"], 4)
+        self.assertEqual(payload["local_brief_id"], brief.id)
+        self.assertEqual(payload["event_id"], f"rating-S7-{brief.id}-1")
+        self.assertEqual(payload["rated_by"], "Иван")
 
     @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
     def test_hub_pull_sync_marks_done_when_webhook_missed(self):
