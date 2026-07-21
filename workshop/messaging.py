@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -123,18 +124,27 @@ def _json_request(
 
 
 def _is_transient_max_network_error(exc: BaseException) -> bool:
-    """Long-poll resets/timeouts are expected; reconnect without traceback spam."""
+    """Long-poll resets/timeouts/offline are expected; reconnect without traceback spam."""
     if isinstance(
         exc,
-        (TimeoutError, ConnectionResetError, BrokenPipeError, ConnectionAbortedError, OSError),
+        (
+            TimeoutError,
+            ConnectionResetError,
+            BrokenPipeError,
+            ConnectionAbortedError,
+            ConnectionRefusedError,
+            OSError,
+        ),
     ):
         return True
     text = str(exc).lower()
     needles = (
         "network_error",
         "connection reset",
+        "connection refused",
         "forcibly closed",
         "10054",
+        "10061",
         "timed out",
         "timeout",
         "broken pipe",
@@ -143,8 +153,26 @@ def _is_transient_max_network_error(exc: BaseException) -> bool:
         "remote end closed",
         "errno 104",
         "errno 110",
+        "errno 111",
+        "отверг запрос",
+        "подключение не установлено",
+        "name or service not known",
+        "nodename nor servname",
+        "getaddrinfo failed",
+        "failed to establish",
     )
     return any(n in text for n in needles)
+
+
+def is_outbound_network_error(exc: BaseException | str) -> bool:
+    """True for offline / firewall / DNS failures toward Max or Yandex."""
+    if isinstance(exc, BaseException):
+        if _is_transient_max_network_error(exc):
+            return True
+        text = str(exc)
+    else:
+        text = str(exc or "")
+    return _is_transient_max_network_error(RuntimeError(text))
 
 
 def send_max_message(
@@ -678,7 +706,10 @@ def _max_long_poll_loop(stop_event: threading.Event) -> None:
 
     marker: int | None = None
     backoff_sec = 1.0
-    max_backoff = 30.0
+    max_backoff = 60.0
+    last_warn_mono = 0.0
+    last_warn_key = ""
+    warn_every_sec = 300.0  # don't spam console every reconnect
     while not stop_event.is_set():
         try:
             close_old_connections()
@@ -705,18 +736,37 @@ def _max_long_poll_loop(stop_event: threading.Event) -> None:
                 payload = _json_request("GET", "/updates", token=token, query=query, timeout=40)
             except Exception as exc:
                 if _is_transient_max_network_error(exc):
-                    logger.warning(
-                        "Max long-poll: соединение оборвано (%s) — переподключение через %.0f с",
-                        str(exc)[:160],
-                        backoff_sec,
+                    # Connection refused / offline: back off harder than a one-off reset.
+                    detail = str(exc)[:160]
+                    refused = is_outbound_network_error(exc) and any(
+                        x in detail.lower() for x in ("10061", "refused", "отверг", "111")
                     )
-                else:
-                    logger.exception("Max long-poll /updates failed")
+                    if refused:
+                        backoff_sec = max(backoff_sec, 30.0)
+                        max_here = 120.0
+                    else:
+                        max_here = max_backoff
+                    now = time.monotonic()
+                    key = detail[:80]
+                    if key != last_warn_key or (now - last_warn_mono) >= warn_every_sec:
+                        logger.warning(
+                            "Max long-poll: нет связи с API (%s) — повтор через %.0f с "
+                            "(это не ошибка CRM; проверьте интернет/VPN/firewall)",
+                            detail,
+                            backoff_sec,
+                        )
+                        last_warn_mono = now
+                        last_warn_key = key
+                    stop_event.wait(backoff_sec)
+                    backoff_sec = min(max_here, backoff_sec * 1.7)
+                    continue
+                logger.exception("Max long-poll /updates failed")
                 stop_event.wait(backoff_sec)
                 backoff_sec = min(max_backoff, backoff_sec * 1.7)
                 continue
 
             backoff_sec = 1.0
+            last_warn_key = ""
             updates = payload.get("updates") or []
             new_marker = payload.get("marker")
             for update in updates:

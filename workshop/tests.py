@@ -1225,7 +1225,7 @@ class OrderAdditiveServicesTests(TestCase):
 
 class MaxLongPollStabilityTests(TestCase):
     def test_transient_network_errors_detected(self):
-        from workshop.messaging import _is_transient_max_network_error
+        from workshop.messaging import _is_transient_max_network_error, is_outbound_network_error
 
         self.assertTrue(_is_transient_max_network_error(ConnectionResetError(10054, "closed")))
         self.assertTrue(
@@ -1234,4 +1234,42 @@ class MaxLongPollStabilityTests(TestCase):
             )
         )
         self.assertTrue(_is_transient_max_network_error(TimeoutError("timed out")))
+        self.assertTrue(
+            _is_transient_max_network_error(
+                RuntimeError("network_error: [WinError 10061] Подключение не установлено")
+            )
+        )
+        self.assertTrue(_is_transient_max_network_error(ConnectionRefusedError(10061, "refused")))
+        self.assertTrue(is_outbound_network_error("Yandex AI network: [WinError 10061] отверг запрос"))
         self.assertFalse(_is_transient_max_network_error(RuntimeError("http_401: bad token")))
+
+    def test_yandex_network_failure_is_quiet_and_backs_off(self):
+        from unittest.mock import patch
+
+        from workshop import yandex_ai
+        from workshop.models import YandexAiSettings
+
+        yandex_ai._outbound_backoff_until = 0.0
+        cfg = YandexAiSettings.get_solo()
+        cfg.enabled = True
+        cfg.api_key = "key"
+        cfg.folder_id = "folder"
+        cfg.save()
+
+        with patch(
+            "workshop.yandex_ai.yandex_completion",
+            side_effect=RuntimeError("Yandex AI network: [WinError 10061] rejected"),
+        ), self.assertLogs("workshop.yandex_ai", level="WARNING") as logs:
+            text, source = yandex_ai.generate_day_report(use_ai=True)
+        self.assertEqual(source, "fallback")
+        self.assertTrue(text)
+        self.assertTrue(any("недоступен" in r.getMessage() for r in logs.records))
+        self.assertFalse(any(r.exc_info for r in logs.records if "недоступен" in r.getMessage()))
+        self.assertTrue(yandex_ai._in_outbound_backoff())
+
+        # While in backoff, skip AI entirely (no second call).
+        with patch("workshop.yandex_ai.yandex_completion") as mock_ai:
+            text2, source2 = yandex_ai.generate_day_report(use_ai=True)
+        mock_ai.assert_not_called()
+        self.assertEqual(source2, "fallback")
+        yandex_ai._outbound_backoff_until = 0.0
