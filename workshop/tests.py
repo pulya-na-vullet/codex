@@ -904,3 +904,58 @@ class StaffAclAndModelingTests(TestCase):
             )
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.content.decode(), "duplicate")
+
+
+@override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
+class OrderAdditiveServicesTests(TestCase):
+    def setUp(self):
+        from workshop.models import StaffUser
+
+        self.http = HttpClient()
+        StaffUser.ensure_bootstrap_admin()
+        self.client_obj = Client.objects.create(name="Аддитив", phone="+79990000222")
+        self.order = Order.objects.create(order_number="ORD-ADD001", client=self.client_obj)
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+
+    def test_device_types_include_tablet_and_additive_block(self):
+        from workshop.models import DeviceType
+
+        self.assertIn("Планшет", dict(DeviceType.choices))
+        r = self.http.get(f"/orders/{self.order.id}")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Планшет")
+        self.assertContains(r, "Аддитивные услуги")
+        self.assertContains(r, "3D сканирование")
+        self.assertContains(r, "3D печать")
+        self.assertContains(r, "3D моделирование")
+
+    def test_additive_toggle_clears_periphery_and_skips_print(self):
+        from workshop.models import AdditiveServiceType
+        from workshop.pdf import build_order_pdf
+
+        self.order.extra_periphery = "мышь и клавиатура"
+        self.order.save(update_fields=["extra_periphery"])
+        r = self.http.post(
+            f"/orders/{self.order.id}/meta",
+            {
+                "device_type": "Планшет",
+                "additive_services_enabled": "1",
+                "additive_service_type": AdditiveServiceType.PRINT,
+                "extra_periphery": "не должно сохраниться",
+                "technical_notes": "готово",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.order.refresh_from_db()
+        self.assertTrue(self.order.additive_services_enabled)
+        self.assertEqual(self.order.additive_service_type, "3D печать")
+        self.assertEqual(self.order.device_type, "Планшет")
+        self.assertEqual(self.order.extra_periphery, "")
+
+        pdf = build_order_pdf(self.order, list(self.order.lines.all()))
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        # Text extraction is awkward for reportlab; check HTML print view instead.
+        r = self.http.get(f"/orders/{self.order.id}/print")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Аддитивные услуги: 3D печать")
+        self.assertNotContains(r, "Доп. периферия")

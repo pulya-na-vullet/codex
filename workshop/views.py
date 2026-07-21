@@ -22,6 +22,7 @@ from workshop.models import (
     AuditLog,
     Client,
     DeviceType,
+    AdditiveServiceType,
     Order,
     OrderLine,
     OrderStatus,
@@ -878,6 +879,7 @@ def order_detail(request: HttpRequest, order_id: int):
             "lines": order.lines.all(),
             "catalog_tree": build_service_catalog_tree(active_only=True),
             "device_types": [c[0] for c in DeviceType.choices],
+            "additive_service_types": [c[0] for c in AdditiveServiceType.choices],
             "payment_methods": PaymentMethod.choices,
             "order_statuses": OrderStatus.choices,
         },
@@ -891,10 +893,28 @@ def order_update_meta(request: HttpRequest, order_id: int):
     if device_type not in dict(DeviceType.choices):
         device_type = DeviceType.PC
     order.device_type = device_type
-    order.extra_periphery = request.POST.get("extra_periphery", "").strip()
+    order.additive_services_enabled = request.POST.get("additive_services_enabled") == "1"
+    additive_type = (request.POST.get("additive_service_type") or "").strip()
+    if order.additive_services_enabled:
+        if additive_type not in dict(AdditiveServiceType.choices):
+            additive_type = AdditiveServiceType.SCAN
+        order.additive_service_type = additive_type
+        # Периферия для аддитивных заказов в печати не используется.
+        order.extra_periphery = ""
+    else:
+        order.additive_service_type = ""
+        order.extra_periphery = request.POST.get("extra_periphery", "").strip()
     # Preserve real newlines from textarea (including Shift+Enter as \n)
     order.technical_notes = (request.POST.get("technical_notes", "") or "").replace("\r\n", "\n").replace("\r", "\n")
-    order.save(update_fields=["device_type", "extra_periphery", "technical_notes"])
+    order.save(
+        update_fields=[
+            "device_type",
+            "extra_periphery",
+            "additive_services_enabled",
+            "additive_service_type",
+            "technical_notes",
+        ]
+    )
     log_action(request, "order_update_meta", entity_type="order", entity_id=order.id, details=order.order_number)
     messages.success(request, "Данные заказ-наряда сохранены")
     return redirect("order_detail", order_id=order.id)

@@ -189,7 +189,14 @@ class DeviceType(models.TextChoices):
     PC = "ПК", "ПК"
     LAPTOP = "Ноутбук", "Ноутбук"
     PHONE = "Телефон", "Телефон"
+    TABLET = "Планшет", "Планшет"
     TV = "Телевизор", "Телевизор"
+
+
+class AdditiveServiceType(models.TextChoices):
+    SCAN = "3D сканирование", "3D сканирование"
+    PRINT = "3D печать", "3D печать"
+    MODELING = "3D моделирование", "3D моделирование"
 
 
 class OrderStatus(models.TextChoices):
@@ -237,6 +244,14 @@ class Order(models.Model):
         default=DeviceType.PC,
     )
     extra_periphery = models.TextField("Доп. периферия", blank=True, default="")
+    additive_services_enabled = models.BooleanField("Аддитивные услуги", default=False)
+    additive_service_type = models.CharField(
+        "Тип аддитивной услуги",
+        max_length=32,
+        choices=AdditiveServiceType.choices,
+        blank=True,
+        default="",
+    )
     technical_notes = models.TextField("Техническая информация", blank=True, default="")
     discount_percent = models.DecimalField(
         "Скидка %",
