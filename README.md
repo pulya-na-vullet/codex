@@ -12,14 +12,22 @@
 
 ```bash
 python -m pip install -r requirements.txt
-python manage.py migrate
+python manage.py migrate --noinput
 python manage.py seed_catalog
 # если есть старая Flask-база:
 python manage.py import_legacy_db orders.db
 python app.py
 ```
 
+`python app.py` **сам** выполняет `migrate --noinput` при каждом старте.
+
 Или Windows: `start_lan_server.bat`
+
+### Миграции вручную
+
+```bash
+python manage.py migrate --noinput
+```
 
 Сервер: `0.0.0.0:8000`. Вход: `ITM` / `pass` (выход через 6 ч бездействия).
 
@@ -28,7 +36,8 @@ python app.py
 1. Остановить сервер.
 2. Скопировать **`db.sqlite3`** (это ваши данные) в новую папку программы.
 3. При наличии старого `orders.db` можно снова импортировать: `python manage.py import_legacy_db orders.db`.
-4. `python manage.py migrate` затем `python app.py`.
+4. Запустить `python app.py` (миграции применятся автоматически) или вручную:
+   `python manage.py migrate --noinput` затем `python app.py`.
 
 Либо задайте постоянный путь:
 
