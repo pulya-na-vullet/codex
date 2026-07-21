@@ -7,7 +7,12 @@ class WorkshopConfig(AppConfig):
     verbose_name = "ИТ-мастерская"
 
     def ready(self):
+        import os
         import sys
+
+        # app.py sets this while running migrate before runserver (sys.argv stays "app.py").
+        if os.environ.get("IT_MASTER_SKIP_WORKERS") == "1":
+            return
 
         # Avoid DB/network workers during migrate/test/shell bootstrap.
         skip_cmds = {"migrate", "makemigrations", "test", "collectstatic", "shell", "check"}
