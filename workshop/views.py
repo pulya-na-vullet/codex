@@ -356,7 +356,7 @@ def order_set_status(request: HttpRequest, order_id: int):
     old = order.status
     username = str(request.session.get("workshop_username") or "")
     order.apply_status(status)
-    maybe_notify_order_done(order, old_status=old, username=username)
+    max_flash = maybe_notify_order_done(order, old_status=old, username=username)
     log_action(
         request,
         "order_set_status",
@@ -365,6 +365,8 @@ def order_set_status(request: HttpRequest, order_id: int):
         details=f"{order.order_number}: {old} → {order.status}",
     )
     messages.success(request, f"Статус заказа {order.order_number}: {order.get_status_display()}")
+    if max_flash:
+        getattr(messages, max_flash.level, messages.info)(request, max_flash.text)
     next_url = request.POST.get("next") or ""
     if next_url.startswith("/"):
         return redirect(next_url)
@@ -381,7 +383,7 @@ def order_mark_called(request: HttpRequest, order_id: int):
     old = order.status
     username = str(request.session.get("workshop_username") or "")
     order.mark_client_called()
-    maybe_notify_order_done(order, old_status=old, username=username)
+    max_flash = maybe_notify_order_done(order, old_status=old, username=username)
     log_action(
         request,
         "order_client_called",
@@ -390,6 +392,8 @@ def order_mark_called(request: HttpRequest, order_id: int):
         details=order.order_number,
     )
     messages.success(request, f"Звонок по заказу {order.order_number} отмечен — статус «Выполнена»")
+    if max_flash:
+        getattr(messages, max_flash.level, messages.info)(request, max_flash.text)
     next_url = request.POST.get("next") or ""
     if next_url.startswith("/"):
         return redirect(next_url)
@@ -408,7 +412,7 @@ def acceptance_set_status(request: HttpRequest, act_id: int):
     old = act.status
     username = str(request.session.get("workshop_username") or "")
     act.apply_status(status)
-    maybe_notify_diagnostics_done(act, old_status=old, username=username)
+    max_flash = maybe_notify_diagnostics_done(act, old_status=old, username=username)
     log_action(
         request,
         "acceptance_set_status",
@@ -417,6 +421,8 @@ def acceptance_set_status(request: HttpRequest, act_id: int):
         details=f"{act.act_number}: {old} → {act.status}",
     )
     messages.success(request, f"Статус акта {act.act_number}: {act.get_status_display()}")
+    if max_flash:
+        getattr(messages, max_flash.level, messages.info)(request, max_flash.text)
     next_url = request.POST.get("next") or ""
     if next_url.startswith("/"):
         return redirect(next_url)
