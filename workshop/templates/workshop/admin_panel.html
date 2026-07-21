@@ -296,20 +296,24 @@
             </ol>
         </div></div>
         <div class="card"><div class="card-body">
-            <h5 class="mb-3">Последние сообщения</h5>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Последние сообщения Max</h5>
+                <a class="btn btn-outline-light btn-sm" href="{% url 'max_message_log' %}">Весь журнал</a>
+            </div>
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
-                    <thead><tr><th>Когда</th><th>Тип</th><th>Кому</th><th>Статус</th></tr></thead>
+                    <thead><tr><th>Когда</th><th>Тип</th><th>Кому</th><th>Статус</th><th>Текст</th></tr></thead>
                     <tbody>
                     {% for s in recent_messages %}
                         <tr>
-                            <td>{{ s.created_at|date:"d.m H:i" }}</td>
+                            <td class="text-nowrap">{{ s.created_at|date:"d.m H:i" }}</td>
                             <td>{{ s.get_kind_display }}</td>
-                            <td>{{ s.phone }}</td>
-                            <td>{% if s.success %}<span class="text-success">ok</span>{% else %}<span class="text-danger">err</span>{% endif %}</td>
+                            <td><code>{{ s.phone }}</code></td>
+                            <td>{% if s.success %}<span class="text-success">OK</span>{% else %}<span class="text-danger">FAIL</span>{% endif %}</td>
+                            <td class="small" style="max-width:280px;white-space:pre-wrap;word-break:break-word;">{{ s.text|truncatechars:160 }}</td>
                         </tr>
                     {% empty %}
-                        <tr><td colspan="4" class="text-center text-secondary">Пока пусто</td></tr>
+                        <tr><td colspan="5" class="text-center text-secondary">Пока пусто</td></tr>
                     {% endfor %}
                     </tbody>
                 </table>

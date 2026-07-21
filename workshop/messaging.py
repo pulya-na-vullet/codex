@@ -11,6 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from django.conf import settings
@@ -274,6 +275,69 @@ def _log(
         username=username,
         blast=blast,
     )
+    _console_log_max_send(
+        kind=kind,
+        phone=phone or "",
+        text=text,
+        success=success,
+        response=response or "",
+        username=username,
+        client=client,
+        order=order,
+    )
+
+
+def _console_log_max_send(
+    *,
+    kind: str,
+    phone: str,
+    text: str,
+    success: bool,
+    response: str,
+    username: str = "",
+    client: Client | None = None,
+    order: Order | None = None,
+) -> None:
+    """Human-readable Max send line for the server console."""
+    status = "OK" if success else "FAIL"
+    who = ""
+    if client is not None:
+        who = f" client={getattr(client, 'name', '') or client.pk}"
+        mid = (getattr(client, "max_user_id", None) or "").strip()
+        if mid:
+            who += f" max_user_id={mid}"
+    if order is not None:
+        who += f" order={getattr(order, 'order_number', order.pk)}"
+    preview = " ".join((text or "").split())
+    if len(preview) > 220:
+        preview = preview[:217] + "..."
+    line = (
+        f"Max send [{status}] kind={kind} to={phone or '—'}{who} "
+        f"by={username or '-'} resp={ (response or '')[:160] } | text={preview!r}"
+    )
+    if success:
+        logger.info(line)
+    else:
+        logger.warning(line)
+    # Also print so Windows console (runserver) always shows it clearly.
+    print(f"=== {line} ===", flush=True)
+    _append_max_send_logfile(line)
+
+
+def _append_max_send_logfile(line: str) -> None:
+    try:
+        from django.conf import settings
+
+        log_dir = Path(settings.BASE_DIR) / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        path = log_dir / "max_messages.log"
+        from datetime import datetime
+
+        stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(f"{stamp} {line}\n")
+    except Exception:
+        logger.debug("Could not append max_messages.log", exc_info=True)
 
 
 def send_message(
@@ -286,16 +350,20 @@ def send_message(
     username: str = "",
     force: bool = False,
     blast: MarketingBlast | None = None,
+    max_user_id: str = "",
 ) -> MessageResult:
     cfg = SmsSettings.get_solo()
     normalized = _digits_phone(phone)
     phone_label = normalized or (phone or "")
+    target_max_id = (max_user_id or "").strip()
+    if not target_max_id and client is not None:
+        target_max_id = (getattr(client, "max_user_id", None) or "").strip()
 
     if not (text or "").strip():
         result = MessageResult(success=False, response="Пустой текст сообщения")
         _log(
             kind=kind,
-            phone=phone_label,
+            phone=phone_label or (f"max:{target_max_id}" if target_max_id else ""),
             text=text or "",
             success=False,
             provider=cfg.provider,
@@ -311,7 +379,7 @@ def send_message(
         result = MessageResult(success=False, response="Рассылки отключены в админ-панели")
         _log(
             kind=kind,
-            phone=phone_label,
+            phone=phone_label or (f"max:{target_max_id}" if target_max_id else ""),
             text=text,
             success=False,
             provider=cfg.provider,
@@ -347,7 +415,7 @@ def send_message(
         )
         _log(
             kind=kind,
-            phone=phone_label,
+            phone=phone_label or (f"max:{target_max_id}" if target_max_id else ""),
             text=text,
             success=True,
             provider=cfg.provider,
@@ -365,7 +433,7 @@ def send_message(
         result = MessageResult(success=False, response="Не указан токен бота Max")
         _log(
             kind=kind,
-            phone=phone_label,
+            phone=phone_label or (f"max:{target_max_id}" if target_max_id else ""),
             text=text,
             success=False,
             provider=cfg.provider,
@@ -377,8 +445,7 @@ def send_message(
         )
         return result
 
-    max_user_id = (getattr(client, "max_user_id", None) or "").strip() if client else ""
-    if not max_user_id:
+    if not target_max_id:
         result = MessageResult(
             success=False,
             response="Клиент не привязан к Max (нет user_id). Пусть напишет боту свой телефон.",
@@ -398,7 +465,7 @@ def send_message(
         return result
 
     try:
-        api_result = send_max_message(token=token, user_id=max_user_id, text=text)
+        api_result = send_max_message(token=token, user_id=target_max_id, text=text)
         mid = ""
         if isinstance(api_result, dict):
             msg = api_result.get("message") or api_result
@@ -407,14 +474,14 @@ def send_message(
                 mid = str(body.get("mid") or msg.get("message_id") or "")
         result = MessageResult(
             success=True,
-            response=f"Max ok user_id={max_user_id}" + (f" mid={mid}" if mid else ""),
+            response=f"Max ok user_id={target_max_id}" + (f" mid={mid}" if mid else ""),
         )
     except Exception as exc:
         result = MessageResult(success=False, response=str(exc)[:2000])
 
     _log(
         kind=kind,
-        phone=phone_label or f"max:{max_user_id}",
+        phone=phone_label or f"max:{target_max_id}",
         text=text,
         success=result.success,
         provider=cfg.provider,

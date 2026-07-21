@@ -401,43 +401,54 @@ def push_brief_to_hub(brief: ModelingBrief) -> tuple[bool, str, dict[str, Any]]:
 
 
 def notify_staff_max(*, text: str, max_user_id: str = "") -> tuple[bool, str]:
-    """Send Max message to manager/admin."""
-    from workshop.messaging import send_max_message
-    from workshop.models import SmsSettings, YandexAiSettings
+    """Send Max message to manager/admin (always logged to SmsLog + console)."""
+    from workshop.messaging import send_message
+    from workshop.models import SmsKind, SmsSettings, YandexAiSettings
 
     cfg = SmsSettings.get_solo()
-    token = (cfg.bot_token or "").strip()
-    if not token:
-        return False, "Нет токена бота Max"
     uid = (max_user_id or "").strip()
     if not uid:
         ai = YandexAiSettings.get_solo()
         uid = (ai.admin_max_user_id or "").strip()
     if not uid:
-        return False, "Не указан Max user_id менеджера/админа"
-    try:
-        send_max_message(token=token, user_id=uid, text=text)
-        return True, "sent"
-    except Exception as exc:
-        return False, str(exc)[:500]
+        detail = "Не указан Max user_id менеджера/админа"
+        from workshop.messaging import _log
+
+        _log(
+            kind=SmsKind.SYSTEM,
+            phone="",
+            text=text,
+            success=False,
+            provider=cfg.provider,
+            response=detail,
+            username="hub-staff",
+        )
+        return False, detail
+    result = send_message(
+        phone=f"max:{uid}",
+        text=text,
+        kind=SmsKind.SYSTEM,
+        username="hub-staff",
+        max_user_id=uid,
+        force=True,
+    )
+    return result.success, result.response
 
 
 def notify_client_max(client, text: str) -> tuple[bool, str]:
-    from workshop.messaging import send_max_message
-    from workshop.models import SmsSettings
+    """Send Max message to client (always logged to SmsLog + console)."""
+    from workshop.messaging import send_message
+    from workshop.models import SmsKind
 
-    uid = (getattr(client, "max_user_id", None) or "").strip()
-    if not uid:
-        return False, "У клиента нет Max user_id"
-    cfg = SmsSettings.get_solo()
-    token = (cfg.bot_token or "").strip()
-    if not token:
-        return False, "Нет токена бота Max"
-    try:
-        send_max_message(token=token, user_id=uid, text=text)
-        return True, "sent"
-    except Exception as exc:
-        return False, str(exc)[:500]
+    result = send_message(
+        phone=getattr(client, "phone", "") or "",
+        text=text,
+        kind=SmsKind.SYSTEM,
+        client=client,
+        username="hub-client",
+        force=True,
+    )
+    return result.success, result.response
 
 
 def apply_hub_brief_event(payload: dict[str, Any]) -> tuple[bool, str]:

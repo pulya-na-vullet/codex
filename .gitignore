@@ -4,6 +4,7 @@ __pycache__/
 db.sqlite3
 orders.db
 dumpDB/
+logs/
 media/
 print_spool/
 staticfiles/

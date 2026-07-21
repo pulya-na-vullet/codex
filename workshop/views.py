@@ -1344,7 +1344,41 @@ def admin_panel(request: HttpRequest):
             "report_time_msk": f"{int(ai_cfg.report_hour_msk or 0):02d}:{int(ai_cfg.report_minute_msk or 0):02d}",
             "ai_scheduler": scheduler_status(),
             "providers": SmsProvider.choices,
-            "recent_messages": SmsLog.objects.select_related("client", "order")[:50],
+            "recent_messages": SmsLog.objects.select_related("client", "order").order_by("-created_at")[:50],
+        },
+    )
+
+
+@require_GET
+@require_admin
+def max_message_log(request: HttpRequest):
+    """Full journal of outbound Max messages: OK/FAIL, text, API response."""
+    from django.db.models import Q
+
+    from workshop.models import SmsLog
+
+    q = (request.GET.get("q") or "").strip()
+    ok_filter = (request.GET.get("ok") or "").strip()
+    logs = SmsLog.objects.select_related("client", "order").order_by("-created_at")
+    if ok_filter == "1":
+        logs = logs.filter(success=True)
+    elif ok_filter == "0":
+        logs = logs.filter(success=False)
+    if q:
+        logs = logs.filter(
+            Q(phone__icontains=q)
+            | Q(text__icontains=q)
+            | Q(response__icontains=q)
+            | Q(username__icontains=q)
+            | Q(client__name__icontains=q)
+        )
+    return render(
+        request,
+        "workshop/max_message_log.html",
+        {
+            "logs": logs[:300],
+            "q": q,
+            "ok_filter": ok_filter,
         },
     )
 

@@ -300,46 +300,38 @@ def resolve_admin_target(cfg) -> tuple[str, str, Any]:
 
 
 def send_report_to_admin(report: str, *, username: str = "ai-report") -> tuple[bool, str]:
-    from workshop.messaging import send_max_message
-    from workshop.models import Client, SmsKind, SmsLog, SmsProvider, SmsSettings
+    from workshop.messaging import _log, send_message
+    from workshop.models import SmsKind, SmsSettings
 
     cfg = get_or_create_ai_settings()
     phone, max_user_id, client = resolve_admin_target(cfg)
-    msg_cfg = SmsSettings.get_solo()
-    token = (msg_cfg.bot_token or "").strip()
-    if not token:
-        return False, "Не указан токен бота Max в админ-панели"
     if not max_user_id:
-        return False, (
+        detail = (
             "Администратор не привязан к Max. Укажите Max user_id или телефон клиента, "
             "который уже написал боту."
         )
-
-    try:
-        send_max_message(token=token, user_id=max_user_id, text=report)
-        SmsLog.objects.create(
+        _log(
             kind=SmsKind.SYSTEM,
-            phone=phone or f"max:{max_user_id}",
-            text=report,
-            success=True,
-            provider=SmsProvider.MAX if msg_cfg.provider == SmsProvider.MAX else msg_cfg.provider,
-            response=f"admin AI report user_id={max_user_id}",
-            client=client if client and getattr(client, "pk", None) else None,
-            username=username,
-        )
-        return True, "sent"
-    except Exception as exc:
-        SmsLog.objects.create(
-            kind=SmsKind.SYSTEM,
-            phone=phone or f"max:{max_user_id}",
+            phone=phone or "",
             text=report,
             success=False,
-            provider=msg_cfg.provider,
-            response=str(exc)[:2000],
-            client=client if client and getattr(client, "pk", None) else None,
+            provider=SmsSettings.get_solo().provider,
+            response=detail,
+            client=client,
             username=username,
         )
-        return False, str(exc)
+        return False, detail
+
+    result = send_message(
+        phone=phone or f"max:{max_user_id}",
+        text=report,
+        kind=SmsKind.SYSTEM,
+        client=client,
+        username=username,
+        max_user_id=max_user_id,
+        force=True,
+    )
+    return result.success, result.response
 
 
 def report_schedule_parts(cfg) -> tuple[int, int]:
