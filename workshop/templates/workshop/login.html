@@ -1,10 +1,18 @@
 {% extends "workshop/base.html" %}
+{% load static %}
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-12 col-md-5 col-lg-4">
+        <div class="brand-hero">
+            <img class="brand-mark" src="{% static 'workshop/img/logo-mark.png' %}" width="72" height="72" alt="ИТ-М">
+            <div class="brand-word">
+                <div class="brand-word-title">ИТ<span>-</span>М</div>
+                <div class="brand-word-sub">ит-мастерская</div>
+            </div>
+        </div>
         <div class="card"><div class="card-body">
             <h4 class="mb-1">Вход в систему</h4>
-            <p class="small-muted mb-3">Доступ к веб-интерфейсу ИТ-мастерской</p>
+            <p class="small-muted mb-3">Доступ к веб-интерфейсу мастерской</p>
             <form method="post" class="vstack gap-2">{% csrf_token %}
                 <input type="hidden" name="next" value="{{ next_url }}">
                 <div>
