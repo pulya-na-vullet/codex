@@ -354,6 +354,7 @@
             <a class="btn btn-sm nav-page-btn {% nav_active 'audit' %}" href="{% url 'audit_log' %}">Журнал</a>
             {% if is_workshop_admin %}
             <a class="btn btn-sm nav-page-btn {% nav_active 'admin' %}" href="{% url 'admin_panel' %}">Админ</a>
+            <a class="btn btn-sm nav-page-btn {% if request.resolver_match.url_name == 'max_message_log' %}is-active{% endif %}" href="{% url 'max_message_log' %}">Max лог</a>
             {% endif %}
             <a class="btn btn-sm nav-page-btn {% nav_active 'create_order' %}" href="{% url 'create_order' %}">Новый заказ</a>
             {% if workshop_user %}<span class="small text-secondary align-self-center">{{ workshop_user }}</span>{% endif %}

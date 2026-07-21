@@ -1,0 +1,54 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+    <div>
+        <h4 class="mb-0">Журнал Max</h4>
+        <div class="small-muted">Все исходящие сообщения бота: успех/ошибка и полный текст</div>
+    </div>
+    <form method="get" class="d-flex gap-2">
+        <input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Поиск: телефон, текст, ответ">
+        <select class="form-select form-select-sm" name="ok" style="width:auto">
+            <option value="" {% if ok_filter == '' %}selected{% endif %}>Все</option>
+            <option value="1" {% if ok_filter == '1' %}selected{% endif %}>Только OK</option>
+            <option value="0" {% if ok_filter == '0' %}selected{% endif %}>Только ошибки</option>
+        </select>
+        <button class="btn btn-outline-light btn-sm" type="submit">Найти</button>
+    </form>
+</div>
+
+<div class="card"><div class="card-body p-0">
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+            <tr>
+                <th>Когда</th>
+                <th>Тип</th>
+                <th>Кому</th>
+                <th>Клиент</th>
+                <th>Статус</th>
+                <th>Ответ API / ошибка</th>
+                <th>Текст</th>
+                <th>Кто</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for s in logs %}
+                <tr class="{% if not s.success %}table-danger{% endif %}">
+                    <td class="text-nowrap">{{ s.created_at|date:"d.m.Y H:i:s" }}</td>
+                    <td>{{ s.get_kind_display }}</td>
+                    <td class="text-nowrap"><code>{{ s.phone|default:"—" }}</code></td>
+                    <td>{% if s.client %}<a href="{% url 'client_detail' s.client_id %}">{{ s.client.name }}</a>{% else %}—{% endif %}</td>
+                    <td>{% if s.success %}<span class="badge text-bg-success">OK</span>{% else %}<span class="badge text-bg-danger">FAIL</span>{% endif %}</td>
+                    <td style="max-width:220px;white-space:pre-wrap;word-break:break-word;" class="small">{{ s.response|default:"—" }}</td>
+                    <td style="max-width:360px;white-space:pre-wrap;word-break:break-word;" class="small">{{ s.text }}</td>
+                    <td class="small-muted">{{ s.username|default:"—" }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="8" class="text-center text-secondary py-4">Пока нет записей</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div></div>
+<div class="small-muted mt-2">Также пишется файл <code>logs/max_messages.log</code> рядом с программой.</div>
+{% endblock %}

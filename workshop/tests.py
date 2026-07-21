@@ -535,6 +535,76 @@ class AuthAndPagesTests(TestCase):
         self.assertNotContains(r, "не отправлено")
         self.assertNotContains(r, "привязан")
         self.assertNotContains(r, "Клиент в Max")
+
+    def test_max_send_logging_and_journal_page(self):
+        """Every send_message writes SmsLog + console/file; journal page shows OK/FAIL and text."""
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        from pathlib import Path
+        from unittest import mock
+
+        from django.conf import settings
+
+        from workshop.messaging import send_message
+        from workshop.models import SmsKind, SmsLog, SmsSettings
+
+        cfg = SmsSettings.get_solo()
+        cfg.enabled = True
+        cfg.provider = "log"
+        cfg.save()
+        client = Client.objects.create(name="Лог Max", phone="+79993334455", max_user_id="777001")
+
+        with mock.patch("workshop.messaging.print") as mock_print:
+            ok = send_message(
+                phone=client.phone,
+                text="Тестовое сообщение для журнала Max",
+                kind=SmsKind.SYSTEM,
+                client=client,
+                username="tester",
+            )
+        self.assertTrue(ok.success)
+        log = SmsLog.objects.filter(client=client, text__icontains="Тестовое сообщение").latest("id")
+        self.assertTrue(log.success)
+        self.assertIn("журнал", log.response.lower())
+        mock_print.assert_called()
+        printed = " ".join(str(c.args[0]) for c in mock_print.call_args_list if c.args)
+        self.assertIn("Max send [OK]", printed)
+        self.assertIn("Тестовое сообщение", printed)
+
+        log_path = Path(settings.BASE_DIR) / "logs" / "max_messages.log"
+        self.assertTrue(log_path.is_file())
+        self.assertIn("Max send [OK]", log_path.read_text(encoding="utf-8"))
+
+        # FAIL path (no Max link)
+        bare = Client.objects.create(name="Без связи", phone="+79993334466", max_user_id="")
+        cfg.provider = "max"
+        cfg.bot_token = "tok"
+        cfg.save()
+        fail = send_message(
+            phone=bare.phone,
+            text="Не уйдёт без Max",
+            kind=SmsKind.SYSTEM,
+            client=bare,
+            username="tester",
+            force=True,
+        )
+        self.assertFalse(fail.success)
+        fail_log = SmsLog.objects.filter(client=bare, success=False).latest("id")
+        self.assertIn("не привязан", fail_log.response.lower())
+        self.assertEqual(fail_log.text, "Не уйдёт без Max")
+
+        r = self.http.get("/admin-panel/max-log")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Журнал Max")
+        self.assertContains(r, "Тестовое сообщение для журнала Max")
+        self.assertContains(r, "Не уйдёт без Max")
+        self.assertContains(r, "OK")
+        self.assertContains(r, "FAIL")
+
+        r = self.http.get("/admin-panel/max-log?ok=0&q=Не+уйдёт")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Не уйдёт без Max")
+        self.assertNotContains(r, "Тестовое сообщение для журнала Max")
+
     def test_sms_admin_and_debt_send(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         from workshop.models import SmsLog, SmsSettings
