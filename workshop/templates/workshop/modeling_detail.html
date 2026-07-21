@@ -10,8 +10,15 @@
             · клиент <a href="{% url 'client_detail' brief.client_id %}">{{ brief.client.name }}</a>
         </div>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-light btn-sm" href="{% url 'modeling_list' %}">К списку</a>
+        {% if hub_ready and brief.hub_brief_id %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="sync_hub">
+            <button class="btn btn-outline-info btn-sm" type="submit" title="Подтянуть статус с HUB">Синхронизировать с HUB</button>
+        </form>
+        {% endif %}
         {% if can_workshop_delete %}
         <form method="post" action="{% url 'modeling_delete' brief.id %}" onsubmit="return confirm('Удалить заявку?');">
             {% csrf_token %}
@@ -92,7 +99,12 @@
             <div class="small mb-1">Дизайнер: {{ brief.designer_name|default:"—" }} {% if brief.designer_id %}(id {{ brief.designer_id }}){% endif %}</div>
             <div class="small mb-1">Срок: {{ brief.eta|default:"—" }}</div>
             <div class="small mb-1">Адрес доставки (локально): {{ brief.delivery_address|default:"—" }}</div>
-            <div class="small">Сообщение: {{ brief.last_hub_message|default:"—" }}</div>
+            <div class="small mb-2">Сообщение: {{ brief.last_hub_message|default:"—" }}</div>
+            {% if hub_ready and brief.hub_brief_id %}
+            <div class="small-muted">Если HUB закрыл заказ, а статус здесь старый — нажмите «Синхронизировать с HUB» (webhook с HUB часто не доходит до LAN CRM).</div>
+            {% elif not brief.hub_brief_id %}
+            <div class="small-muted">Сначала отправьте заявку в HUB.</div>
+            {% endif %}
         </div></div>
     </div>
 </div>

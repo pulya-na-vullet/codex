@@ -22,6 +22,7 @@ from workshop.models import (
     AuditLog,
     Client,
     DeviceType,
+    AdditiveServiceType,
     Order,
     OrderLine,
     OrderStatus,
@@ -878,6 +879,7 @@ def order_detail(request: HttpRequest, order_id: int):
             "lines": order.lines.all(),
             "catalog_tree": build_service_catalog_tree(active_only=True),
             "device_types": [c[0] for c in DeviceType.choices],
+            "additive_service_types": [c[0] for c in AdditiveServiceType.choices],
             "payment_methods": PaymentMethod.choices,
             "order_statuses": OrderStatus.choices,
         },
@@ -891,10 +893,28 @@ def order_update_meta(request: HttpRequest, order_id: int):
     if device_type not in dict(DeviceType.choices):
         device_type = DeviceType.PC
     order.device_type = device_type
-    order.extra_periphery = request.POST.get("extra_periphery", "").strip()
+    order.additive_services_enabled = request.POST.get("additive_services_enabled") == "1"
+    additive_type = (request.POST.get("additive_service_type") or "").strip()
+    if order.additive_services_enabled:
+        if additive_type not in dict(AdditiveServiceType.choices):
+            additive_type = AdditiveServiceType.SCAN
+        order.additive_service_type = additive_type
+        # Периферия для аддитивных заказов в печати не используется.
+        order.extra_periphery = ""
+    else:
+        order.additive_service_type = ""
+        order.extra_periphery = request.POST.get("extra_periphery", "").strip()
     # Preserve real newlines from textarea (including Shift+Enter as \n)
     order.technical_notes = (request.POST.get("technical_notes", "") or "").replace("\r\n", "\n").replace("\r", "\n")
-    order.save(update_fields=["device_type", "extra_periphery", "technical_notes"])
+    order.save(
+        update_fields=[
+            "device_type",
+            "extra_periphery",
+            "additive_services_enabled",
+            "additive_service_type",
+            "technical_notes",
+        ]
+    )
     log_action(request, "order_update_meta", entity_type="order", entity_id=order.id, details=order.order_number)
     messages.success(request, "Данные заказ-наряда сохранены")
     return redirect("order_detail", order_id=order.id)
@@ -1099,7 +1119,7 @@ def admin_panel(request: HttpRequest):
         StaffUser,
         YandexAiSettings,
     )
-    from workshop.messaging import start_max_long_poll_worker
+    from workshop.messaging import restart_max_long_poll_worker
     from workshop.yandex_ai import (
         clear_today_scheduled_mark,
         now_msk,
@@ -1301,7 +1321,7 @@ def admin_panel(request: HttpRequest):
             request.POST.get("marketing_default_text", "").strip() or cfg.marketing_default_text
         )
         cfg.save()
-        start_max_long_poll_worker()
+        restart_max_long_poll_worker()
         log_action(request, "max_settings_update", entity_type="messaging", details=f"provider={cfg.provider}")
         messages.success(request, "Настройки Max сохранены")
         return redirect("admin_panel")
@@ -1813,22 +1833,60 @@ def hub_briefs_webhook(request: HttpRequest):
     return HttpResponse(detail)
 
 
+@require_http_methods(["GET", "POST"])
 def modeling_list(request: HttpRequest):
-    from workshop.models import ModelingBrief, ModelingBriefStatus
+    from workshop.hub import sync_open_briefs_from_hub
+    from workshop.models import HubConnectionSettings, ModelingBrief, ModelingBriefStatus
+
+    hub_cfg = HubConnectionSettings.get_solo()
+    hub_ready = bool(hub_cfg.enabled and hub_cfg.hub_base_url and hub_cfg.site_token and hub_cfg.site_secret)
+
+    # Pull statuses from HUB: LAN CRM often cannot receive HUB→SITE webhooks.
+    if request.method == "POST" and request.POST.get("action") == "sync_hub":
+        if not hub_ready:
+            messages.warning(request, "HUB не настроен (admin → HUB).")
+            return redirect("modeling_list")
+        ok_n, fail_n, details = sync_open_briefs_from_hub(limit=50)
+        log_action(
+            request,
+            "modeling_sync_hub_list",
+            entity_type="modeling",
+            details=f"ok={ok_n} fail={fail_n} {'; '.join(details[:8])}",
+        )
+        if fail_n and not ok_n:
+            messages.warning(request, f"Синхронизация с HUB не удалась ({fail_n}). Проверьте URL/token хаба.")
+        else:
+            changed = [d for d in details if "status:" in d]
+            if changed:
+                messages.success(request, "Обновлено с HUB: " + "; ".join(changed[:5]))
+            else:
+                messages.info(request, f"Синхронизация с HUB: без смены статусов (ok={ok_n}, ошибок={fail_n}).")
+        return redirect("modeling_list")
+
+    # Soft auto-sync on page open (best-effort). LAN CRM often never receives HUB webhooks.
+    if hub_ready and request.method == "GET":
+        try:
+            _ok_n, _fail_n, details = sync_open_briefs_from_hub(limit=12)
+            changed = [d for d in details if "status:" in d]
+            if changed:
+                messages.success(request, "Статусы обновлены с HUB: " + "; ".join(changed[:5]))
+        except Exception:
+            logging.getLogger(__name__).exception("Auto sync from HUB failed")
 
     status = request.GET.get("status", "").strip()
     qs = ModelingBrief.objects.select_related("client").order_by("-id")
     if status and status in dict(ModelingBriefStatus.choices):
         qs = qs.filter(status=status)
-    attention = qs.filter(manager_alert=True)
+    attention = ModelingBrief.objects.filter(manager_alert=True).count()
     return render(
         request,
         "workshop/modeling_list.html",
         {
             "briefs": list(qs[:200]),
-            "attention_count": attention.count(),
+            "attention_count": attention,
             "status_filter": status,
             "statuses": ModelingBriefStatus.choices,
+            "hub_ready": hub_ready,
         },
     )
 
@@ -1884,7 +1942,7 @@ def modeling_create(request: HttpRequest):
 @require_http_methods(["GET", "POST"])
 def modeling_detail(request: HttpRequest, brief_id: int):
     from workshop.authz import current_staff
-    from workshop.hub import push_brief_to_hub
+    from workshop.hub import push_brief_to_hub, sync_brief_from_hub
     from workshop.models import (
         HubConnectionSettings,
         ModelingBrief,
@@ -1894,6 +1952,7 @@ def modeling_detail(request: HttpRequest, brief_id: int):
 
     brief = get_object_or_404(ModelingBrief.objects.select_related("client"), pk=brief_id)
     hub_cfg = HubConnectionSettings.get_solo()
+    hub_ready = bool(hub_cfg.enabled and hub_cfg.hub_base_url and hub_cfg.site_token and hub_cfg.site_secret)
 
     if request.method == "POST":
         action = request.POST.get("action", "save").strip()
@@ -1904,6 +1963,29 @@ def modeling_detail(request: HttpRequest, brief_id: int):
             brief.updated_by = staff
             brief.save(update_fields=["manager_alert", "updated_by", "updated_at"])
             messages.success(request, "Отметка внимания снята")
+            return redirect("modeling_detail", brief_id=brief.id)
+
+        if action == "sync_hub":
+            if not hub_ready:
+                messages.warning(request, "HUB не настроен (admin → HUB).")
+            elif not (brief.hub_brief_id or "").strip():
+                messages.warning(request, "Заявка ещё не связана с HUB (нет hub_brief_id).")
+            else:
+                ok, detail = sync_brief_from_hub(brief, notify=True)
+                log_action(
+                    request,
+                    "modeling_sync_hub",
+                    entity_type="modeling",
+                    entity_id=brief.id,
+                    details=f"{brief.brief_number} {detail}",
+                )
+                brief.refresh_from_db()
+                if not ok:
+                    messages.warning(request, f"Не удалось синхронизировать с HUB: {detail}")
+                elif detail.startswith("status:"):
+                    messages.success(request, f"Статус обновлён с HUB: {brief.get_status_display()}")
+                else:
+                    messages.info(request, "Синхронизация с HUB: статус без изменений.")
             return redirect("modeling_detail", brief_id=brief.id)
 
         if action in {"save", "push", "resubmit"}:
@@ -1958,12 +2040,28 @@ def modeling_detail(request: HttpRequest, brief_id: int):
                 messages.success(request, "Заявка сохранена")
             return redirect("modeling_detail", brief_id=brief.id)
 
+    # Soft pull for open briefs linked to HUB (webhook often cannot reach LAN SITE).
+    if (
+        request.method == "GET"
+        and hub_ready
+        and (brief.hub_brief_id or "").strip()
+        and brief.status not in {ModelingBriefStatus.DONE, ModelingBriefStatus.CANCELLED}
+    ):
+        try:
+            ok, detail = sync_brief_from_hub(brief, notify=True)
+            if ok and detail.startswith("status:"):
+                brief.refresh_from_db()
+                messages.success(request, f"Статус обновлён с HUB: {brief.get_status_display()}")
+        except Exception:
+            logging.getLogger(__name__).exception("Auto sync brief %s from HUB failed", brief.id)
+
     return render(
         request,
         "workshop/modeling_detail.html",
         {
             "brief": brief,
             "hub_cfg": hub_cfg,
+            "hub_ready": hub_ready,
             "screenshots": list(brief.screenshots.all()),
             "statuses": ModelingBriefStatus.choices,
         },

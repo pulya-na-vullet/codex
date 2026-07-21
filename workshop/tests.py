@@ -904,3 +904,140 @@ class StaffAclAndModelingTests(TestCase):
             )
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.content.decode(), "duplicate")
+
+    @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
+    def test_hub_pull_sync_marks_done_when_webhook_missed(self):
+        """LAN SITE often never receives HUB webhooks — pull GET /briefs/{id} instead."""
+        from unittest.mock import patch
+
+        from workshop.models import HubConnectionSettings, ModelingBrief, ModelingBriefStatus
+
+        self._login("ITM", "pass")
+        hub = HubConnectionSettings.get_solo()
+        hub.enabled = True
+        hub.hub_base_url = "https://hub.test"
+        hub.site_token = "tok"
+        hub.site_secret = "sec"
+        hub.save()
+
+        brief = ModelingBrief.objects.create(
+            brief_number="3D-000099",
+            client=self.client_obj,
+            agreed_price=Decimal("1000"),
+            designer_share_amount=Decimal("700"),
+            site_share_amount=Decimal("300"),
+            status=ModelingBriefStatus.IN_PROGRESS,
+            hub_brief_id="hub-done-1",
+            designer_name="Дизайнер",
+        )
+
+        hub_payload = {
+            "brief_id": "hub-done-1",
+            "status": "done",
+            "designer_name": "Дизайнер",
+            "last_message": "Модель готова",
+        }
+        with patch("workshop.hub.fetch_brief_from_hub", return_value=(True, "ok", hub_payload)), patch(
+            "workshop.hub.notify_staff_max", return_value=(True, "sent")
+        ), patch("workshop.hub.notify_client_max", return_value=(True, "sent")) as mock_client:
+            r = self.http.post(f"/modeling/{brief.id}", {"action": "sync_hub"}, follow=True)
+
+        self.assertEqual(r.status_code, 200)
+        brief.refresh_from_db()
+        self.assertEqual(brief.status, ModelingBriefStatus.DONE)
+        self.assertTrue(brief.manager_alert)
+        self.assertIsNotNone(brief.done_at)
+        self.assertEqual(brief.last_hub_message, "Модель готова")
+        mock_client.assert_called_once()
+        self.assertContains(r, "Статус обновлён с HUB")
+
+        # List sync also pulls open briefs.
+        brief2 = ModelingBrief.objects.create(
+            brief_number="3D-000100",
+            client=self.client_obj,
+            agreed_price=Decimal("500"),
+            designer_share_amount=Decimal("350"),
+            site_share_amount=Decimal("150"),
+            status=ModelingBriefStatus.ASSIGNED,
+            hub_brief_id="hub-done-2",
+        )
+        with patch(
+            "workshop.hub.fetch_brief_from_hub",
+            return_value=(True, "ok", {"brief_id": "hub-done-2", "status": "closed"}),
+        ), patch("workshop.hub.notify_staff_max", return_value=(True, "sent")), patch(
+            "workshop.hub.notify_client_max", return_value=(True, "sent")
+        ):
+            r = self.http.post("/modeling", {"action": "sync_hub"}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        brief2.refresh_from_db()
+        self.assertEqual(brief2.status, ModelingBriefStatus.DONE)
+        self.assertContains(r, "Синхронизировать с HUB")
+
+
+@override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
+class OrderAdditiveServicesTests(TestCase):
+    def setUp(self):
+        from workshop.models import StaffUser
+
+        self.http = HttpClient()
+        StaffUser.ensure_bootstrap_admin()
+        self.client_obj = Client.objects.create(name="Аддитив", phone="+79990000222")
+        self.order = Order.objects.create(order_number="ORD-ADD001", client=self.client_obj)
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+
+    def test_device_types_include_tablet_and_additive_block(self):
+        from workshop.models import DeviceType
+
+        self.assertIn("Планшет", dict(DeviceType.choices))
+        r = self.http.get(f"/orders/{self.order.id}")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Планшет")
+        self.assertContains(r, "Аддитивные услуги")
+        self.assertContains(r, "3D сканирование")
+        self.assertContains(r, "3D печать")
+        self.assertContains(r, "3D моделирование")
+
+    def test_additive_toggle_clears_periphery_and_skips_print(self):
+        from workshop.models import AdditiveServiceType
+        from workshop.pdf import build_order_pdf
+
+        self.order.extra_periphery = "мышь и клавиатура"
+        self.order.save(update_fields=["extra_periphery"])
+        r = self.http.post(
+            f"/orders/{self.order.id}/meta",
+            {
+                "device_type": "Планшет",
+                "additive_services_enabled": "1",
+                "additive_service_type": AdditiveServiceType.PRINT,
+                "extra_periphery": "не должно сохраниться",
+                "technical_notes": "готово",
+            },
+        )
+        self.assertEqual(r.status_code, 302)
+        self.order.refresh_from_db()
+        self.assertTrue(self.order.additive_services_enabled)
+        self.assertEqual(self.order.additive_service_type, "3D печать")
+        self.assertEqual(self.order.device_type, "Планшет")
+        self.assertEqual(self.order.extra_periphery, "")
+
+        pdf = build_order_pdf(self.order, list(self.order.lines.all()))
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        # Text extraction is awkward for reportlab; check HTML print view instead.
+        r = self.http.get(f"/orders/{self.order.id}/print")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Аддитивные услуги: 3D печать")
+        self.assertNotContains(r, "Доп. периферия")
+
+
+class MaxLongPollStabilityTests(TestCase):
+    def test_transient_network_errors_detected(self):
+        from workshop.messaging import _is_transient_max_network_error
+
+        self.assertTrue(_is_transient_max_network_error(ConnectionResetError(10054, "closed")))
+        self.assertTrue(
+            _is_transient_max_network_error(
+                RuntimeError("network_error: [WinError 10054] Удаленный хост принудительно разорвал")
+            )
+        )
+        self.assertTrue(_is_transient_max_network_error(TimeoutError("timed out")))
+        self.assertFalse(_is_transient_max_network_error(RuntimeError("http_401: bad token")))

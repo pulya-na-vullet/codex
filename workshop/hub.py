@@ -42,6 +42,218 @@ def _headers(cfg: HubConnectionSettings, body: bytes) -> dict[str, str]:
     }
 
 
+def _hub_configured(cfg: HubConnectionSettings | None = None) -> tuple[HubConnectionSettings | None, str]:
+    cfg = cfg or HubConnectionSettings.get_solo()
+    if not cfg.enabled or not cfg.hub_base_url or not cfg.site_token or not cfg.site_secret:
+        return None, "Интеграция с хабом не настроена (admin → HUB)"
+    return cfg, ""
+
+
+def fetch_brief_from_hub(hub_brief_id: str, *, cfg: HubConnectionSettings | None = None) -> tuple[bool, str, dict[str, Any]]:
+    """GET /api/v1/briefs/{id} from HUB (HMAC over empty body)."""
+    cfg, err = _hub_configured(cfg)
+    if not cfg:
+        return False, err, {}
+    hub_brief_id = (hub_brief_id or "").strip()
+    if not hub_brief_id:
+        return False, "нет hub_brief_id", {}
+
+    body = b""
+    url = f"{cfg.hub_base_url.rstrip('/')}/api/v1/briefs/{hub_brief_id}"
+    req = urlrequest.Request(url, data=None, headers=_headers(cfg, body), method="GET")
+    try:
+        with urlrequest.urlopen(req, timeout=5) as resp:
+            raw = resp.read().decode("utf-8") or "{}"
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                return False, "invalid HUB JSON", {}
+            # Unwrap common envelopes from HUB serializers.
+            for key in ("brief", "data", "result"):
+                nested = data.get(key)
+                if isinstance(nested, dict) and ("status" in nested or "brief_id" in nested or "id" in nested):
+                    data = nested
+                    break
+            return True, "ok", data
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        logger.warning("HUB fetch brief failed HTTP %s: %s", exc.code, detail)
+        return False, f"HUB HTTP {exc.code}: {detail}", {}
+    except Exception as exc:
+        logger.warning("HUB fetch brief failed: %s", exc)
+        return False, str(exc)[:500], {}
+
+
+def _map_hub_status(raw: str) -> str | None:
+    from workshop.models import ModelingBriefStatus
+
+    value = (raw or "").strip().lower()
+    aliases = {
+        "completed": ModelingBriefStatus.DONE,
+        "complete": ModelingBriefStatus.DONE,
+        "closed": ModelingBriefStatus.DONE,
+        "finished": ModelingBriefStatus.DONE,
+        "готово": ModelingBriefStatus.DONE,
+        "выполнен": ModelingBriefStatus.DONE,
+        "закрыт": ModelingBriefStatus.DONE,
+        "taken_in_work": ModelingBriefStatus.ASSIGNED,
+        "clarification": ModelingBriefStatus.NEEDS_CLARIFICATION,
+    }
+    if value in aliases:
+        return aliases[value]
+    allowed = {c.value for c in ModelingBriefStatus}
+    return value if value in allowed else None
+
+
+def apply_hub_brief_snapshot(
+    brief: ModelingBrief,
+    data: dict[str, Any],
+    *,
+    notify: bool = True,
+) -> tuple[bool, str]:
+    """Apply HUB brief JSON onto local ModelingBrief. Notifies Max only on status change."""
+    from django.utils import timezone
+
+    from workshop.models import ModelingBriefStatus
+
+    old_status = brief.status
+    new_status = _map_hub_status(str(data.get("status") or ""))
+    changed = False
+
+    hub_id = str(data.get("brief_id") or data.get("id") or data.get("hub_brief_id") or data.get("public_id") or "").strip()
+    if hub_id and brief.hub_brief_id != hub_id:
+        brief.hub_brief_id = hub_id
+        changed = True
+
+    designer_name = str(
+        data.get("designer_name")
+        or (data.get("designer") or {}).get("full_name")
+        or (data.get("designer") or {}).get("name")
+        or ""
+    ).strip()
+    designer_id = str(
+        data.get("designer_id")
+        or (data.get("designer") or {}).get("max_user_id")
+        or (data.get("designer") or {}).get("id")
+        or ""
+    ).strip()
+    eta = str(data.get("eta") or "").strip()
+    message = str(data.get("message") or data.get("last_message") or data.get("text") or "").strip()
+
+    if designer_name and brief.designer_name != designer_name:
+        brief.designer_name = designer_name
+        changed = True
+    if designer_id and brief.designer_id != str(designer_id):
+        brief.designer_id = str(designer_id)
+        changed = True
+    if eta and brief.eta != eta:
+        brief.eta = eta
+        changed = True
+    if message and brief.last_hub_message != message:
+        brief.last_hub_message = message
+        changed = True
+
+    status_changed = bool(new_status and new_status != old_status)
+    if status_changed:
+        brief.status = new_status
+        changed = True
+        if new_status == ModelingBriefStatus.DONE:
+            brief.manager_alert = True
+            if not brief.done_at:
+                brief.done_at = timezone.now()
+        elif new_status == ModelingBriefStatus.NEEDS_CLARIFICATION:
+            brief.manager_alert = True
+        elif new_status in {
+            ModelingBriefStatus.ASSIGNED,
+            ModelingBriefStatus.IN_PROGRESS,
+            ModelingBriefStatus.QUEUED,
+            ModelingBriefStatus.CLARIFICATION_PROVIDED,
+        }:
+            # Clear alert only when moving into active work from draft/queue.
+            if old_status in {ModelingBriefStatus.DRAFT, ModelingBriefStatus.QUEUED}:
+                brief.manager_alert = False
+
+    if changed:
+        brief.save()
+
+    if notify and status_changed:
+        if new_status in {ModelingBriefStatus.ASSIGNED, ModelingBriefStatus.IN_PROGRESS}:
+            notify_staff_max(
+                text=(
+                    f"3D {brief.brief_number}: статус с HUB — {brief.get_status_display()}.\n"
+                    f"Дизайнер: {brief.designer_name or '—'} · срок: {brief.eta or '—'}"
+                )
+            )
+        elif new_status == ModelingBriefStatus.NEEDS_CLARIFICATION:
+            notify_client_max(
+                brief.client,
+                message
+                or (
+                    f"Здравствуйте! По заявке на 3D-моделирование {brief.brief_number} "
+                    "нужны уточнения. Пожалуйста, свяжитесь с мастерской."
+                ),
+            )
+            notify_staff_max(
+                text=f"3D {brief.brief_number}: требуется переуточнение (синхронизация с HUB)."
+            )
+        elif new_status == ModelingBriefStatus.DONE:
+            notify_client_max(
+                brief.client,
+                message
+                or (
+                    f"Здравствуйте! 3D-модель по заявке {brief.brief_number} готова. "
+                    "Можно забирать в мастерской."
+                ),
+            )
+            notify_staff_max(
+                text=(
+                    f"3D {brief.brief_number}: выполнено (синхронизация с HUB).\n"
+                    f"Клиент: {brief.client.name}. Сумма: {brief.agreed_price}"
+                )
+            )
+        elif new_status == ModelingBriefStatus.CANCELLED:
+            notify_staff_max(text=f"3D {brief.brief_number}: отменено на HUB.")
+
+    if status_changed:
+        return True, f"status:{old_status}->{new_status}"
+    if changed:
+        return True, "updated"
+    return True, "unchanged"
+
+
+def sync_brief_from_hub(brief: ModelingBrief, *, notify: bool = True) -> tuple[bool, str]:
+    """Pull current brief state from HUB and apply locally."""
+    if not (brief.hub_brief_id or "").strip():
+        return False, "Заявка ещё не связана с HUB (нет hub_brief_id)"
+    ok, detail, data = fetch_brief_from_hub(brief.hub_brief_id)
+    if not ok:
+        return False, detail
+    return apply_hub_brief_snapshot(brief, data, notify=notify)
+
+
+def sync_open_briefs_from_hub(*, limit: int = 30) -> tuple[int, int, list[str]]:
+    """Sync non-terminal briefs that already have hub_brief_id. Returns (ok, fail, details)."""
+    from workshop.models import ModelingBrief, ModelingBriefStatus
+
+    qs = (
+        ModelingBrief.objects.exclude(hub_brief_id="")
+        .exclude(status__in=[ModelingBriefStatus.DONE, ModelingBriefStatus.CANCELLED])
+        .order_by("-id")[:limit]
+    )
+    ok_n = fail_n = 0
+    details: list[str] = []
+    for brief in qs:
+        ok, detail = sync_brief_from_hub(brief, notify=True)
+        if ok:
+            ok_n += 1
+            if detail.startswith("status:"):
+                details.append(f"{brief.brief_number}: {detail}")
+        else:
+            fail_n += 1
+            details.append(f"{brief.brief_number}: {detail}")
+    return ok_n, fail_n, details
+
+
+
 def brief_payload(brief: ModelingBrief) -> dict[str, Any]:
     return {
         "local_brief_id": brief.id,
@@ -201,7 +413,7 @@ def apply_hub_brief_event(payload: dict[str, Any]) -> tuple[bool, str]:
         )
         return True, "clarification"
 
-    if event in {"done", "completed"}:
+    if event in {"done", "completed", "closed", "finished"}:
         brief.status = ModelingBriefStatus.DONE
         brief.manager_alert = True
         brief.done_at = timezone.now()

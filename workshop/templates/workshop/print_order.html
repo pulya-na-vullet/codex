@@ -17,7 +17,11 @@ th,td{border:1px solid #bbb;padding:8px} th{background:#f1f5f9;text-align:left}
 <div>Клиент: {% if order.client %}{{ order.client.name }} {{ order.client.phone }}{% else %}Без клиента{% endif %}</div>
 <div>Дата: {{ order.created_at|date:"d.m.Y H:i" }}</div>
 <div>Устройство: {{ order.device_type }}</div>
+{% if order.additive_services_enabled %}
+<div>Аддитивные услуги: {{ order.additive_service_type|default:"-" }}</div>
+{% else %}
 <div>Доп. периферия: {{ order.extra_periphery|default:"-" }}</div>
+{% endif %}
 <table><thead><tr><th>Услуга</th><th class="num">Цена</th><th class="num">Кол-во</th><th class="num">Сумма</th></tr></thead>
 <tbody>{% for s in lines %}<tr><td>{{ s.service_name }}</td><td class="num">{{ s.unit_price }}</td><td class="num">{{ s.quantity }}</td><td class="num">{{ s.line_total }}</td></tr>{% endfor %}</tbody></table>
 <div class="total">

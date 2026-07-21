@@ -99,6 +99,7 @@ def _json_request(
         "Content-Type": "application/json",
         "Accept": "application/json",
         "User-Agent": "WorkshopApp/1.0",
+        "Connection": "close",
     }
     if body is not None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -116,8 +117,34 @@ def _json_request(
         code = payload.get("code") or f"http_{exc.code}"
         message = payload.get("message") or raw or str(exc)
         raise RuntimeError(f"{code}: {message}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"network_error: {exc.reason}") from exc
+    except (urllib.error.URLError, TimeoutError, ConnectionResetError, BrokenPipeError, OSError) as exc:
+        reason = getattr(exc, "reason", None) or str(exc)
+        raise RuntimeError(f"network_error: {reason}") from exc
+
+
+def _is_transient_max_network_error(exc: BaseException) -> bool:
+    """Long-poll resets/timeouts are expected; reconnect without traceback spam."""
+    if isinstance(
+        exc,
+        (TimeoutError, ConnectionResetError, BrokenPipeError, ConnectionAbortedError, OSError),
+    ):
+        return True
+    text = str(exc).lower()
+    needles = (
+        "network_error",
+        "connection reset",
+        "forcibly closed",
+        "10054",
+        "timed out",
+        "timeout",
+        "broken pipe",
+        "connection aborted",
+        "temporarily unavailable",
+        "remote end closed",
+        "errno 104",
+        "errno 110",
+    )
+    return any(n in text for n in needles)
 
 
 def send_max_message(
@@ -599,6 +626,8 @@ def _max_long_poll_loop(stop_event: threading.Event) -> None:
     from django.db.utils import OperationalError, ProgrammingError
 
     marker: int | None = None
+    backoff_sec = 1.0
+    max_backoff = 30.0
     while not stop_event.is_set():
         try:
             close_old_connections()
@@ -616,17 +645,27 @@ def _max_long_poll_loop(stop_event: threading.Event) -> None:
             if marker is None and settings_obj.updates_marker is not None:
                 marker = int(settings_obj.updates_marker)
 
+            # Server waits ~25s; client timeout must be larger so idle polls don't look like hangs.
             query: dict[str, Any] = {"limit": 100, "timeout": 25}
             if marker is not None:
                 query["marker"] = marker
 
             try:
-                payload = _json_request("GET", "/updates", token=token, query=query, timeout=35)
-            except Exception:
-                logger.exception("Max long-poll /updates failed")
-                stop_event.wait(5.0)
+                payload = _json_request("GET", "/updates", token=token, query=query, timeout=40)
+            except Exception as exc:
+                if _is_transient_max_network_error(exc):
+                    logger.warning(
+                        "Max long-poll: соединение оборвано (%s) — переподключение через %.0f с",
+                        str(exc)[:160],
+                        backoff_sec,
+                    )
+                else:
+                    logger.exception("Max long-poll /updates failed")
+                stop_event.wait(backoff_sec)
+                backoff_sec = min(max_backoff, backoff_sec * 1.7)
                 continue
 
+            backoff_sec = 1.0
             updates = payload.get("updates") or []
             new_marker = payload.get("marker")
             for update in updates:
@@ -646,7 +685,8 @@ def _max_long_poll_loop(stop_event: threading.Event) -> None:
             stop_event.wait(5.0)
         except Exception:
             logger.exception("Max long-poll worker crashed iteration")
-            stop_event.wait(5.0)
+            stop_event.wait(min(max_backoff, backoff_sec))
+            backoff_sec = min(max_backoff, backoff_sec * 1.7)
 
 
 _worker_stop: threading.Event | None = None
@@ -678,5 +718,17 @@ def stop_max_long_poll_worker() -> None:
     with _worker_lock:
         if _worker_stop is not None:
             _worker_stop.set()
+        thread = _worker_thread
         _worker_thread = None
         _worker_stop = None
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=2.0)
+
+
+def restart_max_long_poll_worker() -> None:
+    stop_max_long_poll_worker()
+    start_max_long_poll_worker()
+
+
+def is_max_long_poll_running() -> bool:
+    return bool(_worker_thread and _worker_thread.is_alive())

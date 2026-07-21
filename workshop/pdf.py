@@ -81,8 +81,13 @@ def build_order_pdf(order, lines) -> bytes:
     y -= 22
     c.drawString(40, y, f"Устройство: {order.device_type}")
     y -= 16
-    c.drawString(40, y, f"Доп. периферия: {order.extra_periphery or '-'}")
-    y -= 16
+    if getattr(order, "additive_services_enabled", False):
+        additive = getattr(order, "additive_service_type", "") or "-"
+        c.drawString(40, y, f"Аддитивные услуги: {additive}")
+        y -= 16
+    else:
+        c.drawString(40, y, f"Доп. периферия: {order.extra_periphery or '-'}")
+        y -= 16
 
     c.setFont(font, 10)
     c.drawString(40, y, "Услуга")
