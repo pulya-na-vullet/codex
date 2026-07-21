@@ -232,7 +232,7 @@ def generate_day_report(day=None, *, use_ai: bool = True) -> tuple[str, str]:
     """Return (report_text, source) where source is 'yandex'|'fallback'."""
     facts = collect_day_facts(day)
     cfg = get_or_create_ai_settings()
-    if use_ai and cfg.api_key.strip() and cfg.folder_id.strip():
+    if use_ai and cfg.api_key.strip() and cfg.folder_id.strip() and not _in_outbound_backoff():
         try:
             text = yandex_completion(
                 api_key=cfg.api_key.strip(),
@@ -250,9 +250,32 @@ def generate_day_report(day=None, *, use_ai: bool = True) -> tuple[str, str]:
                     1,
                 )
             return text.strip(), "yandex"
-        except Exception:
-            logger.exception("Yandex AI report failed, using fallback")
+        except Exception as exc:
+            from workshop.messaging import is_outbound_network_error
+
+            if is_outbound_network_error(exc):
+                _note_outbound_failure()
+                logger.warning(
+                    "Yandex AI недоступен (%s) — локальный отчёт без GPT "
+                    "(проверьте интернет/VPN; это не ошибка CRM)",
+                    str(exc)[:200],
+                )
+            else:
+                logger.exception("Yandex AI report failed, using fallback")
     return build_fallback_report(facts), "fallback"
+
+
+_outbound_backoff_until = 0.0
+_OUTBOUND_BACKOFF_SEC = 600.0  # 10 min pause when Max/Yandex are unreachable
+
+
+def _note_outbound_failure() -> None:
+    global _outbound_backoff_until
+    _outbound_backoff_until = time.monotonic() + _OUTBOUND_BACKOFF_SEC
+
+
+def _in_outbound_backoff() -> bool:
+    return time.monotonic() < _outbound_backoff_until
 
 
 def resolve_admin_target(cfg) -> tuple[str, str, Any]:
@@ -364,6 +387,16 @@ def run_daily_ai_report(*, day=None, force: bool = False) -> dict[str, Any]:
 
     report, source = generate_day_report(day, use_ai=True)
     ok, detail = send_report_to_admin(report)
+    if not ok:
+        from workshop.messaging import is_outbound_network_error
+
+        if is_outbound_network_error(detail or ""):
+            _note_outbound_failure()
+            logger.warning(
+                "AI-отчёт не отправлен в Max (нет сети): %s — пауза %.0f мин",
+                (detail or "")[:160],
+                _OUTBOUND_BACKOFF_SEC / 60,
+            )
     cfg.last_report_text = report[:4000]
     cfg.last_report_error = "" if ok else (detail or "")[:1000]
     cfg.last_report_at = timezone.now()
@@ -416,6 +449,8 @@ def ensure_due_ai_report(*, force_check: bool = False, min_interval_sec: float =
         from django.db import close_old_connections
 
         close_old_connections()
+        if _in_outbound_backoff():
+            return None
         cfg = get_or_create_ai_settings()
         if not should_send_daily_report(cfg):
             return None
@@ -427,8 +462,14 @@ def ensure_due_ai_report(*, force_check: bool = False, min_interval_sec: float =
             now_msk().strftime("%Y-%m-%d %H:%M:%S"),
         )
         return run_daily_ai_report(day=now_msk().date(), force=False)
-    except Exception:
-        logger.exception("ensure_due_ai_report failed")
+    except Exception as exc:
+        from workshop.messaging import is_outbound_network_error
+
+        if is_outbound_network_error(exc):
+            _note_outbound_failure()
+            logger.warning("ensure_due_ai_report: сеть недоступна (%s)", str(exc)[:160])
+        else:
+            logger.exception("ensure_due_ai_report failed")
         return {"ok": False, "detail": "ensure_due_ai_report failed"}
     finally:
         _due_send_lock.release()
@@ -441,9 +482,18 @@ def _scheduler_loop(stop_event: threading.Event) -> None:
     while not stop_event.is_set():
         try:
             close_old_connections()
+            if _in_outbound_backoff():
+                stop_event.wait(60.0)
+                continue
             result = ensure_due_ai_report(force_check=True, min_interval_sec=0)
             if result is not None:
-                stop_event.wait(60.0 if result.get("ok") else 90.0)
+                # Network failures: wait longer; success: 60s; other fail: 90s
+                if result.get("ok"):
+                    stop_event.wait(60.0)
+                elif _in_outbound_backoff():
+                    stop_event.wait(120.0)
+                else:
+                    stop_event.wait(90.0)
                 continue
         except (OperationalError, ProgrammingError):
             logger.warning("AI scheduler: database not ready")
