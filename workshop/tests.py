@@ -480,16 +480,16 @@ class AuthAndPagesTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status, "ready_call")
         self.assertTrue(
-            SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client, success=True, text__icontains="ORD-NOTIFY1").exists()
+            SmsLog.objects.filter(kind=SmsKind.ORDER, client=client, success=True, text__icontains="ORD-NOTIFY1").exists()
         )
         self.assertContains(r, "Max")
         self.assertContains(r, "уведомление")
 
         # mark-called → done: без повторной отправки
-        before = SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client).count()
+        before = SmsLog.objects.filter(kind=SmsKind.ORDER, client=client).count()
         r = self.http.post(f"/orders/{order.id}/mark-called", {"next": "/work-queue"}, follow=True)
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client).count(), before)
+        self.assertEqual(SmsLog.objects.filter(kind=SmsKind.ORDER, client=client).count(), before)
         self.assertNotContains(r, "уведомление о готовности")
 
         r = self.http.post(
@@ -499,7 +499,7 @@ class AuthAndPagesTests(TestCase):
         )
         self.assertEqual(r.status_code, 200)
         self.assertTrue(
-            SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client, success=True, text__icontains="ACT-NOTIFY1").exists()
+            SmsLog.objects.filter(kind=SmsKind.ORDER, client=client, success=True, text__icontains="ACT-NOTIFY1").exists()
         )
         self.assertContains(r, "Max")
 
@@ -527,7 +527,7 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         order.refresh_from_db()
         self.assertEqual(order.status, "ready_call")
-        self.assertFalse(SmsLog.objects.filter(kind=SmsKind.SYSTEM, client=client).exists())
+        self.assertFalse(SmsLog.objects.filter(kind=SmsKind.ORDER, client=client).exists())
         self.assertContains(r, "Статус заказа")
         # Нет flash про Max (подсказка на карточке тоже не показывается без max_user_id)
         self.assertNotContains(r, "уведомление записано")
@@ -544,7 +544,7 @@ class AuthAndPagesTests(TestCase):
 
         from django.conf import settings
 
-        from workshop.messaging import send_message
+        from workshop.messaging import send_message, send_order_done_message
         from workshop.models import SmsKind, SmsLog, SmsSettings
 
         cfg = SmsSettings.get_solo()
@@ -552,6 +552,12 @@ class AuthAndPagesTests(TestCase):
         cfg.provider = "log"
         cfg.save()
         client = Client.objects.create(name="Лог Max", phone="+79993334455", max_user_id="777001")
+        order = Order.objects.create(
+            order_number="ORD-KIND1",
+            client=client,
+            total_sum=Decimal("100"),
+            status="ready_call",
+        )
 
         with mock.patch("workshop.messaging.print") as mock_print:
             ok = send_message(
@@ -561,9 +567,29 @@ class AuthAndPagesTests(TestCase):
                 client=client,
                 username="tester",
             )
+            order_msg = send_order_done_message(order, username="tester")
+            mkt = send_message(
+                phone=client.phone,
+                text="Акция для журнала",
+                kind=SmsKind.MARKETING,
+                client=client,
+                username="tester",
+                force=True,
+            )
         self.assertTrue(ok.success)
+        self.assertTrue(order_msg.success)
+        self.assertTrue(mkt.success)
         log = SmsLog.objects.filter(client=client, text__icontains="Тестовое сообщение").latest("id")
         self.assertTrue(log.success)
+        self.assertEqual(log.kind, SmsKind.SYSTEM)
+        self.assertEqual(
+            SmsLog.objects.filter(client=client, kind=SmsKind.ORDER, text__icontains="ORD-KIND1").latest("id").get_kind_display(),
+            "Заказ",
+        )
+        self.assertEqual(
+            SmsLog.objects.filter(client=client, kind=SmsKind.MARKETING).latest("id").get_kind_display(),
+            "Маркетинговое",
+        )
         self.assertIn("журнал", log.response.lower())
         mock_print.assert_called()
         printed = " ".join(str(c.args[0]) for c in mock_print.call_args_list if c.args)
@@ -597,8 +623,27 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Журнал Max")
         self.assertContains(r, "Тестовое сообщение для журнала Max")
         self.assertContains(r, "Не уйдёт без Max")
+        self.assertContains(r, "Заказ")
+        self.assertContains(r, "Маркетинговое")
+        self.assertContains(r, "Системное")
         self.assertContains(r, "OK")
         self.assertContains(r, "FAIL")
+        # Только Max лог активен в шапке, не Админ
+        import re
+
+        content = r.content.decode()
+        admin_match = re.search(
+            r'<a class="btn btn-sm nav-page-btn([^"]*)" href="/admin-panel">Админ</a>',
+            content,
+        )
+        max_match = re.search(
+            r'<a class="btn btn-sm nav-page-btn([^"]*)" href="/admin-panel/max-log">Max лог</a>',
+            content,
+        )
+        self.assertIsNotNone(admin_match)
+        self.assertIsNotNone(max_match)
+        self.assertNotIn("is-active", admin_match.group(1))
+        self.assertIn("is-active", max_match.group(1))
 
         r = self.http.get("/admin-panel/max-log?ok=0&q=Не+уйдёт")
         self.assertEqual(r.status_code, 200)

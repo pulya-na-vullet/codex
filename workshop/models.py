@@ -731,7 +731,8 @@ class YandexAiSettings(models.Model):
 
 class SmsKind(models.TextChoices):
     DEBT = "debt", "Долг"
-    MARKETING = "marketing", "Маркетинг"
+    MARKETING = "marketing", "Маркетинговое"
+    ORDER = "order", "Заказ"
     TEST = "test", "Тест"
     SYSTEM = "system", "Системное"
 

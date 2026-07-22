@@ -4,6 +4,13 @@
     <div>
         <h4 class="mb-0">Журнал Max</h4>
         <div class="small-muted">Все исходящие сообщения бота: успех/ошибка и полный текст</div>
+        <div class="small-muted mt-1">
+            Типы:
+            <strong>Системное</strong> — планировщик (AI-отчёт),
+            <strong>Заказ</strong> — смена статуса заказа/акта,
+            <strong>Маркетинговое</strong> — рассылки с страницы Маркетинг,
+            <strong>Долг</strong> — напоминания должникам
+        </div>
     </div>
     <form method="get" class="d-flex gap-2">
         <input class="form-control form-control-sm" name="q" value="{{ q }}" placeholder="Поиск: телефон, текст, ответ">
