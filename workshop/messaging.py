@@ -565,7 +565,7 @@ def send_order_done_message(order: Order, *, username: str = "") -> MessageResul
     return send_message(
         phone=client.phone,
         text=text,
-        kind=SmsKind.SYSTEM,
+        kind=SmsKind.ORDER,
         client=client,
         order=order,
         username=username or "status-bot",
@@ -590,7 +590,7 @@ def send_diagnostics_done_message(act, *, username: str = "") -> MessageResult:
     return send_message(
         phone=client.phone,
         text=text,
-        kind=SmsKind.SYSTEM,
+        kind=SmsKind.ORDER,
         client=client,
         username=username or "status-bot",
     )
