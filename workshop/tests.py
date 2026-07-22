@@ -629,12 +629,21 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "OK")
         self.assertContains(r, "FAIL")
         # Только Max лог активен в шапке, не Админ
-        self.assertContains(r, 'href="/admin-panel/max-log"')
+        import re
+
         content = r.content.decode()
-        admin_btn = content[content.find('href="/admin-panel"') : content.find('href="/admin-panel"') + 120]
-        max_btn = content[content.find('href="/admin-panel/max-log"') : content.find('href="/admin-panel/max-log"') + 140]
-        self.assertNotIn("is-active", admin_btn)
-        self.assertIn("is-active", max_btn)
+        admin_match = re.search(
+            r'<a class="btn btn-sm nav-page-btn([^"]*)" href="/admin-panel">Админ</a>',
+            content,
+        )
+        max_match = re.search(
+            r'<a class="btn btn-sm nav-page-btn([^"]*)" href="/admin-panel/max-log">Max лог</a>',
+            content,
+        )
+        self.assertIsNotNone(admin_match)
+        self.assertIsNotNone(max_match)
+        self.assertNotIn("is-active", admin_match.group(1))
+        self.assertIn("is-active", max_match.group(1))
 
         r = self.http.get("/admin-panel/max-log?ok=0&q=Не+уйдёт")
         self.assertEqual(r.status_code, 200)
