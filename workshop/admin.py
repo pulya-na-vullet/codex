@@ -15,6 +15,7 @@ from workshop.models import (
     SoftwareDevComment,
     SoftwareDevContract,
     SoftwareDevPhoto,
+    SoftwareDevVersion,
     YandexAiSettings,
 )
 
@@ -135,16 +136,25 @@ class SoftwareDevPhotoInline(admin.TabularInline):
 class SoftwareDevContractAdmin(admin.ModelAdmin):
     list_display = (
         "contract_number",
+        "version",
         "kind",
         "client",
         "status",
         "amount",
+        "price_needs_reagree",
         "payment_method",
         "mytax_issued",
         "contract_date",
         "created_at",
     )
-    list_filter = ("kind", "status", "payment_variant", "payment_method", "mytax_issued")
+    list_filter = ("kind", "status", "payment_variant", "payment_method", "mytax_issued", "price_needs_reagree")
     search_fields = ("contract_number", "client__name", "product_name", "github_url")
     inlines = [SoftwareDevCommentInline, SoftwareDevPhotoInline]
+
+
+@admin.register(SoftwareDevVersion)
+class SoftwareDevVersionAdmin(admin.ModelAdmin):
+    list_display = ("contract", "version", "amount", "price_agreed", "username", "created_at")
+    list_filter = ("price_agreed",)
+    search_fields = ("contract__contract_number", "note", "username")
 

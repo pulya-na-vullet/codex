@@ -64,7 +64,7 @@
                 <div class="card-body text-center py-4">
                     <div class="display-5 fw-bold {% if software_open %}text-primary{% else %}text-secondary{% endif %}">{{ software_open }}</div>
                     <div class="mt-2">Разработка ПО</div>
-                    <div class="small-muted">открытых договоров · в работе: {{ software_in_progress }}</div>
+                    <div class="small-muted">открытых договоров · в работе: {{ software_in_progress }}{% if software_pending_signature %} · на подписи: {{ software_pending_signature }}{% endif %}</div>
                 </div>
             </div>
         </a>

@@ -4,7 +4,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
         <h4 class="mb-0">Заказная разработка ПО</h4>
-        <div class="small-muted">Договоры авторского заказа · открытых: {{ open_count }}</div>
+        <div class="small-muted">Договоры авторского заказа · открытых: {{ open_count }}{% if reagree_count %} · <span class="text-warning">пересогласовать цену: {{ reagree_count }}</span>{% endif %}</div>
     </div>
     <a class="btn btn-violet btn-sm" href="{% url 'software_create' %}">Новый договор</a>
 </div>
@@ -49,14 +49,20 @@
             </thead>
             <tbody>
             {% for c in contracts %}
-                <tr class="{% if c.is_debtor %}order-row-unpaid{% elif c.is_in_progress %}order-row-in-progress{% elif c.is_paid and not c.mytax_issued %}order-row-paid-no-mytax{% elif c.is_paid and c.mytax_issued %}order-row-complete{% endif %}">
-                    <td><a href="{% url 'software_detail' c.id %}">{{ c.contract_number }}</a></td>
+                <tr class="{% if c.price_needs_reagree %}order-row-paid-no-mytax{% elif c.is_debtor %}order-row-unpaid{% elif c.is_pending_signature %}order-row-paid-no-mytax{% elif c.is_in_progress %}order-row-in-progress{% elif c.is_paid and not c.mytax_issued %}order-row-paid-no-mytax{% elif c.is_paid and c.mytax_issued %}order-row-complete{% endif %}">
+                    <td>
+                        <a href="{% url 'software_detail' c.id %}">{{ c.contract_number }}</a>
+                        <div class="small-muted">v{{ c.version }}</div>
+                    </td>
                     <td>{{ c.client.name }}</td>
                     <td>{{ c.get_kind_display }}</td>
                     <td>
-                        <span class="badge {% if c.status == 'in_progress' %}text-bg-purple{% elif c.status == 'ready' %}text-bg-warning{% elif c.status == 'done' %}text-bg-success{% elif c.status == 'cancelled' %}text-bg-secondary{% else %}text-bg-secondary{% endif %}">
+                        <span class="badge {% if c.status == 'in_progress' %}text-bg-purple{% elif c.status == 'pending_signature' or c.status == 'ready' %}text-bg-warning{% elif c.status == 'done' %}text-bg-success{% elif c.status == 'cancelled' %}text-bg-secondary{% else %}text-bg-secondary{% endif %}">
                             {{ c.get_status_display }}
                         </span>
+                        {% if c.price_needs_reagree %}
+                        <div class="mt-1"><span class="badge text-bg-warning">пересогласовать цену</span></div>
+                        {% endif %}
                     </td>
                     <td>{{ c.contract_date|date:"d.m.Y" }}</td>
                     <td class="text-end {% if c.is_debtor %}text-danger fw-semibold{% endif %}">{{ c.amount|money }}</td>

@@ -98,12 +98,16 @@ def dashboard(request: HttpRequest):
     software_open = SoftwareDevContract.objects.filter(
         status__in=[
             SoftwareDevStatus.DRAFT,
+            SoftwareDevStatus.PENDING_SIGNATURE,
             SoftwareDevStatus.IN_PROGRESS,
             SoftwareDevStatus.READY,
         ]
     ).count()
     software_in_progress = SoftwareDevContract.objects.filter(
         status=SoftwareDevStatus.IN_PROGRESS
+    ).count()
+    software_pending_signature = SoftwareDevContract.objects.filter(
+        status=SoftwareDevStatus.PENDING_SIGNATURE
     ).count()
     return render(
         request,
@@ -118,6 +122,7 @@ def dashboard(request: HttpRequest):
             "modeling_open": modeling_open,
             "software_open": software_open,
             "software_in_progress": software_in_progress,
+            "software_pending_signature": software_pending_signature,
         },
     )
 
@@ -192,6 +197,7 @@ def statistics(request: HttpRequest):
     software_open_count = SoftwareDevContract.objects.filter(
         status__in=[
             SoftwareDevStatus.DRAFT,
+            SoftwareDevStatus.PENDING_SIGNATURE,
             SoftwareDevStatus.IN_PROGRESS,
             SoftwareDevStatus.READY,
         ]
@@ -202,6 +208,7 @@ def statistics(request: HttpRequest):
             for c in SoftwareDevContract.objects.filter(
                 status__in=[
                     SoftwareDevStatus.DRAFT,
+                    SoftwareDevStatus.PENDING_SIGNATURE,
                     SoftwareDevStatus.IN_PROGRESS,
                     SoftwareDevStatus.READY,
                 ]
@@ -209,6 +216,7 @@ def statistics(request: HttpRequest):
         ),
         Decimal("0"),
     )
+    software_reagree_count = SoftwareDevContract.objects.filter(price_needs_reagree=True).count()
 
     # Unique contacted clients (orders + acceptance acts)
     visitors_map: dict[int, dict] = {}
@@ -352,6 +360,7 @@ def statistics(request: HttpRequest):
                 "software_done_sum": software_done_sum,
                 "software_open_count": software_open_count,
                 "software_open_sum": software_open_sum,
+                "software_reagree_count": software_reagree_count,
             },
             "orders": orders,
             "visitors": visitors,
@@ -2321,10 +2330,12 @@ def software_list(request: HttpRequest):
     open_count = SoftwareDevContract.objects.filter(
         status__in=[
             SoftwareDevStatus.DRAFT,
+            SoftwareDevStatus.PENDING_SIGNATURE,
             SoftwareDevStatus.IN_PROGRESS,
             SoftwareDevStatus.READY,
         ]
     ).count()
+    reagree_count = SoftwareDevContract.objects.filter(price_needs_reagree=True).count()
     return render(
         request,
         "workshop/software_list.html",
@@ -2335,6 +2346,7 @@ def software_list(request: HttpRequest):
             "statuses": SoftwareDevStatus.choices,
             "kinds": SoftwareDevKind.choices,
             "open_count": open_count,
+            "reagree_count": reagree_count,
         },
     )
 
@@ -2451,6 +2463,67 @@ def software_detail(request: HttpRequest, contract_id: int):
             messages.success(request, "Заявка переведена в черновик")
             return redirect("software_detail", contract_id=contract.id)
 
+        if action == "new_version":
+            note = (request.POST.get("version_note") or "").strip()
+            version_tz = (request.POST.get("version_tz_text") or "").strip()
+            tz_text_arg = version_tz or None
+            new_amount_raw = (request.POST.get("proposed_amount") or "").strip()
+            proposed_amount = None
+            if new_amount_raw:
+                proposed_amount = _parse_decimal_field(new_amount_raw, contract.amount)
+            old_ver = contract.version
+            contract.start_new_tz_version(
+                note=note,
+                username=username,
+                new_tz_text=tz_text_arg,
+                new_tz_file=request.FILES.get("version_tz_file"),
+                new_amount=proposed_amount,
+            )
+            contract.updated_by = staff
+            contract.save(update_fields=["updated_by", "updated_at"])
+            SoftwareDevComment.objects.create(
+                contract=contract,
+                text=(
+                    f"Новая версия ТЗ: v{old_ver} → v{contract.version}. "
+                    f"Цена требует пересогласования."
+                    + (f" Комментарий: {note}" if note else "")
+                ),
+                username=username,
+            )
+            log_action(
+                request,
+                "software_new_version",
+                entity_type="software",
+                entity_id=contract.id,
+                details=f"{contract.contract_number} v{old_ver}→v{contract.version}",
+            )
+            messages.warning(
+                request,
+                f"Открыта версия v{contract.version}. Пересогласуйте цену с заказчиком.",
+            )
+            return redirect("software_detail", contract_id=contract.id)
+
+        if action == "agree_price":
+            amount = _parse_decimal_field(request.POST.get("amount", str(contract.amount)), contract.amount)
+            old_amount = contract.amount
+            contract.confirm_price_reagree(amount=amount)
+            contract.updated_by = staff
+            contract.save(update_fields=["updated_by", "updated_at"])
+            SoftwareDevComment.objects.create(
+                contract=contract,
+                text=f"Цена пересогласована: {old_amount} → {contract.amount} ₽ (v{contract.version})",
+                username=username,
+            )
+            log_action(
+                request,
+                "software_agree_price",
+                entity_type="software",
+                entity_id=contract.id,
+                details=f"{contract.contract_number} amount={contract.amount}",
+            )
+            messages.success(request, "Новая цена зафиксирована")
+            return redirect("software_detail", contract_id=contract.id)
+
         if action == "set_status":
             new_status = (request.POST.get("status") or "").strip()
             if new_status not in dict(SoftwareDevStatus.choices):
@@ -2512,6 +2585,7 @@ def software_detail(request: HttpRequest, contract_id: int):
             "contract": contract,
             "comments": list(contract.comments.select_related().all()),
             "photos": list(contract.photos.all()),
+            "versions": list(contract.versions.all()),
             "statuses": SoftwareDevStatus.choices,
             "kinds": SoftwareDevKind.choices,
             "payment_variants": SoftwareDevPaymentVariant.choices,

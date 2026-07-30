@@ -1613,3 +1613,63 @@ class SoftwareDevContractsTests(TestCase):
         r = self.http.get("/software")
         self.assertContains(r, "Долг")
         self.assertContains(r, "order-row-unpaid")
+
+    def test_pending_signature_and_tz_version_reagree(self):
+        from workshop.models import SoftwareDevContract, SoftwareDevKind, SoftwareDevStatus
+
+        contract = SoftwareDevContract.objects.create(
+            contract_number="DAZ-000888",
+            client=self.client_obj,
+            kind=SoftwareDevKind.CHATBOT,
+            status=SoftwareDevStatus.DRAFT,
+            product_name="Бот v1",
+            amount=Decimal("10000"),
+            tz_text="ТЗ первая редакция",
+            customer_full_name="Клиент",
+        )
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {"action": "set_status", "status": "pending_signature"},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, SoftwareDevStatus.PENDING_SIGNATURE)
+
+        r = self.http.get("/software")
+        self.assertContains(r, "На подписании у клиента")
+
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {
+                "action": "new_version",
+                "version_note": "Клиент попросил оплату",
+                "version_tz_text": "ТЗ вторая редакция с оплатой",
+                "proposed_amount": "14000",
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        contract.refresh_from_db()
+        self.assertEqual(contract.version, 2)
+        self.assertTrue(contract.price_needs_reagree)
+        self.assertEqual(contract.status, SoftwareDevStatus.PENDING_SIGNATURE)
+        self.assertEqual(contract.tz_text, "ТЗ вторая редакция с оплатой")
+        self.assertEqual(contract.amount, Decimal("14000"))
+        self.assertEqual(contract.versions.count(), 1)
+        snap = contract.versions.get()
+        self.assertEqual(snap.version, 1)
+        self.assertEqual(snap.tz_text, "ТЗ первая редакция")
+        self.assertEqual(snap.amount, Decimal("10000"))
+        self.assertContains(r, "пересогласовать цену")
+        self.assertContains(r, "v2")
+
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {"action": "agree_price", "amount": "13500"},
+            follow=True,
+        )
+        contract.refresh_from_db()
+        self.assertFalse(contract.price_needs_reagree)
+        self.assertEqual(contract.amount, Decimal("13500"))
+        self.assertContains(r, "Новая цена зафиксирована")

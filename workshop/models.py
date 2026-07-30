@@ -1045,6 +1045,7 @@ class SoftwareDevKind(models.TextChoices):
 
 class SoftwareDevStatus(models.TextChoices):
     DRAFT = "draft", "Черновик"
+    PENDING_SIGNATURE = "pending_signature", "На подписании у клиента"
     IN_PROGRESS = "in_progress", "В работе"
     READY = "ready", "Готово к сдаче"
     DONE = "done", "Выполнен"
@@ -1079,6 +1080,13 @@ class SoftwareDevContract(models.Model):
         choices=SoftwareDevStatus.choices,
         default=SoftwareDevStatus.DRAFT,
         db_index=True,
+    )
+    version = models.PositiveIntegerField("Версия договора", default=1)
+    price_needs_reagree = models.BooleanField(
+        "Нужно пересогласовать цену",
+        default=False,
+        db_index=True,
+        help_text="Включается при новой версии ТЗ, пока менеджер не подтвердит новую сумму",
     )
     product_name = models.TextField(
         "Название программного комплекса",
@@ -1186,6 +1194,7 @@ class SoftwareDevContract(models.Model):
     def is_open(self) -> bool:
         return self.status in {
             SoftwareDevStatus.DRAFT,
+            SoftwareDevStatus.PENDING_SIGNATURE,
             SoftwareDevStatus.IN_PROGRESS,
             SoftwareDevStatus.READY,
         }
@@ -1199,11 +1208,19 @@ class SoftwareDevContract(models.Model):
         return self.status == SoftwareDevStatus.IN_PROGRESS
 
     @property
+    def is_pending_signature(self) -> bool:
+        return self.status == SoftwareDevStatus.PENDING_SIGNATURE
+
+    @property
     def is_debtor(self) -> bool:
         """Не оплачен при ненулевой сумме и статусе «готово»/«выполнен»."""
         if self.is_paid or (self.amount or 0) <= 0:
             return False
-        if self.status in {SoftwareDevStatus.CANCELLED, SoftwareDevStatus.DRAFT}:
+        if self.status in {
+            SoftwareDevStatus.CANCELLED,
+            SoftwareDevStatus.DRAFT,
+            SoftwareDevStatus.PENDING_SIGNATURE,
+        }:
             return False
         return self.status in {SoftwareDevStatus.READY, SoftwareDevStatus.DONE}
 
@@ -1218,6 +1235,82 @@ class SoftwareDevContract(models.Model):
 
     def customer_display_name(self) -> str:
         return (self.customer_full_name or "").strip() or (self.client.name if self.client_id else "")
+
+    def start_new_tz_version(
+        self,
+        *,
+        note: str = "",
+        username: str = "",
+        new_tz_text: str | None = None,
+        new_tz_file=None,
+        new_amount: Decimal | None = None,
+    ) -> "SoftwareDevVersion":
+        """
+        Зафиксировать текущую версию в истории и открыть новую.
+        Цена помечается как требующая пересогласования.
+        """
+        snap = SoftwareDevVersion.objects.create(
+            contract=self,
+            version=self.version,
+            product_name=self.product_name,
+            tz_text=self.tz_text,
+            amount=self.amount,
+            note=(note or "").strip() or f"Снимок версии {self.version} перед обновлением ТЗ",
+            username=username or "",
+            price_agreed=not self.price_needs_reagree,
+        )
+        if self.tz_file:
+            snap.tz_file = self.tz_file
+            snap.save(update_fields=["tz_file"])
+
+        self.version = int(self.version or 1) + 1
+        self.price_needs_reagree = True
+        if new_tz_text is not None:
+            self.tz_text = new_tz_text
+        if new_tz_file is not None:
+            self.tz_file = new_tz_file
+        if new_amount is not None:
+            self.amount = new_amount
+        # Новая редакция ТЗ обычно снова уходит на подпись / согласование.
+        if self.status not in {SoftwareDevStatus.DRAFT, SoftwareDevStatus.CANCELLED}:
+            self.status = SoftwareDevStatus.PENDING_SIGNATURE
+        self.save()
+        return snap
+
+    def confirm_price_reagree(self, *, amount: Decimal | None = None) -> None:
+        if amount is not None:
+            self.amount = amount
+        self.price_needs_reagree = False
+        self.save(update_fields=["amount", "price_needs_reagree", "updated_at"])
+
+
+class SoftwareDevVersion(models.Model):
+    """История версий договора / ТЗ (снимок перед обновлением)."""
+
+    contract = models.ForeignKey(
+        SoftwareDevContract,
+        on_delete=models.CASCADE,
+        related_name="versions",
+        verbose_name="Договор",
+    )
+    version = models.PositiveIntegerField("Версия")
+    product_name = models.TextField("Название ПО", blank=True, default="")
+    tz_text = models.TextField("ТЗ текстом", blank=True, default="")
+    tz_file = models.FileField("Файл ТЗ", upload_to="software/tz_versions/%Y/%m/", blank=True)
+    amount = models.DecimalField("Сумма на момент версии", max_digits=12, decimal_places=2, default=Decimal("0"))
+    note = models.TextField("Что изменилось", blank=True, default="")
+    price_agreed = models.BooleanField("Цена была согласована", default=True)
+    username = models.CharField("Кто зафиксировал", max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-version", "-id"]
+        verbose_name = "Версия договора ПО"
+        verbose_name_plural = "Версии договора ПО"
+        unique_together = [("contract", "version")]
+
+    def __str__(self) -> str:
+        return f"{self.contract_id} v{self.version}"
 
 
 class SoftwareDevComment(models.Model):

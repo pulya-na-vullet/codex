@@ -31,7 +31,7 @@
     <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">ПО создано за период</div><div class="fs-3 fw-bold">{{ stats.software_created_count }}</div></div></div></div>
     <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">ПО сумма созданных</div><div class="fs-3 fw-bold">{{ stats.software_created_sum|money }}</div></div></div></div>
     <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">ПО выполнено</div><div class="fs-3 fw-bold">{{ stats.software_done_count }}</div><div class="small-muted">{{ stats.software_done_sum|money }}</div></div></div></div>
-    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">ПО открытых сейчас</div><div class="fs-3 fw-bold">{{ stats.software_open_count }}</div><div class="small-muted">{{ stats.software_open_sum|money }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body"><div class="small-muted">ПО открытых сейчас</div><div class="fs-3 fw-bold">{{ stats.software_open_count }}</div><div class="small-muted">{{ stats.software_open_sum|money }}{% if stats.software_reagree_count %} · пересогласовать: {{ stats.software_reagree_count }}{% endif %}</div></div></div></div>
 </div>
 
 {% if period == 'week' %}
