@@ -33,6 +33,9 @@ def workshop_settings(request):
             pending_rating = None
     return {
         "COMPANY_NAME": getattr(settings, "COMPANY_NAME", "ИТ-М"),
+        "COMPANY_PHONE": getattr(settings, "COMPANY_PHONE", ""),
+        "COMPANY_ADDRESS": getattr(settings, "COMPANY_ADDRESS", ""),
+        "MASTER_SIGN": getattr(settings, "MASTER_SIGN", ""),
         "lan_urls": lan_urls,
         "workshop_user": request.session.get("workshop_username", ""),
         "workshop_role": request.session.get("workshop_role", ""),

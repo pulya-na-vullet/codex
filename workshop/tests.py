@@ -1422,3 +1422,128 @@ class DbBackupTests(TestCase):
             check = sqlite3.connect(latest)
             self.assertEqual(check.execute("SELECT COUNT(*) FROM t").fetchone()[0], 1)
             check.close()
+
+
+class SoftwareDevContractsTests(TestCase):
+    def setUp(self):
+        from workshop.models import StaffUser
+
+        StaffUser.ensure_bootstrap_admin()
+        self.http = HttpClient()
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        self.client_obj = Client.objects.create(name="Заказчик ПО", phone="+79995550101")
+
+    def test_amount_to_words(self):
+        from workshop.money_words import amount_to_words_rub
+
+        text = amount_to_words_rub(Decimal("12500.50"))
+        self.assertIn("рубл", text)
+        self.assertIn("50", text)
+        self.assertIn("тысяч", text)
+
+    def test_create_comment_print_pdf_and_stats(self):
+        from workshop.models import SoftwareDevContract, SoftwareDevStatus
+        from workshop.pdf import build_software_chatbot_contract_pdf
+
+        r = self.http.get("/software")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Заказная разработка ПО")
+
+        r = self.http.post(
+            "/software/new",
+            {
+                "client_id": str(self.client_obj.id),
+                "kind": "chatbot",
+                "product_name": "Бот консультант MAX",
+                "amount": "15000,00",
+                "payment_variant": "B",
+                "access_days": "7",
+                "customer_full_name": "Иванов Иван Иванович",
+                "tz_text": "Нужен бот с FAQ",
+                "github_url": "https://github.com/example/bot",
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        contract = SoftwareDevContract.objects.get()
+        self.assertTrue(contract.contract_number.startswith("DAZ-"))
+        self.assertEqual(contract.status, SoftwareDevStatus.DRAFT)
+        self.assertEqual(contract.amount, Decimal("15000.00"))
+        self.assertContains(r, contract.contract_number)
+        self.assertContains(r, "https://github.com/example/bot")
+
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {"action": "comment", "comment_text": "Согласовали ТЗ с клиентом"},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Согласовали ТЗ с клиентом")
+        self.assertEqual(contract.comments.count(), 1)
+
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {"action": "set_status", "status": "in_progress"},
+            follow=True,
+        )
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, SoftwareDevStatus.IN_PROGRESS)
+
+        r = self.http.post(f"/software/{contract.id}", {"action": "to_draft"}, follow=True)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, SoftwareDevStatus.DRAFT)
+        self.assertTrue(contract.comments.filter(text__icontains="Черновик").exists())
+
+        r = self.http.get(f"/software/{contract.id}/print")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "ДОГОВОР АВТОРСКОГО ЗАКАЗА")
+        self.assertContains(r, contract.contract_number)
+        self.assertContains(r, "Бот консультант MAX")
+
+        pdf = build_software_chatbot_contract_pdf(contract)
+        self.assertTrue(pdf.startswith(b"%PDF"))
+
+        r = self.http.get(f"/software/{contract.id}/pdf")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+
+        contract.apply_status(SoftwareDevStatus.DONE)
+        contract.save()
+        r = self.http.get("/statistics?period=week")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "ПО выполнено")
+        self.assertContains(r, "ПО открытых сейчас")
+
+        r = self.http.get("/")
+        self.assertContains(r, "Разработка ПО")
+
+    def test_manager_can_draft_but_not_delete(self):
+        from workshop.models import SoftwareDevContract, SoftwareDevKind, SoftwareDevStatus, StaffRole, StaffUser
+
+        mgr = StaffUser(
+            username="mgr_sw",
+            full_name="Менеджер",
+            role=StaffRole.MANAGER,
+            is_active=True,
+        )
+        mgr.set_password("pass")
+        mgr.save()
+        contract = SoftwareDevContract.objects.create(
+            contract_number="DAZ-009999",
+            client=self.client_obj,
+            kind=SoftwareDevKind.CHATBOT,
+            status=SoftwareDevStatus.IN_PROGRESS,
+            product_name="Тест",
+            amount=Decimal("1000"),
+            customer_full_name="Тест",
+        )
+        http = HttpClient()
+        http.post("/login", {"username": "mgr_sw", "password": "pass", "next": "/"})
+        r = http.post(f"/software/{contract.id}", {"action": "to_draft"}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, SoftwareDevStatus.DRAFT)
+
+        r = http.post(f"/software/{contract.id}/delete", follow=True)
+        self.assertTrue(SoftwareDevContract.objects.filter(pk=contract.id).exists())
+        self.assertContains(r, "Удаление доступно только администратору")

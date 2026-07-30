@@ -1,0 +1,114 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="mb-0">Новый договор на разработку ПО</h4>
+        <div class="small-muted">Номер присвоится автоматически (DAZ-…)</div>
+    </div>
+    <a class="btn btn-outline-light btn-sm" href="{% url 'software_list' %}">К списку</a>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="card"><div class="card-body vstack gap-3">
+    {% csrf_token %}
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label class="form-label">Клиент</label>
+            <select class="form-select" name="client_id" required>
+                <option value="">— выберите —</option>
+                {% for cl in clients %}
+                <option value="{{ cl.id }}">{{ cl.name }} · {{ cl.phone }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Вид разработки</label>
+            <select class="form-select" name="kind">
+                {% for value, label in kinds %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+            <div class="small-muted mt-1">У каждого вида — своя печатная форма</div>
+        </div>
+        <div class="col-md-8">
+            <label class="form-label">Название программного комплекса</label>
+            <textarea class="form-control" name="product_name" rows="2" placeholder="Например: чат-бот консультант в MAX"></textarea>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Стоимость, ₽</label>
+            <input class="form-control" name="amount" value="0" inputmode="decimal">
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Дата договора</label>
+            <input class="form-control" type="date" name="contract_date" value="">
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Вариант оплаты</label>
+            <select class="form-select" name="payment_variant">
+                {% for value, label in payment_variants %}
+                <option value="{{ value }}" {% if value == 'B' %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Срок доступа (дней)</label>
+            <input class="form-control" type="number" min="1" name="access_days" value="7">
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Аванс (вариант А)</label>
+            <input class="form-control" name="prepayment_amount" value="0" inputmode="decimal">
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Срок аванса</label>
+            <input class="form-control" type="date" name="prepayment_due">
+        </div>
+        <div class="col-12">
+            <label class="form-label">Заметки</label>
+            <textarea class="form-control" name="description" rows="2"></textarea>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">ТЗ текстом</label>
+            <textarea class="form-control" name="tz_text" rows="4"></textarea>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Файл ТЗ</label>
+            <input class="form-control" type="file" name="tz_file">
+            <label class="form-label mt-3">Фото к ТЗ</label>
+            <input class="form-control" type="file" name="photos" accept="image/*" multiple>
+            <label class="form-label mt-3">GitHub (результат)</label>
+            <input class="form-control" type="url" name="github_url" placeholder="https://github.com/...">
+        </div>
+        <div class="col-12"><hr class="border-secondary"></div>
+        <div class="col-md-6">
+            <label class="form-label">ФИО заказчика (в договор)</label>
+            <input class="form-control" name="customer_full_name">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Паспорт серия</label>
+            <input class="form-control" name="customer_passport_series">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Паспорт номер</label>
+            <input class="form-control" name="customer_passport_number">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Паспорт выдан</label>
+            <input class="form-control" name="customer_passport_issued">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Адрес регистрации</label>
+            <input class="form-control" name="customer_address">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Email</label>
+            <input class="form-control" type="email" name="customer_email">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">ИНН</label>
+            <input class="form-control" name="customer_inn">
+        </div>
+    </div>
+    <div>
+        <button class="btn btn-success" type="submit">Создать договор</button>
+    </div>
+</div></form>
+{% endblock %}

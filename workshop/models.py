@@ -1035,3 +1035,177 @@ class HubWebhookEvent(models.Model):
 
     class Meta:
         ordering = ["-id"]
+
+
+class SoftwareDevKind(models.TextChoices):
+    """Вид заказной разработки — у каждого своя печатная форма."""
+
+    CHATBOT = "chatbot", "Разработка чат-бота"
+
+
+class SoftwareDevStatus(models.TextChoices):
+    DRAFT = "draft", "Черновик"
+    IN_PROGRESS = "in_progress", "В работе"
+    READY = "ready", "Готово к сдаче"
+    DONE = "done", "Выполнен"
+    CANCELLED = "cancelled", "Отменён"
+
+
+class SoftwareDevPaymentVariant(models.TextChoices):
+    A = "A", "А: аванс + остаток после акта"
+    B = "B", "Б: оплата после акта"
+
+
+class SoftwareDevContract(models.Model):
+    """Договор авторского заказа на заказную разработку ПО."""
+
+    contract_number = models.CharField("Номер договора", max_length=32, unique=True)
+    kind = models.CharField(
+        "Вид разработки",
+        max_length=32,
+        choices=SoftwareDevKind.choices,
+        default=SoftwareDevKind.CHATBOT,
+        db_index=True,
+    )
+    client = models.ForeignKey(
+        Client,
+        on_delete=models.PROTECT,
+        related_name="software_contracts",
+        verbose_name="Клиент",
+    )
+    status = models.CharField(
+        "Статус",
+        max_length=32,
+        choices=SoftwareDevStatus.choices,
+        default=SoftwareDevStatus.DRAFT,
+        db_index=True,
+    )
+    product_name = models.TextField(
+        "Название программного комплекса",
+        blank=True,
+        default="",
+        help_text="Предмет договора (п. 1.1)",
+    )
+    description = models.TextField("Краткое описание / заметки", blank=True, default="")
+    amount = models.DecimalField("Стоимость работ", max_digits=12, decimal_places=2, default=Decimal("0"))
+    payment_variant = models.CharField(
+        "Вариант оплаты",
+        max_length=1,
+        choices=SoftwareDevPaymentVariant.choices,
+        default=SoftwareDevPaymentVariant.B,
+    )
+    prepayment_amount = models.DecimalField(
+        "Сумма аванса",
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+        help_text="Для варианта А",
+    )
+    prepayment_due = models.DateField("Срок аванса", null=True, blank=True)
+    access_days = models.PositiveSmallIntegerField(
+        "Срок доступа (дней)",
+        default=7,
+        help_text="П. 1.5 договора (для чат-бота обычно 7)",
+    )
+    contract_date = models.DateField("Дата договора", default=timezone.localdate)
+    github_url = models.URLField("Ссылка на репозиторий GitHub", blank=True, default="")
+    tz_file = models.FileField("ТЗ от клиента (файл)", upload_to="software/tz/%Y/%m/", blank=True)
+    tz_text = models.TextField("ТЗ текстом", blank=True, default="")
+
+    # Реквизиты заказчика для печатной формы
+    customer_full_name = models.CharField("ФИО заказчика", max_length=255, blank=True, default="")
+    customer_passport_series = models.CharField("Паспорт серия", max_length=16, blank=True, default="")
+    customer_passport_number = models.CharField("Паспорт номер", max_length=32, blank=True, default="")
+    customer_passport_issued = models.CharField("Паспорт выдан", max_length=255, blank=True, default="")
+    customer_address = models.CharField("Адрес регистрации", max_length=255, blank=True, default="")
+    customer_email = models.EmailField("Email заказчика", blank=True, default="")
+    customer_inn = models.CharField("ИНН заказчика", max_length=20, blank=True, default="")
+
+    created_by = models.ForeignKey(
+        StaffUser,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_software_contracts",
+        verbose_name="Создал",
+    )
+    updated_by = models.ForeignKey(
+        StaffUser,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="updated_software_contracts",
+        verbose_name="Изменил",
+    )
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    done_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "Договор заказной разработки"
+        verbose_name_plural = "Договоры заказной разработки"
+
+    def __str__(self) -> str:
+        return self.contract_number
+
+    @property
+    def is_open(self) -> bool:
+        return self.status in {
+            SoftwareDevStatus.DRAFT,
+            SoftwareDevStatus.IN_PROGRESS,
+            SoftwareDevStatus.READY,
+        }
+
+    def apply_status(self, new_status: str) -> None:
+        if new_status not in dict(SoftwareDevStatus.choices):
+            return
+        self.status = new_status
+        if new_status == SoftwareDevStatus.DONE and not self.done_at:
+            self.done_at = timezone.now()
+        if new_status != SoftwareDevStatus.DONE:
+            self.done_at = None
+
+    def customer_display_name(self) -> str:
+        return (self.customer_full_name or "").strip() or (self.client.name if self.client_id else "")
+
+
+class SoftwareDevComment(models.Model):
+    """История / комментарии по исполнению договора."""
+
+    contract = models.ForeignKey(
+        SoftwareDevContract,
+        on_delete=models.CASCADE,
+        related_name="comments",
+        verbose_name="Договор",
+    )
+    text = models.TextField("Комментарий")
+    username = models.CharField("Автор", max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        verbose_name = "Комментарий по разработке"
+        verbose_name_plural = "Комментарии по разработке"
+
+    def __str__(self) -> str:
+        return f"{self.contract_id}: {self.text[:40]}"
+
+
+class SoftwareDevPhoto(models.Model):
+    """Фотографии от клиента к ТЗ."""
+
+    contract = models.ForeignKey(
+        SoftwareDevContract,
+        on_delete=models.CASCADE,
+        related_name="photos",
+        verbose_name="Договор",
+    )
+    image = models.ImageField("Фото", upload_to="software/photos/%Y/%m/")
+    caption = models.CharField("Подпись", max_length=200, blank=True, default="")
+    uploaded_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Фото к ТЗ"
+        verbose_name_plural = "Фото к ТЗ"

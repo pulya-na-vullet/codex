@@ -1,0 +1,65 @@
+{% extends "workshop/base.html" %}
+{% load workshop_extras %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h4 class="mb-0">Заказная разработка ПО</h4>
+        <div class="small-muted">Договоры авторского заказа · открытых: {{ open_count }}</div>
+    </div>
+    <a class="btn btn-violet btn-sm" href="{% url 'software_create' %}">Новый договор</a>
+</div>
+
+<form method="get" class="mb-3 d-flex flex-wrap gap-2 align-items-end">
+    <div>
+        <label class="form-label small mb-1">Статус</label>
+        <select class="form-select form-select-sm" name="status" onchange="this.form.submit()">
+            <option value="">Все</option>
+            {% for value, label in statuses %}
+            <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label class="form-label small mb-1">Вид</label>
+        <select class="form-select form-select-sm" name="kind" onchange="this.form.submit()">
+            <option value="">Все</option>
+            {% for value, label in kinds %}
+            <option value="{{ value }}" {% if kind_filter == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</form>
+
+<div class="card"><div class="card-body p-0">
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+            <tr>
+                <th>Договор</th>
+                <th>Клиент</th>
+                <th>Вид</th>
+                <th>Статус</th>
+                <th>Дата</th>
+                <th class="text-end">Сумма</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for c in contracts %}
+                <tr>
+                    <td><a href="{% url 'software_detail' c.id %}">{{ c.contract_number }}</a></td>
+                    <td>{{ c.client.name }}</td>
+                    <td>{{ c.get_kind_display }}</td>
+                    <td>{{ c.get_status_display }}</td>
+                    <td>{{ c.contract_date|date:"d.m.Y" }}</td>
+                    <td class="text-end">{{ c.amount|money }}</td>
+                    <td class="text-end"><a class="btn btn-outline-light btn-sm" href="{% url 'software_detail' c.id %}">Открыть</a></td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="7" class="text-center text-secondary py-4">Договоров пока нет</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div></div>
+{% endblock %}

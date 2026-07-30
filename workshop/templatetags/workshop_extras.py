@@ -65,6 +65,18 @@ _NAV_SECTIONS: dict[str, frozenset[str]] = {
             "modeling_create",
             "modeling_detail",
             "modeling_delete",
+            "modeling_rate",
+            "modeling_rate_later",
+        }
+    ),
+    "software": frozenset(
+        {
+            "software_list",
+            "software_create",
+            "software_detail",
+            "software_delete",
+            "software_print",
+            "software_pdf",
         }
     ),
     "statistics": frozenset({"statistics"}),
