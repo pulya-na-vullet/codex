@@ -1035,3 +1035,320 @@ class HubWebhookEvent(models.Model):
 
     class Meta:
         ordering = ["-id"]
+
+
+class SoftwareDevKind(models.TextChoices):
+    """Вид заказной разработки — у каждого своя печатная форма."""
+
+    CHATBOT = "chatbot", "Разработка чат-бота"
+
+
+class SoftwareDevStatus(models.TextChoices):
+    DRAFT = "draft", "Черновик"
+    PENDING_SIGNATURE = "pending_signature", "На подписании у клиента"
+    IN_PROGRESS = "in_progress", "В работе"
+    READY = "ready", "Готово к сдаче"
+    DONE = "done", "Выполнен"
+    CANCELLED = "cancelled", "Отменён"
+
+
+class SoftwareDevPaymentVariant(models.TextChoices):
+    A = "A", "А: аванс + остаток после акта"
+    B = "B", "Б: оплата после акта"
+
+
+class SoftwareDevContract(models.Model):
+    """Договор авторского заказа на заказную разработку ПО."""
+
+    contract_number = models.CharField("Номер договора", max_length=32, unique=True)
+    kind = models.CharField(
+        "Вид разработки",
+        max_length=32,
+        choices=SoftwareDevKind.choices,
+        default=SoftwareDevKind.CHATBOT,
+        db_index=True,
+    )
+    client = models.ForeignKey(
+        Client,
+        on_delete=models.PROTECT,
+        related_name="software_contracts",
+        verbose_name="Клиент",
+    )
+    status = models.CharField(
+        "Статус",
+        max_length=32,
+        choices=SoftwareDevStatus.choices,
+        default=SoftwareDevStatus.DRAFT,
+        db_index=True,
+    )
+    version = models.PositiveIntegerField("Версия договора", default=1)
+    price_needs_reagree = models.BooleanField(
+        "Нужно пересогласовать цену",
+        default=False,
+        db_index=True,
+        help_text="Включается при новой версии ТЗ, пока менеджер не подтвердит новую сумму",
+    )
+    product_name = models.TextField(
+        "Название программного комплекса",
+        blank=True,
+        default="",
+        help_text="Предмет договора (п. 1.1)",
+    )
+    description = models.TextField("Краткое описание / заметки", blank=True, default="")
+    amount = models.DecimalField("Стоимость работ", max_digits=12, decimal_places=2, default=Decimal("0"))
+    payment_variant = models.CharField(
+        "Вариант оплаты",
+        max_length=1,
+        choices=SoftwareDevPaymentVariant.choices,
+        default=SoftwareDevPaymentVariant.B,
+    )
+    prepayment_amount = models.DecimalField(
+        "Сумма аванса",
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+        help_text="Для варианта А",
+    )
+    prepayment_due = models.DateField("Срок аванса", null=True, blank=True)
+    access_days = models.PositiveSmallIntegerField(
+        "Срок доступа (дней)",
+        default=7,
+        help_text="П. 1.5 договора (для чат-бота обычно 7)",
+    )
+    contract_date = models.DateField("Дата договора", default=timezone.localdate)
+    github_url = models.URLField("Ссылка на репозиторий GitHub", blank=True, default="")
+    tz_file = models.FileField("ТЗ от клиента (файл)", upload_to="software/tz/%Y/%m/", blank=True)
+    tz_text = models.TextField("ТЗ текстом", blank=True, default="")
+    signed_contract_file = models.FileField(
+        "Подписанный договор (скан)",
+        upload_to="software/signed/%Y/%m/",
+        blank=True,
+        null=True,
+        help_text="Распечатанный договор с подписью клиента",
+    )
+
+    # Оплата клиентом (как у заказ-нарядов)
+    payment_method = models.CharField(
+        "Способ оплаты",
+        max_length=20,
+        choices=PaymentMethod.choices,
+        default=PaymentMethod.UNPAID,
+    )
+    payment_at = models.DateTimeField("Дата оплаты", null=True, blank=True)
+    payment_receipt = models.FileField(
+        "Скриншот чека (перевод)",
+        upload_to="software/payment_receipts/%Y/%m/",
+        blank=True,
+        null=True,
+    )
+    payment_note = models.CharField("Комментарий к оплате", max_length=255, blank=True, default="")
+
+    # Чек в «Мой налог»
+    mytax_issued = models.BooleanField("Чек Мой налог выдан", default=False)
+    mytax_at = models.DateTimeField("Дата чека Мой налог", null=True, blank=True)
+    mytax_receipt = models.FileField(
+        "Скриншот чека Мой налог",
+        upload_to="software/mytax_receipts/%Y/%m/",
+        blank=True,
+        null=True,
+    )
+
+    # Реквизиты заказчика для печатной формы
+    customer_full_name = models.CharField("ФИО заказчика", max_length=255, blank=True, default="")
+    customer_passport_series = models.CharField("Паспорт серия", max_length=16, blank=True, default="")
+    customer_passport_number = models.CharField("Паспорт номер", max_length=32, blank=True, default="")
+    customer_passport_issued = models.CharField("Паспорт выдан", max_length=255, blank=True, default="")
+    customer_address = models.CharField("Адрес регистрации", max_length=255, blank=True, default="")
+    customer_email = models.EmailField("Email заказчика", blank=True, default="")
+    customer_inn = models.CharField("ИНН заказчика", max_length=20, blank=True, default="")
+
+    created_by = models.ForeignKey(
+        StaffUser,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_software_contracts",
+        verbose_name="Создал",
+    )
+    updated_by = models.ForeignKey(
+        StaffUser,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="updated_software_contracts",
+        verbose_name="Изменил",
+    )
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    done_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "Договор заказной разработки"
+        verbose_name_plural = "Договоры заказной разработки"
+
+    def __str__(self) -> str:
+        return self.contract_number
+
+    @property
+    def is_open(self) -> bool:
+        return self.status in {
+            SoftwareDevStatus.DRAFT,
+            SoftwareDevStatus.PENDING_SIGNATURE,
+            SoftwareDevStatus.IN_PROGRESS,
+            SoftwareDevStatus.READY,
+        }
+
+    @property
+    def is_paid(self) -> bool:
+        return self.payment_method in {PaymentMethod.CASH, PaymentMethod.TRANSFER}
+
+    @property
+    def is_in_progress(self) -> bool:
+        return self.status == SoftwareDevStatus.IN_PROGRESS
+
+    @property
+    def is_pending_signature(self) -> bool:
+        return self.status == SoftwareDevStatus.PENDING_SIGNATURE
+
+    @property
+    def is_debtor(self) -> bool:
+        """Не оплачен при ненулевой сумме и статусе «готово»/«выполнен»."""
+        if self.is_paid or (self.amount or 0) <= 0:
+            return False
+        if self.status in {
+            SoftwareDevStatus.CANCELLED,
+            SoftwareDevStatus.DRAFT,
+            SoftwareDevStatus.PENDING_SIGNATURE,
+        }:
+            return False
+        return self.status in {SoftwareDevStatus.READY, SoftwareDevStatus.DONE}
+
+    def apply_status(self, new_status: str) -> None:
+        if new_status not in dict(SoftwareDevStatus.choices):
+            return
+        self.status = new_status
+        if new_status == SoftwareDevStatus.DONE and not self.done_at:
+            self.done_at = timezone.now()
+        if new_status != SoftwareDevStatus.DONE:
+            self.done_at = None
+
+    def customer_display_name(self) -> str:
+        return (self.customer_full_name or "").strip() or (self.client.name if self.client_id else "")
+
+    def start_new_tz_version(
+        self,
+        *,
+        note: str = "",
+        username: str = "",
+        new_tz_text: str | None = None,
+        new_tz_file=None,
+        new_amount: Decimal | None = None,
+    ) -> "SoftwareDevVersion":
+        """
+        Зафиксировать текущую версию в истории и открыть новую.
+        Цена помечается как требующая пересогласования.
+        """
+        snap = SoftwareDevVersion.objects.create(
+            contract=self,
+            version=self.version,
+            product_name=self.product_name,
+            tz_text=self.tz_text,
+            amount=self.amount,
+            note=(note or "").strip() or f"Снимок версии {self.version} перед обновлением ТЗ",
+            username=username or "",
+            price_agreed=not self.price_needs_reagree,
+        )
+        if self.tz_file:
+            snap.tz_file = self.tz_file
+            snap.save(update_fields=["tz_file"])
+
+        self.version = int(self.version or 1) + 1
+        self.price_needs_reagree = True
+        if new_tz_text is not None:
+            self.tz_text = new_tz_text
+        if new_tz_file is not None:
+            self.tz_file = new_tz_file
+        if new_amount is not None:
+            self.amount = new_amount
+        # Новая редакция ТЗ обычно снова уходит на подпись / согласование.
+        if self.status not in {SoftwareDevStatus.DRAFT, SoftwareDevStatus.CANCELLED}:
+            self.status = SoftwareDevStatus.PENDING_SIGNATURE
+        self.save()
+        return snap
+
+    def confirm_price_reagree(self, *, amount: Decimal | None = None) -> None:
+        if amount is not None:
+            self.amount = amount
+        self.price_needs_reagree = False
+        self.save(update_fields=["amount", "price_needs_reagree", "updated_at"])
+
+
+class SoftwareDevVersion(models.Model):
+    """История версий договора / ТЗ (снимок перед обновлением)."""
+
+    contract = models.ForeignKey(
+        SoftwareDevContract,
+        on_delete=models.CASCADE,
+        related_name="versions",
+        verbose_name="Договор",
+    )
+    version = models.PositiveIntegerField("Версия")
+    product_name = models.TextField("Название ПО", blank=True, default="")
+    tz_text = models.TextField("ТЗ текстом", blank=True, default="")
+    tz_file = models.FileField("Файл ТЗ", upload_to="software/tz_versions/%Y/%m/", blank=True)
+    amount = models.DecimalField("Сумма на момент версии", max_digits=12, decimal_places=2, default=Decimal("0"))
+    note = models.TextField("Что изменилось", blank=True, default="")
+    price_agreed = models.BooleanField("Цена была согласована", default=True)
+    username = models.CharField("Кто зафиксировал", max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-version", "-id"]
+        verbose_name = "Версия договора ПО"
+        verbose_name_plural = "Версии договора ПО"
+        unique_together = [("contract", "version")]
+
+    def __str__(self) -> str:
+        return f"{self.contract_id} v{self.version}"
+
+
+class SoftwareDevComment(models.Model):
+    """История / комментарии по исполнению договора."""
+
+    contract = models.ForeignKey(
+        SoftwareDevContract,
+        on_delete=models.CASCADE,
+        related_name="comments",
+        verbose_name="Договор",
+    )
+    text = models.TextField("Комментарий")
+    username = models.CharField("Автор", max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        verbose_name = "Комментарий по разработке"
+        verbose_name_plural = "Комментарии по разработке"
+
+    def __str__(self) -> str:
+        return f"{self.contract_id}: {self.text[:40]}"
+
+
+class SoftwareDevPhoto(models.Model):
+    """Фотографии от клиента к ТЗ."""
+
+    contract = models.ForeignKey(
+        SoftwareDevContract,
+        on_delete=models.CASCADE,
+        related_name="photos",
+        verbose_name="Договор",
+    )
+    image = models.ImageField("Фото", upload_to="software/photos/%Y/%m/")
+    caption = models.CharField("Подпись", max_length=200, blank=True, default="")
+    uploaded_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Фото к ТЗ"
+        verbose_name_plural = "Фото к ТЗ"

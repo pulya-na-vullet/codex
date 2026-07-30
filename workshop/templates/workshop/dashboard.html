@@ -58,5 +58,16 @@
             </div>
         </a>
     </div>
+    <div class="col-md-4">
+        <a href="{% url 'software_list' %}" class="text-decoration-none">
+            <div class="card h-100 {% if software_open %}border-primary{% endif %}">
+                <div class="card-body text-center py-4">
+                    <div class="display-5 fw-bold {% if software_open %}text-primary{% else %}text-secondary{% endif %}">{{ software_open }}</div>
+                    <div class="mt-2">Разработка ПО</div>
+                    <div class="small-muted">открытых договоров · в работе: {{ software_in_progress }}{% if software_pending_signature %} · на подписи: {{ software_pending_signature }}{% endif %}</div>
+                </div>
+            </div>
+        </a>
+    </div>
 </div>
 {% endblock %}

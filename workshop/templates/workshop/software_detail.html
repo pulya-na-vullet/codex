@@ -1,0 +1,354 @@
+{% extends "workshop/base.html" %}
+{% load workshop_extras %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+        <h4 class="mb-0">{{ contract.contract_number }} <span class="small text-secondary">v{{ contract.version }}</span></h4>
+        <div class="small-muted">
+            {{ contract.get_kind_display }}
+            · клиент <a href="{% url 'client_detail' contract.client_id %}">{{ contract.client.name }}</a>
+        </div>
+        <div class="d-flex flex-wrap gap-1 mt-2">
+            <span class="badge {% if contract.status == 'in_progress' %}text-bg-purple{% elif contract.status == 'pending_signature' or contract.status == 'ready' %}text-bg-warning{% elif contract.status == 'done' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ contract.get_status_display }}</span>
+            {% if contract.price_needs_reagree %}
+                <span class="badge text-bg-warning">пересогласовать цену</span>
+            {% endif %}
+            {% if contract.is_paid %}
+                <span class="badge text-bg-success">Оплачен: {{ contract.get_payment_method_display }}{% if contract.payment_at %} ({{ contract.payment_at|date:"d.m.Y H:i" }}){% endif %}</span>
+            {% elif contract.is_debtor %}
+                <span class="badge text-bg-danger">Долг</span>
+            {% else %}
+                <span class="badge text-bg-secondary">Не оплачен</span>
+            {% endif %}
+            {% if contract.mytax_issued %}
+                <span class="badge text-bg-primary">Мой налог{% if contract.mytax_at %} {{ contract.mytax_at|date:"d.m.Y H:i" }}{% endif %}</span>
+            {% endif %}
+            {% if contract.signed_contract_file %}
+                <a class="badge text-bg-success text-decoration-none" href="{{ contract.signed_contract_file.url }}" target="_blank">Подписанный скан</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-light btn-sm" href="{% url 'software_list' %}">К списку</a>
+        <a class="btn btn-outline-light btn-sm" href="{% url 'software_print' contract.id %}" target="_blank">Печать</a>
+        <a class="btn btn-outline-light btn-sm" href="{% url 'software_pdf' contract.id %}" target="_blank">PDF</a>
+        {% if contract.status != 'draft' %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="to_draft">
+            <button class="btn btn-outline-warning btn-sm" type="submit">В черновик</button>
+        </form>
+        {% endif %}
+        {% if can_workshop_delete %}
+        <form method="post" action="{% url 'software_delete' contract.id %}" onsubmit="return confirm('Удалить договор?');">
+            {% csrf_token %}
+            <button class="btn btn-outline-danger btn-sm" type="submit">Удалить</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card mb-3"><div class="card-body">
+            <form method="post" enctype="multipart/form-data" class="vstack gap-3">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="save">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Вид разработки</label>
+                        <select class="form-select" name="kind">
+                            {% for value, label in kinds %}
+                            <option value="{{ value }}" {% if contract.kind == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Дата договора</label>
+                        <input class="form-control" type="date" name="contract_date" value="{{ contract.contract_date|date:'Y-m-d' }}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Название программного комплекса</label>
+                        <textarea class="form-control" name="product_name" rows="2">{{ contract.product_name }}</textarea>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Стоимость, ₽</label>
+                        <input class="form-control" name="amount" value="{{ contract.amount }}" inputmode="decimal">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Вариант оплаты</label>
+                        <select class="form-select" name="payment_variant">
+                            {% for value, label in payment_variants %}
+                            <option value="{{ value }}" {% if contract.payment_variant == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Срок доступа (дней)</label>
+                        <input class="form-control" type="number" min="1" name="access_days" value="{{ contract.access_days }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Аванс</label>
+                        <input class="form-control" name="prepayment_amount" value="{{ contract.prepayment_amount }}" inputmode="decimal">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Срок аванса</label>
+                        <input class="form-control" type="date" name="prepayment_due" value="{% if contract.prepayment_due %}{{ contract.prepayment_due|date:'Y-m-d' }}{% endif %}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">GitHub</label>
+                        <input class="form-control" type="url" name="github_url" value="{{ contract.github_url }}" placeholder="https://github.com/...">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Заметки</label>
+                        <textarea class="form-control" name="description" rows="2">{{ contract.description }}</textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">ТЗ текстом</label>
+                        <textarea class="form-control" name="tz_text" rows="5">{{ contract.tz_text }}</textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Файл ТЗ{% if contract.tz_file %} · <a href="{{ contract.tz_file.url }}" target="_blank">скачать</a>{% endif %}</label>
+                        <input class="form-control" type="file" name="tz_file">
+                        <label class="form-label mt-3">Добавить фото к ТЗ</label>
+                        <input class="form-control" type="file" name="photos" accept="image/*" multiple>
+                        <label class="form-label mt-3">Подписанный договор (скан){% if contract.signed_contract_file %} · <a href="{{ contract.signed_contract_file.url }}" target="_blank">открыть</a>{% endif %}</label>
+                        <input class="form-control" type="file" name="signed_contract_file" accept="image/*,.pdf">
+                        <div class="small-muted mt-1">Распечатанный договор с подписью клиента</div>
+                    </div>
+                    <div class="col-12"><h6 class="mb-0">Реквизиты заказчика</h6></div>
+                    <div class="col-md-6">
+                        <label class="form-label">ФИО</label>
+                        <input class="form-control" name="customer_full_name" value="{{ contract.customer_full_name }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Паспорт серия</label>
+                        <input class="form-control" name="customer_passport_series" value="{{ contract.customer_passport_series }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Паспорт номер</label>
+                        <input class="form-control" name="customer_passport_number" value="{{ contract.customer_passport_number }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Выдан</label>
+                        <input class="form-control" name="customer_passport_issued" value="{{ contract.customer_passport_issued }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Адрес</label>
+                        <input class="form-control" name="customer_address" value="{{ contract.customer_address }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Email</label>
+                        <input class="form-control" type="email" name="customer_email" value="{{ contract.customer_email }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">ИНН</label>
+                        <input class="form-control" name="customer_inn" value="{{ contract.customer_inn }}">
+                    </div>
+                </div>
+                <button class="btn btn-success align-self-start" type="submit">Сохранить</button>
+            </form>
+        </div></div>
+
+        {% if photos %}
+        <div class="card mb-3"><div class="card-body">
+            <h6>Фото к ТЗ</h6>
+            <div class="d-flex flex-wrap gap-2">
+                {% for p in photos %}
+                <div class="text-center">
+                    <a href="{{ p.image.url }}" target="_blank"><img src="{{ p.image.url }}" alt="" style="height:88px;object-fit:cover;border-radius:4px;border:1px solid #333"></a>
+                    {% if can_workshop_delete %}
+                    <form method="post" class="mt-1">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="delete_photo">
+                        <input type="hidden" name="photo_id" value="{{ p.id }}">
+                        <button class="btn btn-outline-danger btn-sm py-0" type="submit">×</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div></div>
+        {% endif %}
+
+        {% if contract.price_needs_reagree %}
+        <div class="alert alert-warning">
+            <strong>Новая версия ТЗ (v{{ contract.version }})</strong> — цену нужно пересогласовать с заказчиком.
+        </div>
+        {% endif %}
+
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="mb-2">Версии договора / ТЗ</h6>
+            <p class="small-muted mb-3">Если заказчик прислал доработку ТЗ — зафиксируйте новую версию. Старая сохранится в истории, цена снова потребует согласования, статус станет «На подписании у клиента».</p>
+            <form method="post" enctype="multipart/form-data" class="vstack gap-2 mb-3">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="new_version">
+                <div>
+                    <label class="form-label">Что изменилось / комментарий к версии</label>
+                    <textarea class="form-control" name="version_note" rows="2" placeholder="Например: добавили оплату и админку"></textarea>
+                </div>
+                <div>
+                    <label class="form-label">Новый текст ТЗ (необязательно — можно обновить отдельно)</label>
+                    <textarea class="form-control" name="version_tz_text" rows="3" placeholder="Оставьте пустым, чтобы сохранить текущий текст ТЗ"></textarea>
+                </div>
+                <div>
+                    <label class="form-label">Новый файл ТЗ</label>
+                    <input class="form-control" type="file" name="version_tz_file">
+                </div>
+                <div>
+                    <label class="form-label">Предлагаемая сумма (необязательно)</label>
+                    <input class="form-control" name="proposed_amount" inputmode="decimal" placeholder="{{ contract.amount }}">
+                </div>
+                <button class="btn btn-warning btn-sm align-self-start" type="submit">Новая версия ТЗ (v{{ contract.version|add:1 }})</button>
+            </form>
+            {% if contract.price_needs_reagree %}
+            <form method="post" class="border-top pt-3 vstack gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="agree_price">
+                <label class="form-label mb-0">Пересогласованная цена, ₽</label>
+                <div class="d-flex gap-2">
+                    <input class="form-control" name="amount" value="{{ contract.amount }}" inputmode="decimal" required>
+                    <button class="btn btn-success btn-sm text-nowrap" type="submit">Цена согласована</button>
+                </div>
+            </form>
+            {% endif %}
+            {% if versions %}
+            <div class="mt-3">
+                <div class="small-muted mb-2">Предыдущие версии</div>
+                <div class="vstack gap-2">
+                {% for v in versions %}
+                    <div class="border rounded p-2 small">
+                        <div class="d-flex justify-content-between gap-2">
+                            <strong>v{{ v.version }}</strong>
+                            <span class="small-muted">{{ v.created_at|date:"d.m.Y H:i" }} · {{ v.username|default:"—" }}</span>
+                        </div>
+                        <div>Сумма на тот момент: {{ v.amount|money }} {% if v.price_agreed %}· согласована{% else %}· без согласования{% endif %}</div>
+                        {% if v.note %}<div class="mt-1" style="white-space:pre-wrap">{{ v.note }}</div>{% endif %}
+                        {% if v.tz_file %}<div class="mt-1"><a href="{{ v.tz_file.url }}" target="_blank">файл ТЗ v{{ v.version }}</a></div>{% endif %}
+                    </div>
+                {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div></div>
+
+        <div class="card"><div class="card-body">
+            <h6 class="mb-3">История исполнения</h6>
+            <div class="vstack gap-2 mb-3" style="max-height:420px;overflow:auto">
+                {% for c in comments %}
+                <div class="border-start border-2 ps-3 py-1">
+                    <div class="small-muted">{{ c.created_at|date:"d.m.Y H:i" }} · {{ c.username|default:"—" }}</div>
+                    <div style="white-space:pre-wrap">{{ c.text }}</div>
+                </div>
+                {% empty %}
+                <div class="text-secondary small">Пока нет комментариев — фиксируйте шаги процесса здесь</div>
+                {% endfor %}
+            </div>
+            <form method="post" class="d-flex gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="comment">
+                <textarea class="form-control" name="comment_text" rows="2" placeholder="Что сделали / что сказал клиент…" required></textarea>
+                <button class="btn btn-outline-light align-self-end" type="submit">Добавить</button>
+            </form>
+        </div></div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card mb-3"><div class="card-body">
+            <h6>Статус</h6>
+            <form method="post" class="vstack gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="set_status">
+                <select class="form-select" name="status">
+                    {% for value, label in statuses %}
+                    <option value="{{ value }}" {% if contract.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-outline-light btn-sm" type="submit">Сменить статус</button>
+            </form>
+            {% if contract.status != 'draft' %}
+            <form method="post" class="mt-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="to_draft">
+                <button class="btn btn-outline-warning btn-sm w-100" type="submit">Перевести в черновик</button>
+            </form>
+            {% endif %}
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h6>Итог</h6>
+            <div class="d-flex justify-content-between"><span>Сумма</span><strong>{{ contract.amount|money }}</strong></div>
+            <div class="d-flex justify-content-between"><span>Условия оплаты</span><span class="small">{{ contract.get_payment_variant_display }}</span></div>
+            {% if contract.github_url %}
+            <div class="mt-2"><a href="{{ contract.github_url }}" target="_blank" rel="noopener">Репозиторий GitHub</a></div>
+            {% else %}
+            <div class="small-muted mt-2">GitHub ещё не прикреплён</div>
+            {% endif %}
+            {% if contract.tz_file %}
+            <div class="mt-1"><a href="{{ contract.tz_file.url }}" target="_blank">Файл ТЗ</a></div>
+            {% endif %}
+            {% if contract.signed_contract_file %}
+            <div class="mt-1"><a href="{{ contract.signed_contract_file.url }}" target="_blank">Подписанный договор</a></div>
+            {% endif %}
+            {% if contract.done_at %}
+            <div class="small-muted mt-2">Закрыт: {{ contract.done_at|date:"d.m.Y H:i" }}</div>
+            {% endif %}
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="mb-3">Оплата</h6>
+            <form method="post" action="{% url 'software_set_payment' contract.id %}" enctype="multipart/form-data" class="vstack gap-2">
+                {% csrf_token %}
+                <div>
+                    <label class="form-label">Факт оплаты</label>
+                    <select class="form-select" name="payment_method">
+                        {% for value, label in payment_methods %}
+                        <option value="{{ value }}" {% if contract.payment_method == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Скриншот чека (для перевода)</label>
+                    <input class="form-control" type="file" name="payment_receipt" accept="image/*,.pdf">
+                    {% if contract.payment_receipt %}
+                    <div class="small-muted mt-1">Текущий файл: <a href="{{ contract.payment_receipt.url }}" target="_blank">открыть</a></div>
+                    {% endif %}
+                </div>
+                <div>
+                    <label class="form-label">Комментарий</label>
+                    <input class="form-control" name="payment_note" value="{{ contract.payment_note }}">
+                </div>
+                {% if contract.payment_at %}
+                <div class="small-muted">Дата фиксации оплаты: {{ contract.payment_at|date:"d.m.Y H:i" }}</div>
+                {% endif %}
+                <button class="btn btn-success btn-sm" type="submit">Сохранить оплату</button>
+            </form>
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="mb-3">Чек «Мой налог»</h6>
+            <form method="post" action="{% url 'software_set_mytax' contract.id %}" enctype="multipart/form-data" class="vstack gap-2">
+                {% csrf_token %}
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="mytax_issued" value="1" id="sw-mytax-issued"
+                           {% if contract.mytax_issued %}checked{% endif %}>
+                    <label class="form-check-label" for="sw-mytax-issued">Чек через приложение «Мой налог» выдан</label>
+                </div>
+                <div>
+                    <label class="form-label">Скриншот чека (необязательно)</label>
+                    <input class="form-control" type="file" name="mytax_receipt" accept="image/*,.pdf">
+                    {% if contract.mytax_receipt %}
+                    <div class="small-muted mt-1">Текущий файл: <a href="{{ contract.mytax_receipt.url }}" target="_blank">открыть</a></div>
+                    {% endif %}
+                </div>
+                {% if contract.mytax_at %}
+                <div class="small-muted">Дата фиксации: {{ contract.mytax_at|date:"d.m.Y H:i" }}</div>
+                {% endif %}
+                <button class="btn btn-primary btn-sm" type="submit">Сохранить статус «Мой налог»</button>
+            </form>
+        </div></div>
+        <div class="card"><div class="card-body small-muted">
+            Создал: {{ contract.created_by|default:"—" }}<br>
+            Изменил: {{ contract.updated_by|default:"—" }}<br>
+            Создан: {{ contract.created_at|date:"d.m.Y H:i" }}
+        </div></div>
+    </div>
+</div>
+{% endblock %}

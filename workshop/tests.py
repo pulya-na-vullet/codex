@@ -1422,3 +1422,254 @@ class DbBackupTests(TestCase):
             check = sqlite3.connect(latest)
             self.assertEqual(check.execute("SELECT COUNT(*) FROM t").fetchone()[0], 1)
             check.close()
+
+
+class SoftwareDevContractsTests(TestCase):
+    def setUp(self):
+        from workshop.models import StaffUser
+
+        StaffUser.ensure_bootstrap_admin()
+        self.http = HttpClient()
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        self.client_obj = Client.objects.create(name="Заказчик ПО", phone="+79995550101")
+
+    def test_amount_to_words(self):
+        from workshop.money_words import amount_to_words_rub
+
+        text = amount_to_words_rub(Decimal("12500.50"))
+        self.assertIn("рубл", text)
+        self.assertIn("50", text)
+        self.assertIn("тысяч", text)
+
+    def test_create_comment_print_pdf_and_stats(self):
+        from workshop.models import SoftwareDevContract, SoftwareDevStatus
+        from workshop.pdf import build_software_chatbot_contract_pdf
+
+        r = self.http.get("/software")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Заказная разработка ПО")
+
+        r = self.http.post(
+            "/software/new",
+            {
+                "client_id": str(self.client_obj.id),
+                "kind": "chatbot",
+                "product_name": "Бот консультант MAX",
+                "amount": "15000,00",
+                "payment_variant": "B",
+                "access_days": "7",
+                "customer_full_name": "Иванов Иван Иванович",
+                "tz_text": "Нужен бот с FAQ",
+                "github_url": "https://github.com/example/bot",
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        contract = SoftwareDevContract.objects.get()
+        self.assertTrue(contract.contract_number.startswith("DAZ-"))
+        self.assertEqual(contract.status, SoftwareDevStatus.DRAFT)
+        self.assertEqual(contract.amount, Decimal("15000.00"))
+        self.assertContains(r, contract.contract_number)
+        self.assertContains(r, "https://github.com/example/bot")
+
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {"action": "comment", "comment_text": "Согласовали ТЗ с клиентом"},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Согласовали ТЗ с клиентом")
+        self.assertEqual(contract.comments.count(), 1)
+
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {"action": "set_status", "status": "in_progress"},
+            follow=True,
+        )
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, SoftwareDevStatus.IN_PROGRESS)
+
+        r = self.http.post(f"/software/{contract.id}", {"action": "to_draft"}, follow=True)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, SoftwareDevStatus.DRAFT)
+        self.assertTrue(contract.comments.filter(text__icontains="Черновик").exists())
+
+        r = self.http.get(f"/software/{contract.id}/print")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "ДОГОВОР АВТОРСКОГО ЗАКАЗА")
+        self.assertContains(r, contract.contract_number)
+        self.assertContains(r, "Бот консультант MAX")
+
+        pdf = build_software_chatbot_contract_pdf(contract)
+        self.assertTrue(pdf.startswith(b"%PDF"))
+
+        r = self.http.get(f"/software/{contract.id}/pdf")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+
+        contract.apply_status(SoftwareDevStatus.DONE)
+        contract.save()
+        r = self.http.get("/statistics?period=week")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "ПО выполнено")
+        self.assertContains(r, "ПО открытых сейчас")
+
+        r = self.http.get("/")
+        self.assertContains(r, "Разработка ПО")
+
+    def test_manager_can_draft_but_not_delete(self):
+        from workshop.models import SoftwareDevContract, SoftwareDevKind, SoftwareDevStatus, StaffRole, StaffUser
+
+        mgr = StaffUser(
+            username="mgr_sw",
+            full_name="Менеджер",
+            role=StaffRole.MANAGER,
+            is_active=True,
+        )
+        mgr.set_password("pass")
+        mgr.save()
+        contract = SoftwareDevContract.objects.create(
+            contract_number="DAZ-009999",
+            client=self.client_obj,
+            kind=SoftwareDevKind.CHATBOT,
+            status=SoftwareDevStatus.IN_PROGRESS,
+            product_name="Тест",
+            amount=Decimal("1000"),
+            customer_full_name="Тест",
+        )
+        http = HttpClient()
+        http.post("/login", {"username": "mgr_sw", "password": "pass", "next": "/"})
+        r = http.post(f"/software/{contract.id}", {"action": "to_draft"}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, SoftwareDevStatus.DRAFT)
+
+        r = http.post(f"/software/{contract.id}/delete", follow=True)
+        self.assertTrue(SoftwareDevContract.objects.filter(pk=contract.id).exists())
+        self.assertContains(r, "Удаление доступно только администратору")
+
+    def test_payment_mytax_signed_and_list_badges(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from workshop.models import PaymentMethod, SoftwareDevContract, SoftwareDevKind, SoftwareDevStatus
+
+        contract = SoftwareDevContract.objects.create(
+            contract_number="DAZ-000777",
+            client=self.client_obj,
+            kind=SoftwareDevKind.CHATBOT,
+            status=SoftwareDevStatus.IN_PROGRESS,
+            product_name="Бот",
+            amount=Decimal("5000"),
+            customer_full_name="Клиент",
+        )
+        signed = SimpleUploadedFile("signed.pdf", b"%PDF-1.4 signed", content_type="application/pdf")
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {"action": "save", "product_name": "Бот", "amount": "5000", "signed_contract_file": signed},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        contract.refresh_from_db()
+        self.assertTrue(bool(contract.signed_contract_file))
+
+        r = self.http.post(
+            f"/software/{contract.id}/payment",
+            {"payment_method": "cash", "payment_note": "оплатил наличными"},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        contract.refresh_from_db()
+        self.assertEqual(contract.payment_method, PaymentMethod.CASH)
+        self.assertTrue(contract.is_paid)
+        self.assertIsNotNone(contract.payment_at)
+
+        r = self.http.post(
+            f"/software/{contract.id}/mytax",
+            {"mytax_issued": "1"},
+            follow=True,
+        )
+        contract.refresh_from_db()
+        self.assertTrue(contract.mytax_issued)
+
+        r = self.http.get("/software")
+        self.assertContains(r, "В работе")
+        self.assertContains(r, "Наличные")
+        self.assertContains(r, "Чек выдан")
+        self.assertContains(r, "Скан")
+        # Как у заказ-нарядов: «в работе» важнее подсветки оплаты
+        self.assertContains(r, "order-row-in-progress")
+
+        contract.apply_status(SoftwareDevStatus.DONE)
+        contract.save()
+        r = self.http.get("/software")
+        self.assertContains(r, "Выполнен")
+        self.assertContains(r, "order-row-complete")
+
+        contract.payment_method = PaymentMethod.UNPAID
+        contract.payment_at = None
+        contract.mytax_issued = False
+        contract.save()
+        self.assertTrue(contract.is_debtor)
+        r = self.http.get("/software")
+        self.assertContains(r, "Долг")
+        self.assertContains(r, "order-row-unpaid")
+
+    def test_pending_signature_and_tz_version_reagree(self):
+        from workshop.models import SoftwareDevContract, SoftwareDevKind, SoftwareDevStatus
+
+        contract = SoftwareDevContract.objects.create(
+            contract_number="DAZ-000888",
+            client=self.client_obj,
+            kind=SoftwareDevKind.CHATBOT,
+            status=SoftwareDevStatus.DRAFT,
+            product_name="Бот v1",
+            amount=Decimal("10000"),
+            tz_text="ТЗ первая редакция",
+            customer_full_name="Клиент",
+        )
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {"action": "set_status", "status": "pending_signature"},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, SoftwareDevStatus.PENDING_SIGNATURE)
+
+        r = self.http.get("/software")
+        self.assertContains(r, "На подписании у клиента")
+
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {
+                "action": "new_version",
+                "version_note": "Клиент попросил оплату",
+                "version_tz_text": "ТЗ вторая редакция с оплатой",
+                "proposed_amount": "14000",
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        contract.refresh_from_db()
+        self.assertEqual(contract.version, 2)
+        self.assertTrue(contract.price_needs_reagree)
+        self.assertEqual(contract.status, SoftwareDevStatus.PENDING_SIGNATURE)
+        self.assertEqual(contract.tz_text, "ТЗ вторая редакция с оплатой")
+        self.assertEqual(contract.amount, Decimal("14000"))
+        self.assertEqual(contract.versions.count(), 1)
+        snap = contract.versions.get()
+        self.assertEqual(snap.version, 1)
+        self.assertEqual(snap.tz_text, "ТЗ первая редакция")
+        self.assertEqual(snap.amount, Decimal("10000"))
+        self.assertContains(r, "пересогласовать цену")
+        self.assertContains(r, "v2")
+
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {"action": "agree_price", "amount": "13500"},
+            follow=True,
+        )
+        contract.refresh_from_db()
+        self.assertFalse(contract.price_needs_reagree)
+        self.assertEqual(contract.amount, Decimal("13500"))
+        self.assertContains(r, "Новая цена зафиксирована")

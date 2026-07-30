@@ -66,7 +66,13 @@ def logout_view(request: HttpRequest):
 
 
 def dashboard(request: HttpRequest):
-    from workshop.models import AcceptanceActStatus, ModelingBrief, ModelingBriefStatus
+    from workshop.models import (
+        AcceptanceActStatus,
+        ModelingBrief,
+        ModelingBriefStatus,
+        SoftwareDevContract,
+        SoftwareDevStatus,
+    )
 
     orders_in_work = Order.objects.filter(status=OrderStatus.ACTIVE).count()
     diagnostics_in_work = AcceptanceAct.objects.filter(status=AcceptanceActStatus.DIAGNOSTICS).count()
@@ -89,6 +95,20 @@ def dashboard(request: HttpRequest):
         status=ModelingBriefStatus.NEEDS_CLARIFICATION
     ).count()
     modeling_open = modeling_unassigned + modeling_with_designer + modeling_clarification
+    software_open = SoftwareDevContract.objects.filter(
+        status__in=[
+            SoftwareDevStatus.DRAFT,
+            SoftwareDevStatus.PENDING_SIGNATURE,
+            SoftwareDevStatus.IN_PROGRESS,
+            SoftwareDevStatus.READY,
+        ]
+    ).count()
+    software_in_progress = SoftwareDevContract.objects.filter(
+        status=SoftwareDevStatus.IN_PROGRESS
+    ).count()
+    software_pending_signature = SoftwareDevContract.objects.filter(
+        status=SoftwareDevStatus.PENDING_SIGNATURE
+    ).count()
     return render(
         request,
         "workshop/dashboard.html",
@@ -100,6 +120,9 @@ def dashboard(request: HttpRequest):
             "modeling_with_designer": modeling_with_designer,
             "modeling_clarification": modeling_clarification,
             "modeling_open": modeling_open,
+            "software_open": software_open,
+            "software_in_progress": software_in_progress,
+            "software_pending_signature": software_pending_signature,
         },
     )
 
@@ -131,7 +154,7 @@ def statistics(request: HttpRequest):
     acts = list(
         AcceptanceAct.objects.select_related("client").filter(created_at__gte=start, created_at__lte=end).order_by("-id")
     )
-    from workshop.models import ModelingBrief, ModelingBriefStatus
+    from workshop.models import ModelingBrief, ModelingBriefStatus, SoftwareDevContract, SoftwareDevStatus
 
     total_sum = sum((o.total_sum for o in orders), Decimal("0"))
     total_orders = len(orders)
@@ -156,6 +179,44 @@ def statistics(request: HttpRequest):
     modeling_site_share = sum((b.site_share_amount for b in done_briefs), Decimal("0"))
     modeling_designer_share = sum((b.designer_share_amount for b in done_briefs), Decimal("0"))
     modeling_done_count = len(done_briefs)
+
+    software_period = list(
+        SoftwareDevContract.objects.filter(created_at__gte=start, created_at__lte=end)
+    )
+    software_done = list(
+        SoftwareDevContract.objects.filter(
+            status=SoftwareDevStatus.DONE,
+            done_at__gte=start,
+            done_at__lte=end,
+        )
+    )
+    software_created_count = len(software_period)
+    software_created_sum = sum((c.amount for c in software_period), Decimal("0"))
+    software_done_count = len(software_done)
+    software_done_sum = sum((c.amount for c in software_done), Decimal("0"))
+    software_open_count = SoftwareDevContract.objects.filter(
+        status__in=[
+            SoftwareDevStatus.DRAFT,
+            SoftwareDevStatus.PENDING_SIGNATURE,
+            SoftwareDevStatus.IN_PROGRESS,
+            SoftwareDevStatus.READY,
+        ]
+    ).count()
+    software_open_sum = sum(
+        (
+            c.amount
+            for c in SoftwareDevContract.objects.filter(
+                status__in=[
+                    SoftwareDevStatus.DRAFT,
+                    SoftwareDevStatus.PENDING_SIGNATURE,
+                    SoftwareDevStatus.IN_PROGRESS,
+                    SoftwareDevStatus.READY,
+                ]
+            )
+        ),
+        Decimal("0"),
+    )
+    software_reagree_count = SoftwareDevContract.objects.filter(price_needs_reagree=True).count()
 
     # Unique contacted clients (orders + acceptance acts)
     visitors_map: dict[int, dict] = {}
@@ -293,6 +354,13 @@ def statistics(request: HttpRequest):
                 "modeling_agreed_sum": modeling_agreed_sum,
                 "modeling_site_share": modeling_site_share,
                 "modeling_designer_share": modeling_designer_share,
+                "software_created_count": software_created_count,
+                "software_created_sum": software_created_sum,
+                "software_done_count": software_done_count,
+                "software_done_sum": software_done_sum,
+                "software_open_count": software_open_count,
+                "software_open_sum": software_open_sum,
+                "software_reagree_count": software_reagree_count,
             },
             "orders": orders,
             "visitors": visitors,
@@ -546,10 +614,10 @@ def client_detail(request: HttpRequest, client_id: int):
 @require_delete_permission
 def client_delete(request: HttpRequest, client_id: int):
     client = get_object_or_404(Client, pk=client_id)
-    if client.orders.exists() or client.acceptance_acts.exists() or client.modeling_briefs.exists():
+    if client.orders.exists() or client.acceptance_acts.exists() or client.modeling_briefs.exists() or client.software_contracts.exists():
         messages.warning(
             request,
-            "Нельзя удалить клиента: есть связанные заказ-наряды, акты или 3D-заявки. Сначала удалите их.",
+            "Нельзя удалить клиента: есть связанные заказ-наряды, акты, 3D-заявки или договоры на разработку. Сначала удалите их.",
         )
         return redirect("client_detail", client_id=client_id)
     details = f"{client.name} {client.phone}"
@@ -2177,3 +2245,468 @@ def modeling_delete(request: HttpRequest, brief_id: int):
     log_action(request, "modeling_delete", entity_type="modeling", entity_id=brief_id, details=details)
     messages.success(request, "3D-заявка удалена")
     return redirect("modeling_list")
+
+
+def _parse_decimal_field(raw: str, default: Decimal = Decimal("0")) -> Decimal:
+    try:
+        return Decimal((raw or str(default)).replace(",", "."))
+    except (InvalidOperation, ValueError):
+        return default
+
+
+def _parse_date_field(raw: str):
+    from datetime import datetime
+
+    text = (raw or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _fill_software_contract_from_post(contract, post, files) -> None:
+    from workshop.models import SoftwareDevKind, SoftwareDevPaymentVariant
+
+    kind = (post.get("kind") or contract.kind or SoftwareDevKind.CHATBOT).strip()
+    if kind in dict(SoftwareDevKind.choices):
+        contract.kind = kind
+    contract.product_name = post.get("product_name", contract.product_name).strip()
+    contract.description = post.get("description", contract.description).strip()
+    contract.amount = _parse_decimal_field(post.get("amount", str(contract.amount)), contract.amount)
+    variant = (post.get("payment_variant") or contract.payment_variant or "B").strip()
+    if variant in dict(SoftwareDevPaymentVariant.choices):
+        contract.payment_variant = variant
+    contract.prepayment_amount = _parse_decimal_field(
+        post.get("prepayment_amount", str(contract.prepayment_amount)),
+        contract.prepayment_amount,
+    )
+    due = _parse_date_field(post.get("prepayment_due", ""))
+    if post.get("prepayment_due") is not None:
+        contract.prepayment_due = due
+    try:
+        contract.access_days = max(1, int(post.get("access_days") or contract.access_days or 7))
+    except (TypeError, ValueError):
+        contract.access_days = contract.access_days or 7
+    cdate = _parse_date_field(post.get("contract_date", ""))
+    if cdate:
+        contract.contract_date = cdate
+    contract.github_url = post.get("github_url", contract.github_url).strip()
+    contract.tz_text = post.get("tz_text", contract.tz_text).strip()
+    contract.customer_full_name = post.get("customer_full_name", contract.customer_full_name).strip()
+    contract.customer_passport_series = post.get(
+        "customer_passport_series", contract.customer_passport_series
+    ).strip()
+    contract.customer_passport_number = post.get(
+        "customer_passport_number", contract.customer_passport_number
+    ).strip()
+    contract.customer_passport_issued = post.get(
+        "customer_passport_issued", contract.customer_passport_issued
+    ).strip()
+    contract.customer_address = post.get("customer_address", contract.customer_address).strip()
+    contract.customer_email = post.get("customer_email", contract.customer_email).strip()
+    contract.customer_inn = post.get("customer_inn", contract.customer_inn).strip()
+    tz_file = files.get("tz_file")
+    if tz_file:
+        contract.tz_file = tz_file
+    signed = files.get("signed_contract_file")
+    if signed:
+        contract.signed_contract_file = signed
+
+
+def software_list(request: HttpRequest):
+    from workshop.models import SoftwareDevContract, SoftwareDevKind, SoftwareDevStatus
+
+    status = request.GET.get("status", "").strip()
+    kind = request.GET.get("kind", "").strip()
+    qs = SoftwareDevContract.objects.select_related("client").order_by("-id")
+    if status and status in dict(SoftwareDevStatus.choices):
+        qs = qs.filter(status=status)
+    if kind and kind in dict(SoftwareDevKind.choices):
+        qs = qs.filter(kind=kind)
+    open_count = SoftwareDevContract.objects.filter(
+        status__in=[
+            SoftwareDevStatus.DRAFT,
+            SoftwareDevStatus.PENDING_SIGNATURE,
+            SoftwareDevStatus.IN_PROGRESS,
+            SoftwareDevStatus.READY,
+        ]
+    ).count()
+    reagree_count = SoftwareDevContract.objects.filter(price_needs_reagree=True).count()
+    return render(
+        request,
+        "workshop/software_list.html",
+        {
+            "contracts": list(qs[:300]),
+            "status_filter": status,
+            "kind_filter": kind,
+            "statuses": SoftwareDevStatus.choices,
+            "kinds": SoftwareDevKind.choices,
+            "open_count": open_count,
+            "reagree_count": reagree_count,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def software_create(request: HttpRequest):
+    from workshop.authz import current_staff
+    from workshop.models import (
+        SoftwareDevContract,
+        SoftwareDevKind,
+        SoftwareDevPaymentVariant,
+        SoftwareDevPhoto,
+        SoftwareDevStatus,
+    )
+
+    clients = list(Client.objects.order_by("name")[:500])
+    if request.method == "POST":
+        client = Client.objects.filter(pk=request.POST.get("client_id", "").strip()).first()
+        if not client:
+            messages.warning(request, "Выберите клиента")
+            return redirect("software_create")
+        staff = current_staff(request)
+        contract = SoftwareDevContract(
+            contract_number=next_numbered("DAZ", SoftwareDevContract, "contract_number"),
+            client=client,
+            status=SoftwareDevStatus.DRAFT,
+            kind=SoftwareDevKind.CHATBOT,
+            customer_full_name=client.name,
+            created_by=staff,
+            updated_by=staff,
+        )
+        _fill_software_contract_from_post(contract, request.POST, request.FILES)
+        if not contract.customer_full_name:
+            contract.customer_full_name = client.name
+        contract.save()
+        for img in request.FILES.getlist("photos"):
+            SoftwareDevPhoto.objects.create(contract=contract, image=img)
+        log_action(
+            request,
+            "software_create",
+            entity_type="software",
+            entity_id=contract.id,
+            details=f"{contract.contract_number} {contract.get_kind_display()}",
+        )
+        messages.success(request, f"Договор {contract.contract_number} создан")
+        return redirect("software_detail", contract_id=contract.id)
+
+    return render(
+        request,
+        "workshop/software_form.html",
+        {
+            "clients": clients,
+            "contract": None,
+            "kinds": SoftwareDevKind.choices,
+            "payment_variants": SoftwareDevPaymentVariant.choices,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def software_detail(request: HttpRequest, contract_id: int):
+    from workshop.authz import current_staff
+    from workshop.models import (
+        SoftwareDevComment,
+        SoftwareDevContract,
+        SoftwareDevKind,
+        SoftwareDevPaymentVariant,
+        SoftwareDevPhoto,
+        SoftwareDevStatus,
+    )
+
+    contract = get_object_or_404(
+        SoftwareDevContract.objects.select_related("client", "created_by", "updated_by"),
+        pk=contract_id,
+    )
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "save").strip()
+        staff = current_staff(request)
+        username = request.session.get("workshop_username", "") or (staff.username if staff else "")
+
+        if action == "comment":
+            text = (request.POST.get("comment_text") or "").strip()
+            if not text:
+                messages.warning(request, "Введите текст комментария")
+            else:
+                SoftwareDevComment.objects.create(contract=contract, text=text, username=username)
+                log_action(
+                    request,
+                    "software_comment",
+                    entity_type="software",
+                    entity_id=contract.id,
+                    details=text[:200],
+                )
+                messages.success(request, "Комментарий добавлен")
+            return redirect("software_detail", contract_id=contract.id)
+
+        if action == "to_draft":
+            contract.apply_status(SoftwareDevStatus.DRAFT)
+            contract.updated_by = staff
+            contract.save()
+            SoftwareDevComment.objects.create(
+                contract=contract,
+                text="Статус изменён: Черновик",
+                username=username,
+            )
+            log_action(
+                request,
+                "software_to_draft",
+                entity_type="software",
+                entity_id=contract.id,
+                details=contract.contract_number,
+            )
+            messages.success(request, "Заявка переведена в черновик")
+            return redirect("software_detail", contract_id=contract.id)
+
+        if action == "new_version":
+            note = (request.POST.get("version_note") or "").strip()
+            version_tz = (request.POST.get("version_tz_text") or "").strip()
+            tz_text_arg = version_tz or None
+            new_amount_raw = (request.POST.get("proposed_amount") or "").strip()
+            proposed_amount = None
+            if new_amount_raw:
+                proposed_amount = _parse_decimal_field(new_amount_raw, contract.amount)
+            old_ver = contract.version
+            contract.start_new_tz_version(
+                note=note,
+                username=username,
+                new_tz_text=tz_text_arg,
+                new_tz_file=request.FILES.get("version_tz_file"),
+                new_amount=proposed_amount,
+            )
+            contract.updated_by = staff
+            contract.save(update_fields=["updated_by", "updated_at"])
+            SoftwareDevComment.objects.create(
+                contract=contract,
+                text=(
+                    f"Новая версия ТЗ: v{old_ver} → v{contract.version}. "
+                    f"Цена требует пересогласования."
+                    + (f" Комментарий: {note}" if note else "")
+                ),
+                username=username,
+            )
+            log_action(
+                request,
+                "software_new_version",
+                entity_type="software",
+                entity_id=contract.id,
+                details=f"{contract.contract_number} v{old_ver}→v{contract.version}",
+            )
+            messages.warning(
+                request,
+                f"Открыта версия v{contract.version}. Пересогласуйте цену с заказчиком.",
+            )
+            return redirect("software_detail", contract_id=contract.id)
+
+        if action == "agree_price":
+            amount = _parse_decimal_field(request.POST.get("amount", str(contract.amount)), contract.amount)
+            old_amount = contract.amount
+            contract.confirm_price_reagree(amount=amount)
+            contract.updated_by = staff
+            contract.save(update_fields=["updated_by", "updated_at"])
+            SoftwareDevComment.objects.create(
+                contract=contract,
+                text=f"Цена пересогласована: {old_amount} → {contract.amount} ₽ (v{contract.version})",
+                username=username,
+            )
+            log_action(
+                request,
+                "software_agree_price",
+                entity_type="software",
+                entity_id=contract.id,
+                details=f"{contract.contract_number} amount={contract.amount}",
+            )
+            messages.success(request, "Новая цена зафиксирована")
+            return redirect("software_detail", contract_id=contract.id)
+
+        if action == "set_status":
+            new_status = (request.POST.get("status") or "").strip()
+            if new_status not in dict(SoftwareDevStatus.choices):
+                messages.warning(request, "Неизвестный статус")
+            else:
+                old = contract.get_status_display()
+                contract.apply_status(new_status)
+                contract.updated_by = staff
+                contract.save()
+                SoftwareDevComment.objects.create(
+                    contract=contract,
+                    text=f"Статус: {old} → {contract.get_status_display()}",
+                    username=username,
+                )
+                log_action(
+                    request,
+                    "software_status",
+                    entity_type="software",
+                    entity_id=contract.id,
+                    details=f"{contract.contract_number} → {new_status}",
+                )
+                messages.success(request, f"Статус: {contract.get_status_display()}")
+            return redirect("software_detail", contract_id=contract.id)
+
+        if action == "save":
+            _fill_software_contract_from_post(contract, request.POST, request.FILES)
+            contract.updated_by = staff
+            contract.save()
+            for img in request.FILES.getlist("photos"):
+                SoftwareDevPhoto.objects.create(contract=contract, image=img)
+            log_action(
+                request,
+                "software_update",
+                entity_type="software",
+                entity_id=contract.id,
+                details=contract.contract_number,
+            )
+            messages.success(request, "Договор сохранён")
+            return redirect("software_detail", contract_id=contract.id)
+
+        if action == "delete_photo":
+            from workshop.authz import can_delete as staff_can_delete
+
+            if not staff_can_delete(request):
+                messages.error(request, "Удаление доступно только администратору")
+                return redirect("software_detail", contract_id=contract.id)
+            photo = SoftwareDevPhoto.objects.filter(
+                pk=request.POST.get("photo_id"), contract=contract
+            ).first()
+            if photo:
+                photo.delete()
+                messages.success(request, "Фото удалено")
+            return redirect("software_detail", contract_id=contract.id)
+
+    return render(
+        request,
+        "workshop/software_detail.html",
+        {
+            "contract": contract,
+            "comments": list(contract.comments.select_related().all()),
+            "photos": list(contract.photos.all()),
+            "versions": list(contract.versions.all()),
+            "statuses": SoftwareDevStatus.choices,
+            "kinds": SoftwareDevKind.choices,
+            "payment_variants": SoftwareDevPaymentVariant.choices,
+            "payment_methods": PaymentMethod.choices,
+        },
+    )
+
+
+@require_POST
+def software_set_payment(request: HttpRequest, contract_id: int):
+    from workshop.models import SoftwareDevContract
+
+    contract = get_object_or_404(SoftwareDevContract, pk=contract_id)
+    method = request.POST.get("payment_method", PaymentMethod.UNPAID)
+    if method not in dict(PaymentMethod.choices):
+        messages.warning(request, "Некорректный способ оплаты")
+        return redirect("software_detail", contract_id=contract.id)
+
+    note = request.POST.get("payment_note", "").strip()
+    receipt = request.FILES.get("payment_receipt")
+
+    if method == PaymentMethod.TRANSFER and not receipt and not contract.payment_receipt:
+        messages.warning(request, "Для оплаты переводом приложите скриншот чека")
+        return redirect("software_detail", contract_id=contract.id)
+
+    contract.payment_method = method
+    contract.payment_note = note
+    if method == PaymentMethod.UNPAID:
+        contract.payment_at = None
+        if "clear_receipt" in request.POST:
+            contract.payment_receipt = None
+    else:
+        contract.payment_at = timezone.now()
+        if receipt:
+            contract.payment_receipt = receipt
+    contract.save()
+    log_action(
+        request,
+        "software_payment",
+        entity_type="software",
+        entity_id=contract.id,
+        details=f"{contract.contract_number} method={method}",
+    )
+    messages.success(request, "Статус оплаты сохранён")
+    return redirect("software_detail", contract_id=contract.id)
+
+
+@require_POST
+def software_set_mytax(request: HttpRequest, contract_id: int):
+    from workshop.models import SoftwareDevContract
+
+    contract = get_object_or_404(SoftwareDevContract, pk=contract_id)
+    issued = request.POST.get("mytax_issued") == "1"
+    receipt = request.FILES.get("mytax_receipt")
+    contract.mytax_issued = issued
+    if issued:
+        contract.mytax_at = timezone.now()
+        if receipt:
+            contract.mytax_receipt = receipt
+    else:
+        contract.mytax_at = None
+        if "clear_mytax_receipt" in request.POST:
+            contract.mytax_receipt = None
+    contract.save()
+    log_action(
+        request,
+        "software_mytax",
+        entity_type="software",
+        entity_id=contract.id,
+        details=f"{contract.contract_number} issued={issued}",
+    )
+    messages.success(request, "Статус чека «Мой налог» сохранён")
+    return redirect("software_detail", contract_id=contract.id)
+
+
+@require_POST
+@require_delete_permission
+def software_delete(request: HttpRequest, contract_id: int):
+    from workshop.models import SoftwareDevContract
+
+    contract = get_object_or_404(SoftwareDevContract, pk=contract_id)
+    details = contract.contract_number
+    contract.delete()
+    log_action(request, "software_delete", entity_type="software", entity_id=contract_id, details=details)
+    messages.success(request, "Договор удалён")
+    return redirect("software_list")
+
+
+@require_GET
+def software_print(request: HttpRequest, contract_id: int):
+    from workshop.models import SoftwareDevContract, SoftwareDevKind
+    from workshop.money_words import amount_to_words_rub
+
+    contract = get_object_or_404(SoftwareDevContract.objects.select_related("client"), pk=contract_id)
+    if contract.kind != SoftwareDevKind.CHATBOT:
+        messages.warning(request, "Печатная форма для этого вида пока не настроена")
+        return redirect("software_detail", contract_id=contract.id)
+    return render(
+        request,
+        "workshop/print_software_chatbot.html",
+        {
+            "contract": contract,
+            "amount_words": amount_to_words_rub(contract.amount),
+            "amount_digits": f"{(contract.amount or 0):.2f}".replace(".", ","),
+            "COMPANY_ADDRESS": getattr(settings, "COMPANY_ADDRESS", ""),
+            "COMPANY_PHONE": getattr(settings, "COMPANY_PHONE", ""),
+            "MASTER_SIGN": getattr(settings, "MASTER_SIGN", ""),
+        },
+    )
+
+
+@require_GET
+def software_pdf(request: HttpRequest, contract_id: int):
+    from workshop.models import SoftwareDevContract, SoftwareDevKind
+    from workshop.pdf import build_software_chatbot_contract_pdf
+
+    contract = get_object_or_404(SoftwareDevContract.objects.select_related("client"), pk=contract_id)
+    if contract.kind != SoftwareDevKind.CHATBOT:
+        messages.warning(request, "PDF для этого вида пока не настроен")
+        return redirect("software_detail", contract_id=contract.id)
+    pdf_bytes = build_software_chatbot_contract_pdf(contract)
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{contract.contract_number}.pdf"'
+    return response

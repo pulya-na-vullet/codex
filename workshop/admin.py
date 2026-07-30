@@ -12,6 +12,10 @@ from workshop.models import (
     ServiceCategory,
     SmsLog,
     SmsSettings,
+    SoftwareDevComment,
+    SoftwareDevContract,
+    SoftwareDevPhoto,
+    SoftwareDevVersion,
     YandexAiSettings,
 )
 
@@ -116,3 +120,41 @@ class YandexAiSettingsAdmin(admin.ModelAdmin):
         "last_report_date",
         "updated_at",
     )
+
+
+class SoftwareDevCommentInline(admin.TabularInline):
+    model = SoftwareDevComment
+    extra = 0
+
+
+class SoftwareDevPhotoInline(admin.TabularInline):
+    model = SoftwareDevPhoto
+    extra = 0
+
+
+@admin.register(SoftwareDevContract)
+class SoftwareDevContractAdmin(admin.ModelAdmin):
+    list_display = (
+        "contract_number",
+        "version",
+        "kind",
+        "client",
+        "status",
+        "amount",
+        "price_needs_reagree",
+        "payment_method",
+        "mytax_issued",
+        "contract_date",
+        "created_at",
+    )
+    list_filter = ("kind", "status", "payment_variant", "payment_method", "mytax_issued", "price_needs_reagree")
+    search_fields = ("contract_number", "client__name", "product_name", "github_url")
+    inlines = [SoftwareDevCommentInline, SoftwareDevPhotoInline]
+
+
+@admin.register(SoftwareDevVersion)
+class SoftwareDevVersionAdmin(admin.ModelAdmin):
+    list_display = ("contract", "version", "amount", "price_agreed", "username", "created_at")
+    list_filter = ("price_agreed",)
+    search_fields = ("contract__contract_number", "note", "username")
+
