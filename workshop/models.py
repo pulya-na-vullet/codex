@@ -1111,6 +1111,39 @@ class SoftwareDevContract(models.Model):
     github_url = models.URLField("Ссылка на репозиторий GitHub", blank=True, default="")
     tz_file = models.FileField("ТЗ от клиента (файл)", upload_to="software/tz/%Y/%m/", blank=True)
     tz_text = models.TextField("ТЗ текстом", blank=True, default="")
+    signed_contract_file = models.FileField(
+        "Подписанный договор (скан)",
+        upload_to="software/signed/%Y/%m/",
+        blank=True,
+        null=True,
+        help_text="Распечатанный договор с подписью клиента",
+    )
+
+    # Оплата клиентом (как у заказ-нарядов)
+    payment_method = models.CharField(
+        "Способ оплаты",
+        max_length=20,
+        choices=PaymentMethod.choices,
+        default=PaymentMethod.UNPAID,
+    )
+    payment_at = models.DateTimeField("Дата оплаты", null=True, blank=True)
+    payment_receipt = models.FileField(
+        "Скриншот чека (перевод)",
+        upload_to="software/payment_receipts/%Y/%m/",
+        blank=True,
+        null=True,
+    )
+    payment_note = models.CharField("Комментарий к оплате", max_length=255, blank=True, default="")
+
+    # Чек в «Мой налог»
+    mytax_issued = models.BooleanField("Чек Мой налог выдан", default=False)
+    mytax_at = models.DateTimeField("Дата чека Мой налог", null=True, blank=True)
+    mytax_receipt = models.FileField(
+        "Скриншот чека Мой налог",
+        upload_to="software/mytax_receipts/%Y/%m/",
+        blank=True,
+        null=True,
+    )
 
     # Реквизиты заказчика для печатной формы
     customer_full_name = models.CharField("ФИО заказчика", max_length=255, blank=True, default="")
@@ -1156,6 +1189,23 @@ class SoftwareDevContract(models.Model):
             SoftwareDevStatus.IN_PROGRESS,
             SoftwareDevStatus.READY,
         }
+
+    @property
+    def is_paid(self) -> bool:
+        return self.payment_method in {PaymentMethod.CASH, PaymentMethod.TRANSFER}
+
+    @property
+    def is_in_progress(self) -> bool:
+        return self.status == SoftwareDevStatus.IN_PROGRESS
+
+    @property
+    def is_debtor(self) -> bool:
+        """Не оплачен при ненулевой сумме и статусе «готово»/«выполнен»."""
+        if self.is_paid or (self.amount or 0) <= 0:
+            return False
+        if self.status in {SoftwareDevStatus.CANCELLED, SoftwareDevStatus.DRAFT}:
+            return False
+        return self.status in {SoftwareDevStatus.READY, SoftwareDevStatus.DONE}
 
     def apply_status(self, new_status: str) -> None:
         if new_status not in dict(SoftwareDevStatus.choices):

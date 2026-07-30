@@ -41,22 +41,52 @@
                 <th>Статус</th>
                 <th>Дата</th>
                 <th class="text-end">Сумма</th>
+                <th>Оплата</th>
+                <th>Мой налог</th>
+                <th>Подпись</th>
                 <th></th>
             </tr>
             </thead>
             <tbody>
             {% for c in contracts %}
-                <tr>
+                <tr class="{% if c.is_debtor %}order-row-unpaid{% elif c.is_in_progress %}order-row-in-progress{% elif c.is_paid and not c.mytax_issued %}order-row-paid-no-mytax{% elif c.is_paid and c.mytax_issued %}order-row-complete{% endif %}">
                     <td><a href="{% url 'software_detail' c.id %}">{{ c.contract_number }}</a></td>
                     <td>{{ c.client.name }}</td>
                     <td>{{ c.get_kind_display }}</td>
-                    <td>{{ c.get_status_display }}</td>
+                    <td>
+                        <span class="badge {% if c.status == 'in_progress' %}text-bg-purple{% elif c.status == 'ready' %}text-bg-warning{% elif c.status == 'done' %}text-bg-success{% elif c.status == 'cancelled' %}text-bg-secondary{% else %}text-bg-secondary{% endif %}">
+                            {{ c.get_status_display }}
+                        </span>
+                    </td>
                     <td>{{ c.contract_date|date:"d.m.Y" }}</td>
-                    <td class="text-end">{{ c.amount|money }}</td>
+                    <td class="text-end {% if c.is_debtor %}text-danger fw-semibold{% endif %}">{{ c.amount|money }}</td>
+                    <td>
+                        {% if c.is_debtor %}
+                            <span class="badge text-bg-danger">Долг</span>
+                        {% elif c.is_paid %}
+                            <span class="badge text-bg-success">{{ c.get_payment_method_display }}</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Не оплачен</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if c.mytax_issued %}
+                            <span class="badge text-bg-primary">Чек выдан</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Нет чека</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if c.signed_contract_file %}
+                            <a class="badge text-bg-success text-decoration-none" href="{{ c.signed_contract_file.url }}" target="_blank">Скан</a>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Нет</span>
+                        {% endif %}
+                    </td>
                     <td class="text-end"><a class="btn btn-outline-light btn-sm" href="{% url 'software_detail' c.id %}">Открыть</a></td>
                 </tr>
             {% empty %}
-                <tr><td colspan="7" class="text-center text-secondary py-4">Договоров пока нет</td></tr>
+                <tr><td colspan="10" class="text-center text-secondary py-4">Договоров пока нет</td></tr>
             {% endfor %}
             </tbody>
         </table>

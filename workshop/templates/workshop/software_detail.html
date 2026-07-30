@@ -5,8 +5,24 @@
     <div>
         <h4 class="mb-0">{{ contract.contract_number }}</h4>
         <div class="small-muted">
-            {{ contract.get_kind_display }} · {{ contract.get_status_display }}
+            {{ contract.get_kind_display }}
             · клиент <a href="{% url 'client_detail' contract.client_id %}">{{ contract.client.name }}</a>
+        </div>
+        <div class="d-flex flex-wrap gap-1 mt-2">
+            <span class="badge {% if contract.status == 'in_progress' %}text-bg-purple{% elif contract.status == 'ready' %}text-bg-warning{% elif contract.status == 'done' %}text-bg-success{% else %}text-bg-secondary{% endif %}">{{ contract.get_status_display }}</span>
+            {% if contract.is_paid %}
+                <span class="badge text-bg-success">Оплачен: {{ contract.get_payment_method_display }}{% if contract.payment_at %} ({{ contract.payment_at|date:"d.m.Y H:i" }}){% endif %}</span>
+            {% elif contract.is_debtor %}
+                <span class="badge text-bg-danger">Долг</span>
+            {% else %}
+                <span class="badge text-bg-secondary">Не оплачен</span>
+            {% endif %}
+            {% if contract.mytax_issued %}
+                <span class="badge text-bg-primary">Мой налог{% if contract.mytax_at %} {{ contract.mytax_at|date:"d.m.Y H:i" }}{% endif %}</span>
+            {% endif %}
+            {% if contract.signed_contract_file %}
+                <a class="badge text-bg-success text-decoration-none" href="{{ contract.signed_contract_file.url }}" target="_blank">Подписанный скан</a>
+            {% endif %}
         </div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
@@ -93,6 +109,9 @@
                         <input class="form-control" type="file" name="tz_file">
                         <label class="form-label mt-3">Добавить фото к ТЗ</label>
                         <input class="form-control" type="file" name="photos" accept="image/*" multiple>
+                        <label class="form-label mt-3">Подписанный договор (скан){% if contract.signed_contract_file %} · <a href="{{ contract.signed_contract_file.url }}" target="_blank">открыть</a>{% endif %}</label>
+                        <input class="form-control" type="file" name="signed_contract_file" accept="image/*,.pdf">
+                        <div class="small-muted mt-1">Распечатанный договор с подписью клиента</div>
                     </div>
                     <div class="col-12"><h6 class="mb-0">Реквизиты заказчика</h6></div>
                     <div class="col-md-6">
@@ -194,7 +213,7 @@
         <div class="card mb-3"><div class="card-body">
             <h6>Итог</h6>
             <div class="d-flex justify-content-between"><span>Сумма</span><strong>{{ contract.amount|money }}</strong></div>
-            <div class="d-flex justify-content-between"><span>Оплата</span><span>{{ contract.get_payment_variant_display }}</span></div>
+            <div class="d-flex justify-content-between"><span>Условия оплаты</span><span class="small">{{ contract.get_payment_variant_display }}</span></div>
             {% if contract.github_url %}
             <div class="mt-2"><a href="{{ contract.github_url }}" target="_blank" rel="noopener">Репозиторий GitHub</a></div>
             {% else %}
@@ -203,9 +222,63 @@
             {% if contract.tz_file %}
             <div class="mt-1"><a href="{{ contract.tz_file.url }}" target="_blank">Файл ТЗ</a></div>
             {% endif %}
+            {% if contract.signed_contract_file %}
+            <div class="mt-1"><a href="{{ contract.signed_contract_file.url }}" target="_blank">Подписанный договор</a></div>
+            {% endif %}
             {% if contract.done_at %}
             <div class="small-muted mt-2">Закрыт: {{ contract.done_at|date:"d.m.Y H:i" }}</div>
             {% endif %}
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="mb-3">Оплата</h6>
+            <form method="post" action="{% url 'software_set_payment' contract.id %}" enctype="multipart/form-data" class="vstack gap-2">
+                {% csrf_token %}
+                <div>
+                    <label class="form-label">Факт оплаты</label>
+                    <select class="form-select" name="payment_method">
+                        {% for value, label in payment_methods %}
+                        <option value="{{ value }}" {% if contract.payment_method == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Скриншот чека (для перевода)</label>
+                    <input class="form-control" type="file" name="payment_receipt" accept="image/*,.pdf">
+                    {% if contract.payment_receipt %}
+                    <div class="small-muted mt-1">Текущий файл: <a href="{{ contract.payment_receipt.url }}" target="_blank">открыть</a></div>
+                    {% endif %}
+                </div>
+                <div>
+                    <label class="form-label">Комментарий</label>
+                    <input class="form-control" name="payment_note" value="{{ contract.payment_note }}">
+                </div>
+                {% if contract.payment_at %}
+                <div class="small-muted">Дата фиксации оплаты: {{ contract.payment_at|date:"d.m.Y H:i" }}</div>
+                {% endif %}
+                <button class="btn btn-success btn-sm" type="submit">Сохранить оплату</button>
+            </form>
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
+            <h6 class="mb-3">Чек «Мой налог»</h6>
+            <form method="post" action="{% url 'software_set_mytax' contract.id %}" enctype="multipart/form-data" class="vstack gap-2">
+                {% csrf_token %}
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="mytax_issued" value="1" id="sw-mytax-issued"
+                           {% if contract.mytax_issued %}checked{% endif %}>
+                    <label class="form-check-label" for="sw-mytax-issued">Чек через приложение «Мой налог» выдан</label>
+                </div>
+                <div>
+                    <label class="form-label">Скриншот чека (необязательно)</label>
+                    <input class="form-control" type="file" name="mytax_receipt" accept="image/*,.pdf">
+                    {% if contract.mytax_receipt %}
+                    <div class="small-muted mt-1">Текущий файл: <a href="{{ contract.mytax_receipt.url }}" target="_blank">открыть</a></div>
+                    {% endif %}
+                </div>
+                {% if contract.mytax_at %}
+                <div class="small-muted">Дата фиксации: {{ contract.mytax_at|date:"d.m.Y H:i" }}</div>
+                {% endif %}
+                <button class="btn btn-primary btn-sm" type="submit">Сохранить статус «Мой налог»</button>
+            </form>
         </div></div>
         <div class="card"><div class="card-body small-muted">
             Создал: {{ contract.created_by|default:"—" }}<br>

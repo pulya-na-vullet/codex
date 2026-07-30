@@ -2303,6 +2303,9 @@ def _fill_software_contract_from_post(contract, post, files) -> None:
     tz_file = files.get("tz_file")
     if tz_file:
         contract.tz_file = tz_file
+    signed = files.get("signed_contract_file")
+    if signed:
+        contract.signed_contract_file = signed
 
 
 def software_list(request: HttpRequest):
@@ -2512,8 +2515,76 @@ def software_detail(request: HttpRequest, contract_id: int):
             "statuses": SoftwareDevStatus.choices,
             "kinds": SoftwareDevKind.choices,
             "payment_variants": SoftwareDevPaymentVariant.choices,
+            "payment_methods": PaymentMethod.choices,
         },
     )
+
+
+@require_POST
+def software_set_payment(request: HttpRequest, contract_id: int):
+    from workshop.models import SoftwareDevContract
+
+    contract = get_object_or_404(SoftwareDevContract, pk=contract_id)
+    method = request.POST.get("payment_method", PaymentMethod.UNPAID)
+    if method not in dict(PaymentMethod.choices):
+        messages.warning(request, "Некорректный способ оплаты")
+        return redirect("software_detail", contract_id=contract.id)
+
+    note = request.POST.get("payment_note", "").strip()
+    receipt = request.FILES.get("payment_receipt")
+
+    if method == PaymentMethod.TRANSFER and not receipt and not contract.payment_receipt:
+        messages.warning(request, "Для оплаты переводом приложите скриншот чека")
+        return redirect("software_detail", contract_id=contract.id)
+
+    contract.payment_method = method
+    contract.payment_note = note
+    if method == PaymentMethod.UNPAID:
+        contract.payment_at = None
+        if "clear_receipt" in request.POST:
+            contract.payment_receipt = None
+    else:
+        contract.payment_at = timezone.now()
+        if receipt:
+            contract.payment_receipt = receipt
+    contract.save()
+    log_action(
+        request,
+        "software_payment",
+        entity_type="software",
+        entity_id=contract.id,
+        details=f"{contract.contract_number} method={method}",
+    )
+    messages.success(request, "Статус оплаты сохранён")
+    return redirect("software_detail", contract_id=contract.id)
+
+
+@require_POST
+def software_set_mytax(request: HttpRequest, contract_id: int):
+    from workshop.models import SoftwareDevContract
+
+    contract = get_object_or_404(SoftwareDevContract, pk=contract_id)
+    issued = request.POST.get("mytax_issued") == "1"
+    receipt = request.FILES.get("mytax_receipt")
+    contract.mytax_issued = issued
+    if issued:
+        contract.mytax_at = timezone.now()
+        if receipt:
+            contract.mytax_receipt = receipt
+    else:
+        contract.mytax_at = None
+        if "clear_mytax_receipt" in request.POST:
+            contract.mytax_receipt = None
+    contract.save()
+    log_action(
+        request,
+        "software_mytax",
+        entity_type="software",
+        entity_id=contract.id,
+        details=f"{contract.contract_number} issued={issued}",
+    )
+    messages.success(request, "Статус чека «Мой налог» сохранён")
+    return redirect("software_detail", contract_id=contract.id)
 
 
 @require_POST

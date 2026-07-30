@@ -77,6 +77,8 @@ _NAV_SECTIONS: dict[str, frozenset[str]] = {
             "software_delete",
             "software_print",
             "software_pdf",
+            "software_set_payment",
+            "software_set_mytax",
         }
     ),
     "statistics": frozenset({"statistics"}),

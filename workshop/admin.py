@@ -133,8 +133,18 @@ class SoftwareDevPhotoInline(admin.TabularInline):
 
 @admin.register(SoftwareDevContract)
 class SoftwareDevContractAdmin(admin.ModelAdmin):
-    list_display = ("contract_number", "kind", "client", "status", "amount", "contract_date", "created_at")
-    list_filter = ("kind", "status", "payment_variant")
+    list_display = (
+        "contract_number",
+        "kind",
+        "client",
+        "status",
+        "amount",
+        "payment_method",
+        "mytax_issued",
+        "contract_date",
+        "created_at",
+    )
+    list_filter = ("kind", "status", "payment_variant", "payment_method", "mytax_issued")
     search_fields = ("contract_number", "client__name", "product_name", "github_url")
     inlines = [SoftwareDevCommentInline, SoftwareDevPhotoInline]
 

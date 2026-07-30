@@ -1547,3 +1547,69 @@ class SoftwareDevContractsTests(TestCase):
         r = http.post(f"/software/{contract.id}/delete", follow=True)
         self.assertTrue(SoftwareDevContract.objects.filter(pk=contract.id).exists())
         self.assertContains(r, "Удаление доступно только администратору")
+
+    def test_payment_mytax_signed_and_list_badges(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from workshop.models import PaymentMethod, SoftwareDevContract, SoftwareDevKind, SoftwareDevStatus
+
+        contract = SoftwareDevContract.objects.create(
+            contract_number="DAZ-000777",
+            client=self.client_obj,
+            kind=SoftwareDevKind.CHATBOT,
+            status=SoftwareDevStatus.IN_PROGRESS,
+            product_name="Бот",
+            amount=Decimal("5000"),
+            customer_full_name="Клиент",
+        )
+        signed = SimpleUploadedFile("signed.pdf", b"%PDF-1.4 signed", content_type="application/pdf")
+        r = self.http.post(
+            f"/software/{contract.id}",
+            {"action": "save", "product_name": "Бот", "amount": "5000", "signed_contract_file": signed},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        contract.refresh_from_db()
+        self.assertTrue(bool(contract.signed_contract_file))
+
+        r = self.http.post(
+            f"/software/{contract.id}/payment",
+            {"payment_method": "cash", "payment_note": "оплатил наличными"},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        contract.refresh_from_db()
+        self.assertEqual(contract.payment_method, PaymentMethod.CASH)
+        self.assertTrue(contract.is_paid)
+        self.assertIsNotNone(contract.payment_at)
+
+        r = self.http.post(
+            f"/software/{contract.id}/mytax",
+            {"mytax_issued": "1"},
+            follow=True,
+        )
+        contract.refresh_from_db()
+        self.assertTrue(contract.mytax_issued)
+
+        r = self.http.get("/software")
+        self.assertContains(r, "В работе")
+        self.assertContains(r, "Наличные")
+        self.assertContains(r, "Чек выдан")
+        self.assertContains(r, "Скан")
+        # Как у заказ-нарядов: «в работе» важнее подсветки оплаты
+        self.assertContains(r, "order-row-in-progress")
+
+        contract.apply_status(SoftwareDevStatus.DONE)
+        contract.save()
+        r = self.http.get("/software")
+        self.assertContains(r, "Выполнен")
+        self.assertContains(r, "order-row-complete")
+
+        contract.payment_method = PaymentMethod.UNPAID
+        contract.payment_at = None
+        contract.mytax_issued = False
+        contract.save()
+        self.assertTrue(contract.is_debtor)
+        r = self.http.get("/software")
+        self.assertContains(r, "Долг")
+        self.assertContains(r, "order-row-unpaid")
