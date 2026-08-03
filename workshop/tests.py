@@ -146,6 +146,7 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "worldAtelier")
         self.assertContains(r, "3D-печать в мастерской")
         self.assertContains(r, "portal")
+        self.assertContains(r, "bg-atelier-purple-hall-fhd.png")
 
     def test_tv_close_api_local(self):
         anon = HttpClient()

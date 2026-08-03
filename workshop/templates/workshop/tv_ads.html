@@ -68,57 +68,34 @@
 
     .world-atelier {
       overflow: hidden;
-      background:
-        radial-gradient(ellipse 80% 55% at 50% 18%, rgba(40, 90, 55, 0.35), transparent 60%),
-        radial-gradient(ellipse 70% 50% at 50% 100%, rgba(2, 8, 5, 0.95), transparent 55%),
-        linear-gradient(180deg, #06140c 0%, #030906 45%, #010403 100%);
+      background: #12081a;
     }
-    .world-atelier .bg-deep {
+    .world-atelier .bg {
       position: absolute;
-      inset: 0;
-      background: url("{% static 'workshop/promo/tv43/bg-three-windows-workshop-fhd.png' %}?v=atm7") center 20% / cover no-repeat;
-      opacity: 0.22;
-      filter: blur(6px) saturate(0.85);
-      transform: scale(1.15);
-      animation: drift-atelier-deep 56s ease-in-out infinite alternate;
-    }
-    /* Same vitraal motif, but smaller / farther in the background */
-    .world-atelier .vitraal {
-      position: absolute;
-      left: 50%;
-      top: 6%;
-      width: min(46vw, 820px);
-      height: min(34vh, 380px);
-      transform: translateX(-50%);
-      background: url("{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}?v=atm7") center 28% / 180% auto no-repeat;
-      filter: brightness(1.05) saturate(1.15);
-      opacity: 0.92;
-      mask-image: radial-gradient(ellipse 70% 80% at 50% 45%, #000 35%, transparent 78%);
-      -webkit-mask-image: radial-gradient(ellipse 70% 80% at 50% 45%, #000 35%, transparent 78%);
-      animation: drift-atelier-win 42s ease-in-out infinite alternate;
-      box-shadow: 0 0 80px rgba(125, 222, 160, 0.12);
+      inset: -3%;
+      background: #12081a center / cover no-repeat;
+      background-image: url("{% static 'workshop/promo/tv43/bg-atelier-purple-hall-fhd.png' %}?v=atm8");
+      animation: drift-atelier 52s ease-in-out infinite alternate;
+      will-change: transform;
     }
     .world-atelier .atelier-haze {
       position: absolute;
       inset: 0;
       background:
-        linear-gradient(180deg, rgba(2,8,5,0.15) 0%, transparent 28%, rgba(2,6,4,0.55) 62%, rgba(1,4,3,0.92) 100%),
-        radial-gradient(ellipse 50% 30% at 50% 22%, rgba(125, 222, 160, 0.12), transparent 70%);
+        linear-gradient(180deg, rgba(12, 4, 20, 0.12) 0%, transparent 30%, rgba(8, 2, 14, 0.45) 68%, rgba(4, 1, 8, 0.88) 100%),
+        radial-gradient(ellipse 55% 40% at 72% 28%, rgba(180, 120, 255, 0.10), transparent 70%);
       pointer-events: none;
+    }
+    @keyframes drift-atelier {
+      0%   { transform: scale(1.04) translate(0, 0); }
+      50%  { transform: scale(1.08) translate(-0.8%, 0.5%); }
+      100% { transform: scale(1.05) translate(0.9%, -0.3%); }
     }
 
     @keyframes drift-hall {
       0%   { transform: scale(1.04) translate(0, 0); }
       50%  { transform: scale(1.08) translate(-1.2%, 0.6%); }
       100% { transform: scale(1.05) translate(1%, -0.4%); }
-    }
-    @keyframes drift-atelier-win {
-      0%   { transform: translateX(-50%) scale(1) translateY(0); }
-      100% { transform: translateX(-50%) scale(1.06) translateY(2%); }
-    }
-    @keyframes drift-atelier-deep {
-      from { transform: scale(1.12) translate(0, 0); }
-      to   { transform: scale(1.2) translate(-1%, 1%); }
     }
     @keyframes world-exit {
       0%   { opacity: 1; filter: brightness(1); transform: scale(1); }
@@ -168,6 +145,27 @@
       background:
         radial-gradient(circle at 50% 28%, rgba(210, 255, 230, 0.95) 0%, rgba(125, 222, 160, 0.45) 22%, rgba(2, 8, 5, 0.92) 58%, #020605 100%);
     }
+    .stage[data-scene="atelier"] .portal,
+    .portal.is-to-atelier {
+      background:
+        radial-gradient(circle at 70% 30%, rgba(230, 200, 255, 0.95) 0%, rgba(160, 90, 220, 0.5) 24%, rgba(40, 10, 55, 0.92) 58%, #0a0412 100%);
+    }
+    .stage[data-scene="atelier"] .fog-floor {
+      background:
+        radial-gradient(ellipse 60% 50% at 30% 70%, rgba(160, 100, 220, 0.10), transparent 70%),
+        radial-gradient(ellipse 55% 45% at 70% 80%, rgba(120, 70, 180, 0.08), transparent 70%),
+        linear-gradient(180deg, transparent 0%, rgba(12, 4, 22, 0.55) 45%, rgba(6, 2, 12, 0.92) 100%);
+    }
+    .stage[data-scene="atelier"] .eyebrow { color: #e0c4ff; text-shadow: 0 0 24px rgba(200, 140, 255, 0.5); }
+    .stage[data-scene="atelier"] .rule {
+      background: linear-gradient(90deg, transparent, #d4a84b, transparent);
+      box-shadow: 0 0 16px rgba(212, 168, 75, 0.45);
+    }
+    .stage[data-scene="atelier"] .price-pill {
+      border-color: rgba(200, 150, 255, 0.28);
+      background: rgba(28, 10, 42, 0.6);
+    }
+    .stage[data-scene="atelier"] .price-pill .sum span { color: #e0c4ff; }
     .portal.is-active {
       animation: portal-flare 2.4s ease-in-out forwards;
     }
@@ -304,7 +302,7 @@
     .fs-gate-sub { font-size: clamp(14px, 2vw, 20px); color: #9fbfab; letter-spacing: .04em; }
 
     @media (prefers-reduced-motion: reduce) {
-      .world-hall .bg, .world-atelier .vitraal, .world-atelier .bg-deep, .fog-floor, .eyebrow { animation: none !important; }
+      .world-hall .bg, .world-atelier .bg, .fog-floor, .eyebrow { animation: none !important; }
       .world-fx, .portal { display: none !important; }
       .world-layer.is-exit, .world-layer.is-enter { animation: none !important; opacity: 1; }
     }
@@ -316,8 +314,7 @@
       <div class="bg"></div>
     </div>
     <div class="world-layer world-atelier" id="worldAtelier" aria-hidden="true">
-      <div class="bg-deep"></div>
-      <div class="vitraal"></div>
+      <div class="bg"></div>
       <div class="atelier-haze"></div>
     </div>
 
@@ -502,7 +499,8 @@
       var from = currentScene === 'hall' ? worldHall : worldAtelier;
       var to = toScene === 'hall' ? worldHall : worldAtelier;
       if (portal) {
-        portal.classList.remove('is-active');
+        portal.classList.remove('is-active', 'is-to-atelier');
+        if (toScene === 'atelier') portal.classList.add('is-to-atelier');
         void portal.offsetWidth;
         portal.classList.add('is-active');
       }
@@ -573,20 +571,34 @@
       }
 
       function focus() {
-        // Hall: large centre window. Atelier: smaller distant vitraal higher up.
+        // Hall: centre green window. Atelier: purple stained glass on the right.
         if (currentScene === 'atelier') {
-          return { cx: W * 0.5, cy: H * 0.16, cone: 0.12, bloom: 0.12 };
+          return {
+            cx: W * 0.72,
+            cy: H * 0.22,
+            cone: 0.2,
+            bloom: 0.22,
+            dir: -0.35,
+            palette: 'violet'
+          };
         }
-        return { cx: W * 0.5, cy: H * 0.26, cone: 0.18, bloom: 0.2 };
+        return {
+          cx: W * 0.5,
+          cy: H * 0.26,
+          cone: 0.18,
+          bloom: 0.2,
+          dir: 0,
+          palette: 'green'
+        };
       }
 
       function spawnDust(p, fromTop) {
         var f = focus();
-        p.x = f.cx + (Math.random() - 0.5) * W * (f.cone + 0.06);
-        p.y = fromTop ? f.cy + H * Math.random() * 0.08 : f.cy + H * Math.random() * 0.5;
+        p.x = f.cx + (Math.random() - 0.5) * W * (f.cone + 0.08);
+        p.y = fromTop ? f.cy + H * Math.random() * 0.1 : f.cy + H * Math.random() * 0.55;
         p.z = 0.4 + Math.random() * 0.6;
         p.r = 2 + Math.random() * 2; // 4–8 px
-        p.vx = (Math.random() - 0.5) * 0.22 * p.z;
+        p.vx = (Math.random() - 0.5) * 0.22 * p.z + (f.palette === 'violet' ? -0.08 : 0);
         p.vy = (0.1 + Math.random() * 0.3) * p.z;
         p.phase = Math.random() * Math.PI * 2;
         p.spin = 0.4 + Math.random() * 1.2;
@@ -608,29 +620,42 @@
 
       function drawLight(f, power) {
         if (power < 0.04) return;
+        var violet = f.palette === 'violet';
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
+
+        var c0 = violet ? 'rgba(230,200,255,' : 'rgba(220,255,230,';
+        var c1 = violet ? 'rgba(170,110,230,' : 'rgba(140,230,170,';
+        var c2 = violet ? 'rgba(90,40,140,0)' : 'rgba(47,143,79,0)';
         var core = ctx.createRadialGradient(f.cx, f.cy, 0, f.cx, f.cy, W * f.bloom);
-        core.addColorStop(0, 'rgba(220,255,230,' + (0.22 * power).toFixed(3) + ')');
-        core.addColorStop(0.4, 'rgba(140,230,170,' + (0.1 * power).toFixed(3) + ')');
-        core.addColorStop(1, 'rgba(47,143,79,0)');
+        core.addColorStop(0, c0 + (0.24 * power).toFixed(3) + ')');
+        core.addColorStop(0.4, c1 + (0.12 * power).toFixed(3) + ')');
+        core.addColorStop(1, c2);
         ctx.fillStyle = core;
         ctx.beginPath();
         ctx.arc(f.cx, f.cy, W * f.bloom, 0, Math.PI * 2);
         ctx.fill();
+
         for (var i = 0; i < 10; i++) {
           var tt = i / 9;
-          var yy = f.cy + H * (0.03 + tt * 0.55);
+          var yy = f.cy + H * (0.03 + tt * 0.58);
+          var xx = f.cx + (f.dir || 0) * W * tt * 0.35;
           var spread = W * ((f.cone * 0.35) + tt * f.cone);
-          var a = power * (0.1 * (1 - tt) * (1 - tt));
+          var a = power * (0.11 * (1 - tt) * (1 - tt));
           if (a < 0.008) continue;
-          var g = ctx.createRadialGradient(f.cx, yy, 0, f.cx, yy, spread);
-          g.addColorStop(0, 'rgba(170,245,195,' + a.toFixed(3) + ')');
-          g.addColorStop(0.55, 'rgba(90,180,120,' + (a * 0.35).toFixed(3) + ')');
-          g.addColorStop(1, 'rgba(47,143,79,0)');
+          var g = ctx.createRadialGradient(xx, yy, 0, xx, yy, spread);
+          if (violet) {
+            g.addColorStop(0, 'rgba(210,180,255,' + a.toFixed(3) + ')');
+            g.addColorStop(0.55, 'rgba(150,90,210,' + (a * 0.35).toFixed(3) + ')');
+            g.addColorStop(1, 'rgba(70,30,110,0)');
+          } else {
+            g.addColorStop(0, 'rgba(170,245,195,' + a.toFixed(3) + ')');
+            g.addColorStop(0.55, 'rgba(90,180,120,' + (a * 0.35).toFixed(3) + ')');
+            g.addColorStop(1, 'rgba(47,143,79,0)');
+          }
           ctx.fillStyle = g;
           ctx.beginPath();
-          ctx.arc(f.cx, yy, spread, 0, Math.PI * 2);
+          ctx.arc(xx, yy, spread, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.restore();
@@ -646,6 +671,7 @@
         ensure();
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
+        var dustColor = f.palette === 'violet' ? 'rgba(235,220,255,' : 'rgba(230,255,235,';
         for (var n = 0; n < dust.length; n++) {
           var p = dust[n];
           p.phase += 0.03 * p.spin;
@@ -653,7 +679,8 @@
           p.y += p.vy;
           var yNorm = Math.max(0, (p.y - f.cy) / (H * 0.65));
           var halfW = W * (f.cone * 0.35 + yNorm * f.cone);
-          if (p.x < f.cx - halfW || p.x > f.cx + halfW || p.y > H * 0.88 || p.y < f.cy - H * 0.02) {
+          var midX = f.cx + (f.dir || 0) * W * yNorm * 0.35;
+          if (p.x < midX - halfW || p.x > midX + halfW || p.y > H * 0.88 || p.y < f.cy - H * 0.02) {
             spawnDust(p, true);
             continue;
           }
@@ -661,7 +688,7 @@
           var a = spark * sun * (0.5 + 0.5 * p.z);
           if (a < 0.05) continue;
           ctx.beginPath();
-          ctx.fillStyle = 'rgba(230,255,235,' + (a * 0.9).toFixed(3) + ')';
+          ctx.fillStyle = dustColor + (a * 0.9).toFixed(3) + ')';
           ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
           ctx.fill();
         }
