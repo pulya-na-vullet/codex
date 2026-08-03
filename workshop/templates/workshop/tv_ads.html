@@ -393,13 +393,9 @@
     }
 
     if (osLaunch) {
-      // OS Chrome already uses --start-fullscreen + Win32 borderless cover.
+      // OS Chrome is sized borderless+TOPMOST by Win32 — no document-FS toast.
       showGate(false);
       showHint(3500);
-      // Also try document fullscreen when a gesture-less grant is available.
-      setTimeout(function () {
-        enterFs().then(function () { showHint(3500); }).catch(function () {});
-      }, 500);
     } else if (wantFs) {
       showGate(true);
       setTimeout(function () {

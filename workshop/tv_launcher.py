@@ -225,7 +225,9 @@ def open_tv_on_monitor(
         "--autoplay-policy=no-user-gesture-required",
         f"--window-position={int(left)},{int(top)}",
         f"--window-size={int(width)},{int(height)}",
-        "--start-fullscreen",
+        # No --start-fullscreen: without focus Windows only flashes the taskbar and
+        # shows a fullscreen hint until the user clicks the app. We cover the
+        # monitor borderless + TOPMOST via Win32 instead (true fullscreen look).
         f"--app={url}",
     ]
 
@@ -314,11 +316,68 @@ def _win_process_descendants(root_pid: int) -> set[int]:
     return pids
 
 
+def _win_activate_window(hwnd: int) -> None:
+    """Force the TV window to foreground so Chrome fullscreen actually engages.
+
+    Without this, Windows flashes the taskbar icon and shows a fullscreen hint
+    until the user clicks the app — CRM stays focused on the other monitor.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    SW_RESTORE = 9
+    SW_SHOW = 5
+    hwnd = int(hwnd)
+    user32.ShowWindow(hwnd, SW_RESTORE)
+    user32.ShowWindow(hwnd, SW_SHOW)
+    user32.BringWindowToTop(hwnd)
+
+    fg = user32.GetForegroundWindow()
+    if fg == hwnd:
+        return
+
+    fg_tid = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+    target_tid = user32.GetWindowThreadProcessId(hwnd, None)
+    cur_tid = kernel32.GetCurrentThreadId()
+
+    attached_fg = False
+    attached_tg = False
+    try:
+        if fg_tid and fg_tid != cur_tid:
+            attached_fg = bool(user32.AttachThreadInput(cur_tid, fg_tid, True))
+        if target_tid and target_tid != cur_tid and target_tid != fg_tid:
+            attached_tg = bool(user32.AttachThreadInput(cur_tid, target_tid, True))
+
+        # Alt key pulse unlocks SetForegroundWindow restrictions.
+        VK_MENU = 0x12
+        KEYEVENTF_KEYUP = 0x0002
+        user32.keybd_event(VK_MENU, 0, 0, 0)
+        user32.SetForegroundWindow(hwnd)
+        user32.BringWindowToTop(hwnd)
+        user32.SetActiveWindow(hwnd)
+        user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+    finally:
+        if attached_tg:
+            user32.AttachThreadInput(cur_tid, target_tid, False)
+        if attached_fg:
+            user32.AttachThreadInput(cur_tid, fg_tid, False)
+
+    # Allow this process to set foreground for a moment (best-effort).
+    try:
+        user32.AllowSetForegroundWindow(ctypes.windll.kernel32.GetCurrentProcessId())
+    except Exception:
+        pass
+    user32.SetForegroundWindow(hwnd)
+
+
 def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height: int) -> None:
     """Move ONLY windows that belong to the TV Chrome process tree (never CRM).
 
-    Strips caption/borders and covers the full monitor (over the taskbar) so the
-    TV looks like a true fullscreen surface even if document fullscreen fails.
+    Strips caption/borders, covers the full monitor (over the taskbar), and
+    forces foreground so --start-fullscreen applies without a taskbar click.
     """
     try:
         import ctypes
@@ -377,7 +436,6 @@ def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height:
         HWND_TOPMOST = -1
         SWP_SHOWWINDOW = 0x0040
         SWP_FRAMECHANGED = 0x0020
-        SWP_NOACTIVATE = 0x0010
         SW_SHOW = 5
 
         get_long = getattr(user32, "GetWindowLongPtrW", None) or user32.GetWindowLongW
@@ -401,7 +459,7 @@ def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height:
             except Exception:
                 pass
             user32.ShowWindow(hwnd, SW_SHOW)
-            # Cover the full OS monitor rect (including over the taskbar).
+            # Cover full monitor and stay TOPMOST so taskbar stays hidden on the TV.
             user32.SetWindowPos(
                 hwnd,
                 HWND_TOPMOST,
@@ -411,16 +469,33 @@ def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height:
                 int(height),
                 SWP_SHOWWINDOW | SWP_FRAMECHANGED,
             )
-            # Drop TOPMOST after sizing so CRM on the other screen stays usable.
+            prev_fg = user32.GetForegroundWindow()
+            _win_activate_window(hwnd)
+            # Re-assert size after activation (Chrome sometimes shrinks until focused).
             user32.SetWindowPos(
                 hwnd,
-                0,  # HWND_TOP
+                HWND_TOPMOST,
                 int(left),
                 int(top),
                 int(width),
                 int(height),
-                SWP_SHOWWINDOW | SWP_NOACTIVATE,
+                SWP_SHOWWINDOW | SWP_FRAMECHANGED,
             )
+            # Return keyboard focus to CRM so the operator can keep working;
+            # TOPMOST keeps ads covering the TV (including over the taskbar).
+            if prev_fg and prev_fg != hwnd:
+                try:
+                    import threading
+
+                    def _restore_crm(fg=int(prev_fg)):
+                        try:
+                            user32.SetForegroundWindow(fg)
+                        except Exception:
+                            pass
+
+                    threading.Timer(0.35, _restore_crm).start()
+                except Exception:
+                    pass
     except Exception:
         logger.debug("Win32 TV window place skipped", exc_info=True)
 
