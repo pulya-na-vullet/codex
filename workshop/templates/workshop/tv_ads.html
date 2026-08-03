@@ -92,6 +92,32 @@
       100% { transform: scale(1.05) translate(0.9%, -0.3%); }
     }
 
+    .world-software {
+      overflow: hidden;
+      background: #05070c;
+    }
+    .world-software .bg {
+      position: absolute;
+      inset: -3%;
+      background: #05070c center / cover no-repeat;
+      background-image: url("{% static 'workshop/promo/tv43/bg-software-gold-hall-fhd.png' %}?v=atm11");
+      animation: drift-software 50s ease-in-out infinite alternate;
+      will-change: transform;
+    }
+    .world-software .software-haze {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(5, 7, 12, 0.1) 0%, transparent 32%, rgba(3, 5, 10, 0.5) 70%, rgba(2, 3, 8, 0.9) 100%),
+        radial-gradient(ellipse 50% 40% at 28% 30%, rgba(255, 200, 90, 0.10), transparent 70%);
+      pointer-events: none;
+    }
+    @keyframes drift-software {
+      0%   { transform: scale(1.03) translate(0, 0); }
+      50%  { transform: scale(1.07) translate(0.8%, 0.4%); }
+      100% { transform: scale(1.04) translate(-0.7%, -0.3%); }
+    }
+
     @keyframes drift-hall {
       0%   { transform: scale(1.04) translate(0, 0); }
       50%  { transform: scale(1.08) translate(-1.2%, 0.6%); }
@@ -166,6 +192,33 @@
       background: rgba(28, 10, 42, 0.6);
     }
     .stage[data-scene="atelier"] .price-pill .sum span { color: #e0c4ff; }
+
+    .stage[data-scene="software"] .portal,
+    .portal.is-to-software {
+      background:
+        radial-gradient(circle at 30% 32%, rgba(255, 230, 160, 0.95) 0%, rgba(212, 168, 75, 0.5) 24%, rgba(8, 10, 16, 0.92) 58%, #05070c 100%);
+    }
+    .stage[data-scene="software"] .fog-floor {
+      background:
+        radial-gradient(ellipse 60% 50% at 30% 70%, rgba(212, 168, 75, 0.10), transparent 70%),
+        radial-gradient(ellipse 55% 45% at 70% 80%, rgba(160, 120, 50, 0.08), transparent 70%),
+        linear-gradient(180deg, transparent 0%, rgba(5, 7, 12, 0.55) 45%, rgba(2, 3, 8, 0.92) 100%);
+    }
+    .stage[data-scene="software"] .hud {
+      background: linear-gradient(180deg, transparent 40%, rgba(5, 7, 12, 0.58) 72%, rgba(2, 3, 8, 0.88) 100%);
+    }
+    .stage[data-scene="software"] .eyebrow { color: #f0d48a; text-shadow: 0 0 24px rgba(212, 168, 75, 0.5); }
+    .stage[data-scene="software"] .rule {
+      background: linear-gradient(90deg, transparent, #d4a84b, transparent);
+      box-shadow: 0 0 16px rgba(212, 168, 75, 0.55);
+    }
+    .stage[data-scene="software"] .price-pill {
+      border-color: rgba(212, 168, 75, 0.3);
+      background: rgba(12, 14, 22, 0.62);
+    }
+    .stage[data-scene="software"] .price-pill .sum span { color: #f0d48a; }
+    .stage[data-scene="software"] .phone span { color: #f0d48a; }
+
     .portal.is-active {
       animation: portal-flare 2.4s ease-in-out forwards;
     }
@@ -302,7 +355,7 @@
     .fs-gate-sub { font-size: clamp(14px, 2vw, 20px); color: #9fbfab; letter-spacing: .04em; }
 
     @media (prefers-reduced-motion: reduce) {
-      .world-hall .bg, .world-atelier .bg, .fog-floor, .eyebrow { animation: none !important; }
+      .world-hall .bg, .world-atelier .bg, .world-software .bg, .fog-floor, .eyebrow { animation: none !important; }
       .world-fx, .portal { display: none !important; }
       .world-layer.is-exit, .world-layer.is-enter { animation: none !important; opacity: 1; }
     }
@@ -316,6 +369,10 @@
     <div class="world-layer world-atelier" id="worldAtelier" aria-hidden="true">
       <div class="bg"></div>
       <div class="atelier-haze"></div>
+    </div>
+    <div class="world-layer world-software" id="worldSoftware" aria-hidden="true">
+      <div class="bg"></div>
+      <div class="software-haze"></div>
     </div>
 
     <canvas class="world-fx" id="worldFx" aria-hidden="true"></canvas>
@@ -398,14 +455,42 @@
         <p class="footer">срок от 1 дня</p>
       </section>
 
-      <!-- HALL return / contacts -->
-      <section class="slide" data-scene="hall">
-        <div class="eyebrow">разработка</div>
-        <h1 class="headline">Чат-боты и ПО на заказ</h1>
+      <!-- SOFTWARE · custom development -->
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">зал решений</div>
+        <h1 class="headline">ПО и чат-боты на заказ</h1>
         <div class="rule"></div>
-        <p class="support">Договор, ТЗ, сопровождение — цифровой сервис мастерской</p>
-        <p class="footer">заказная разработка</p>
+        <p class="support">От идеи до рабочего сервиса — договор, ТЗ, запуск и сопровождение</p>
+        <p class="footer">цифровой сервис мастерской</p>
       </section>
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">что делаем</div>
+        <h1 class="headline">Боты · CRM · Автоматизация</h1>
+        <div class="rule"></div>
+        <p class="support">Max и Telegram-боты, личные кабинеты, учёт заказов, интеграции</p>
+        <p class="footer">под ваш процесс, не «коробка»</p>
+      </section>
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">как работаем</div>
+        <h1 class="headline">Прозрачный цикл</h1>
+        <div class="rule"></div>
+        <div class="price-row">
+          <div class="price-pill"><div class="name">Бриф и оценка</div><div class="sum">1–2<span>дня</span></div></div>
+          <div class="price-pill"><div class="name">Договор и ТЗ</div><div class="sum">фикс<span>цена</span></div></div>
+          <div class="price-pill"><div class="name">Разработка</div><div class="sum">спринты</div></div>
+          <div class="price-pill"><div class="name">Запуск и поддержка</div><div class="sum">на связи</div></div>
+        </div>
+      </section>
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">старт</div>
+        <h1 class="headline">Обсудим задачу</h1>
+        <div class="rule"></div>
+        <p class="phone">+7 (918) <span>802-87-67</span></p>
+        <p class="support">Расскажите цель — предложим архитектуру и срок</p>
+        <p class="footer">без лишней сложности</p>
+      </section>
+
+      <!-- HALL return / contacts -->
       <section class="slide" data-scene="hall">
         <div class="eyebrow">ИТ-М</div>
         <h1 class="headline">Ждём вас в мастерской</h1>
@@ -433,6 +518,12 @@
     var portal = document.getElementById('portal');
     var worldHall = document.getElementById('worldHall');
     var worldAtelier = document.getElementById('worldAtelier');
+    var worldSoftware = document.getElementById('worldSoftware');
+    var worlds = {
+      hall: worldHall,
+      atelier: worldAtelier,
+      software: worldSoftware
+    };
     var params = new URLSearchParams(location.search);
     var wantFs = params.get('fs') === '1';
     var osLaunch = params.get('os') === '1';
@@ -449,7 +540,7 @@
     var idx = 0;
     var transitioning = false;
 
-    /* Story order: hall promos → portal → atelier 3D → portal → hall close */
+    /* Story: hall → atelier 3D → software hall → hall contacts */
     var story = [
       { scene: 'hall', slide: 0 },
       { scene: 'hall', slide: 1 },
@@ -460,8 +551,11 @@
       { scene: 'atelier', slide: 1 },
       { scene: 'atelier', slide: 2 },
       { scene: 'atelier', slide: 3 },
-      { scene: 'hall', slide: 5 },
-      { scene: 'hall', slide: 6 }
+      { scene: 'software', slide: 0 },
+      { scene: 'software', slide: 1 },
+      { scene: 'software', slide: 2 },
+      { scene: 'software', slide: 3 },
+      { scene: 'hall', slide: 5 }
     ];
 
     function slidesOf(scene) {
@@ -477,15 +571,16 @@
     function setWorld(scene) {
       currentScene = scene;
       if (stage) stage.setAttribute('data-scene', scene);
-      var live = scene === 'hall' ? worldHall : worldAtelier;
-      var other = scene === 'hall' ? worldAtelier : worldHall;
-      if (live) {
-        live.classList.add('is-live');
-        live.classList.remove('is-exit', 'is-enter');
-      }
-      if (other) {
-        other.classList.remove('is-live', 'is-exit', 'is-enter');
-      }
+      Object.keys(worlds).forEach(function (key) {
+        var el = worlds[key];
+        if (!el) return;
+        if (key === scene) {
+          el.classList.add('is-live');
+          el.classList.remove('is-exit', 'is-enter');
+        } else {
+          el.classList.remove('is-live', 'is-exit', 'is-enter');
+        }
+      });
     }
 
     function runPortal(toScene, done) {
@@ -496,11 +591,12 @@
       }
       transitioning = true;
       if (hud) hud.classList.add('is-dim');
-      var from = currentScene === 'hall' ? worldHall : worldAtelier;
-      var to = toScene === 'hall' ? worldHall : worldAtelier;
+      var from = worlds[currentScene];
+      var to = worlds[toScene];
       if (portal) {
-        portal.classList.remove('is-active', 'is-to-atelier');
+        portal.classList.remove('is-active', 'is-to-atelier', 'is-to-software');
         if (toScene === 'atelier') portal.classList.add('is-to-atelier');
+        if (toScene === 'software') portal.classList.add('is-to-software');
         void portal.offsetWidth;
         portal.classList.add('is-active');
       }
@@ -510,15 +606,13 @@
       }
       setTimeout(function () {
         if (from) from.classList.remove('is-live', 'is-exit');
-        if (to) {
-          to.classList.add('is-live', 'is-enter');
-        }
+        if (to) to.classList.add('is-live', 'is-enter');
         currentScene = toScene;
         if (stage) stage.setAttribute('data-scene', toScene);
       }, Math.floor(PORTAL_MS * 0.42));
       setTimeout(function () {
         if (to) to.classList.remove('is-enter');
-        if (portal) portal.classList.remove('is-active');
+        if (portal) portal.classList.remove('is-active', 'is-to-atelier', 'is-to-software');
         if (hud) hud.classList.remove('is-dim');
         transitioning = false;
         if (done) done();
@@ -571,7 +665,7 @@
       }
 
       function focus() {
-        // Hall: centre green window. Atelier: purple stained glass on the right.
+        // Hall: centre green. Atelier: violet right. Software: gold left windows.
         if (currentScene === 'atelier') {
           return {
             cx: W * 0.72,
@@ -580,6 +674,16 @@
             bloom: 0.22,
             dir: -0.35,
             palette: 'violet'
+          };
+        }
+        if (currentScene === 'software') {
+          return {
+            cx: W * 0.22,
+            cy: H * 0.28,
+            cone: 0.22,
+            bloom: 0.24,
+            dir: 0.42,
+            palette: 'gold'
           };
         }
         return {
@@ -598,7 +702,10 @@
         p.y = fromTop ? f.cy + H * Math.random() * 0.1 : f.cy + H * Math.random() * 0.55;
         p.z = 0.4 + Math.random() * 0.6;
         p.r = 2 + Math.random() * 2; // 4–8 px
-        p.vx = (Math.random() - 0.5) * 0.22 * p.z + (f.palette === 'violet' ? -0.08 : 0);
+        var drift = 0;
+        if (f.palette === 'violet') drift = -0.08;
+        if (f.palette === 'gold') drift = 0.1;
+        p.vx = (Math.random() - 0.5) * 0.22 * p.z + drift;
         p.vy = (0.1 + Math.random() * 0.3) * p.z;
         p.phase = Math.random() * Math.PI * 2;
         p.spin = 0.4 + Math.random() * 1.2;
@@ -621,12 +728,18 @@
       function drawLight(f, power) {
         if (power < 0.04) return;
         var violet = f.palette === 'violet';
+        var gold = f.palette === 'gold';
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
 
-        var c0 = violet ? 'rgba(230,200,255,' : 'rgba(220,255,230,';
-        var c1 = violet ? 'rgba(170,110,230,' : 'rgba(140,230,170,';
-        var c2 = violet ? 'rgba(90,40,140,0)' : 'rgba(47,143,79,0)';
+        var c0, c1, c2;
+        if (violet) {
+          c0 = 'rgba(230,200,255,'; c1 = 'rgba(170,110,230,'; c2 = 'rgba(90,40,140,0)';
+        } else if (gold) {
+          c0 = 'rgba(255,230,160,'; c1 = 'rgba(212,168,75,'; c2 = 'rgba(120,80,20,0)';
+        } else {
+          c0 = 'rgba(220,255,230,'; c1 = 'rgba(140,230,170,'; c2 = 'rgba(47,143,79,0)';
+        }
         var core = ctx.createRadialGradient(f.cx, f.cy, 0, f.cx, f.cy, W * f.bloom);
         core.addColorStop(0, c0 + (0.24 * power).toFixed(3) + ')');
         core.addColorStop(0.4, c1 + (0.12 * power).toFixed(3) + ')');
@@ -648,6 +761,10 @@
             g.addColorStop(0, 'rgba(210,180,255,' + a.toFixed(3) + ')');
             g.addColorStop(0.55, 'rgba(150,90,210,' + (a * 0.35).toFixed(3) + ')');
             g.addColorStop(1, 'rgba(70,30,110,0)');
+          } else if (gold) {
+            g.addColorStop(0, 'rgba(255,220,140,' + a.toFixed(3) + ')');
+            g.addColorStop(0.55, 'rgba(200,150,60,' + (a * 0.35).toFixed(3) + ')');
+            g.addColorStop(1, 'rgba(90,60,15,0)');
           } else {
             g.addColorStop(0, 'rgba(170,245,195,' + a.toFixed(3) + ')');
             g.addColorStop(0.55, 'rgba(90,180,120,' + (a * 0.35).toFixed(3) + ')');
@@ -671,7 +788,9 @@
         ensure();
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        var dustColor = f.palette === 'violet' ? 'rgba(235,220,255,' : 'rgba(230,255,235,';
+        var dustColor = 'rgba(230,255,235,';
+        if (f.palette === 'violet') dustColor = 'rgba(235,220,255,';
+        if (f.palette === 'gold') dustColor = 'rgba(255,236,190,';
         for (var n = 0; n < dust.length; n++) {
           var p = dust[n];
           p.phase += 0.03 * p.spin;
