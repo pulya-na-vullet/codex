@@ -213,6 +213,8 @@ def open_tv_on_monitor(
     url = _tv_url()
 
     # Separate profile — never attach to the CRM browser profile/window.
+    # --kiosk = no title bar / no browser chrome (unlike --app, which keeps a caption).
+    # Win32 then pins the HWND to the chosen monitor and keeps it TOPMOST over the taskbar.
     args = [
         browser,
         f"--user-data-dir={profile_dir}",
@@ -225,10 +227,9 @@ def open_tv_on_monitor(
         "--autoplay-policy=no-user-gesture-required",
         f"--window-position={int(left)},{int(top)}",
         f"--window-size={int(width)},{int(height)}",
-        # No --start-fullscreen: without focus Windows only flashes the taskbar and
-        # shows a fullscreen hint until the user clicks the app. We cover the
-        # monitor borderless + TOPMOST via Win32 instead (true fullscreen look).
-        f"--app={url}",
+        "--kiosk",
+        "--kiosk-printing",
+        url,
     ]
 
     popen_kwargs: dict[str, Any] = {
