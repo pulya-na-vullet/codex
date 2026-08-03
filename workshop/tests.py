@@ -140,6 +140,16 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Цифровая мастерская")
         self.assertContains(r, "Esc")
 
+    def test_tv_monitors_api(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        r = self.http.get("/admin-panel/tv-monitors")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(isinstance(data["monitors"], list))
+        self.assertGreaterEqual(len(data["monitors"]), 1)
+
+
     def test_login_and_dashboard(self):
         r = self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         self.assertEqual(r.status_code, 302)

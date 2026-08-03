@@ -2716,3 +2716,72 @@ def software_pdf(request: HttpRequest, contract_id: int):
 def tv_ads(request: HttpRequest):
     """Client-zone fullscreen ads carousel (opened from admin onto a chosen monitor)."""
     return render(request, "workshop/tv_ads.html", {"title": "ИТ-М · ТВ-реклама"})
+
+
+@require_GET
+@require_admin
+def tv_monitors_api(request: HttpRequest):
+    """List OS monitors for the TV ads launcher."""
+    from workshop.tv_launcher import find_browser, list_monitors
+
+    monitors = list_monitors()
+    browser = find_browser()
+    return HttpResponse(
+        json.dumps(
+            {
+                "ok": True,
+                "monitors": monitors,
+                "browser": browser or "",
+                "platform": __import__("platform").system(),
+            }
+        ),
+        content_type="application/json",
+    )
+
+
+@require_admin
+@require_http_methods(["POST"])
+def tv_open_api(request: HttpRequest):
+    """Open ads in a new OS-level Chrome window on the chosen monitor (fullscreen)."""
+    from workshop.tv_launcher import open_tv_on_monitor, resolve_monitor, stop_tv_browser
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    action = (payload.get("action") or request.POST.get("action") or "open").strip()
+    if action == "stop":
+        stop_tv_browser()
+        return HttpResponse(json.dumps({"ok": True, "stopped": True}), content_type="application/json")
+
+    monitor_id = (payload.get("monitor_id") or request.POST.get("monitor_id") or "").strip()
+    index_raw = payload.get("index", request.POST.get("index"))
+    index = None
+    try:
+        if index_raw is not None and str(index_raw) != "":
+            index = int(index_raw)
+    except (TypeError, ValueError):
+        index = None
+
+    monitor = resolve_monitor(monitor_id=monitor_id, index=index)
+    if not monitor:
+        return HttpResponse(
+            json.dumps({"ok": False, "error": "Монитор не найден"}),
+            content_type="application/json",
+            status=400,
+        )
+
+    result = open_tv_on_monitor(
+        left=int(monitor["left"]),
+        top=int(monitor["top"]),
+        width=int(monitor["width"]),
+        height=int(monitor["height"]),
+    )
+    log_action(
+        request,
+        "tv_ads_open",
+        entity_type="display",
+        details=f"ok={result.get('ok')} monitor={monitor.get('id')} pid={result.get('pid')}",
+    )
+    status = 200 if result.get("ok") else 500
+    return HttpResponse(json.dumps({**result, "monitor": monitor}), content_type="application/json", status=status)

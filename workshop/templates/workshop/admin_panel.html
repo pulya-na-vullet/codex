@@ -278,18 +278,21 @@
         <div class="card mb-3"><div class="card-body">
             <h5 class="mb-2">ТВ-реклама (клиентская зона)</h5>
             <p class="small-muted mb-3">
-                Открывает рекламу на выбранном мониторе. После открытия нажмите
-                <strong>«На весь экран»</strong> на ТВ (иначе останется панель задач).
-                <strong>Esc</strong> — свернуть.
+                Мониторы читаются через ОС. Открывается <strong>новое окно Chrome/Edge</strong>
+                на выбранном экране сразу в полноэкранном режиме.
+                CRM-окно не трогается. <strong>Esc</strong> — свернуть, <strong>Alt+F4</strong> — закрыть.
             </p>
             <div class="mb-2">
                 <label class="form-label" for="tvMonitorSelect">Монитор</label>
-                <select class="form-select" id="tvMonitorSelect"></select>
+                <select class="form-select" id="tvMonitorSelect">
+                    <option value="">Нажмите «Найти мониторы»</option>
+                </select>
                 <div class="small-muted mt-1" id="tvMonitorHint"></div>
             </div>
             <div class="d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-primary btn-sm" id="tvOpenFullscreenBtn">Открыть на мониторе</button>
-                <button type="button" class="btn btn-outline-light btn-sm" id="tvRescanMonitorsBtn">Найти все мониторы</button>
+                <button type="button" class="btn btn-outline-light btn-sm" id="tvRescanMonitorsBtn">Найти мониторы</button>
+                <button type="button" class="btn btn-primary btn-sm" id="tvOpenFullscreenBtn">Открыть на весь экран</button>
+                <button type="button" class="btn btn-outline-warning btn-sm" id="tvStopBtn">Закрыть ТВ-окно</button>
             </div>
         </div></div>
         <div class="card mb-3"><div class="card-body">
@@ -345,261 +348,130 @@
   var hint = document.getElementById('tvMonitorHint');
   var openBtn = document.getElementById('tvOpenFullscreenBtn');
   var rescanBtn = document.getElementById('tvRescanMonitorsBtn');
-  if (!select || !openBtn) {
-    console.warn('[TV] controls not found');
-    return;
-  }
+  var stopBtn = document.getElementById('tvStopBtn');
+  if (!select || !openBtn) return;
 
-  var screensCache = [];
-  var STORAGE_KEY = 'itm_tv_monitor_key';
-  var scanning = false;
+  var monitors = [];
+  var STORAGE_KEY = 'itm_tv_monitor_id';
+  var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
 
   function log() {
-    try { console.log.apply(console, ['[TV]'].concat([].slice.call(arguments))); } catch (e) {}
+    try { console.log.apply(console, ['[TV-OS]'].concat([].slice.call(arguments))); } catch (e) {}
   }
 
-  function screenKey(s) {
-    return [s.left, s.top, s.width, s.height, s.source || '', s.label || ''].join('|');
-  }
-
-  function primaryGuess() {
-    // Full pixel size (not avail*) so window covers taskbar area before FS.
-    var left = (typeof window.screen.left === 'number' ? window.screen.left : (window.screen.availLeft || 0));
-    var top = (typeof window.screen.top === 'number' ? window.screen.top : (window.screen.availTop || 0));
-    var width = window.screen.width || window.screen.availWidth || 1920;
-    var height = window.screen.height || window.screen.availHeight || 1080;
-    return { left: left, top: top, width: width, height: height };
-  }
-
-  function heuristicScreens() {
-    var p = primaryGuess();
-    var list = [{
-      left: p.left, top: p.top, width: p.width, height: p.height,
-      isPrimary: (p.left === 0 && p.top === 0),
-      source: 'current',
-      label: 'Текущий (CRM) · ' + p.width + '×' + p.height + ' @' + p.left + ',' + p.top
-    }];
-
-    // Dual-monitor heuristic (Windows): primary is always @0,0.
-    // If CRM is already on a side monitor (left != 0), the other one is almost always primary.
-    if (p.left !== 0 || p.top !== 0) {
-      list.push({
-        left: 0, top: 0, width: p.width, height: p.height,
-        isPrimary: true, source: 'other-primary',
-        label: 'Второй монитор · ' + p.width + '×' + p.height + ' @0,0'
-      });
-      return list;
-    }
-
-    // CRM is on primary @0,0 — offer the usual neighbor positions for the TV.
-    list.push({
-      left: p.width, top: 0, width: p.width, height: p.height,
-      isPrimary: false, source: 'right',
-      label: 'Справа · ' + p.width + '×' + p.height + ' @' + p.width + ',0'
-    });
-    list.push({
-      left: -p.width, top: 0, width: p.width, height: p.height,
-      isPrimary: false, source: 'left',
-      label: 'Слева · ' + p.width + '×' + p.height + ' @' + (-p.width) + ',0'
-    });
-    list.push({
-      left: 0, top: p.height, width: p.width, height: p.height,
-      isPrimary: false, source: 'below',
-      label: 'Ниже · ' + p.width + '×' + p.height + ' @0,' + p.height
-    });
-    return list;
-  }
-
-  function fillSelect(screens, note) {
-    screensCache = screens || [];
+  function fillSelect(list, note) {
+    monitors = list || [];
     select.innerHTML = '';
+    if (!monitors.length) {
+      var empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Мониторы не найдены';
+      select.appendChild(empty);
+      if (hint) hint.textContent = note || 'Нет мониторов';
+      return;
+    }
     var saved = '';
     try { saved = localStorage.getItem(STORAGE_KEY) || ''; } catch (e) {}
     var matched = false;
-    screensCache.forEach(function (s, idx) {
+    monitors.forEach(function (m, idx) {
       var opt = document.createElement('option');
       opt.value = String(idx);
-      opt.textContent = s.label;
-      if (screenKey(s) === saved) { opt.selected = true; matched = true; }
+      opt.textContent = m.label;
+      if (m.id === saved) { opt.selected = true; matched = true; }
       select.appendChild(opt);
     });
     if (!matched) {
-      // Prefer the other monitor when CRM is on a side screen; else prefer "right".
-      var prefer = screensCache.findIndex(function (s) {
-        return s.source === 'other-primary' || s.source === 'right';
-      });
+      var prefer = monitors.findIndex(function (m) { return !m.primary; });
       select.selectedIndex = prefer >= 0 ? prefer : 0;
     }
-    if (hint) {
-      hint.textContent = note || (
-        screensCache.length === 2
-          ? 'Два варианта: текущий (CRM) и второй монитор. Для ТВ обычно берите «Второй».'
-          : ('Вариантов: ' + screensCache.length)
-      );
-    }
-    log('filled', screensCache.length, screensCache);
+    if (hint) hint.textContent = note || ('Найдено мониторов ОС: ' + monitors.length);
+    log('monitors', monitors);
   }
 
-  function withTimeout(promise, ms) {
-    return new Promise(function (resolve, reject) {
-      var done = false;
-      var t = setTimeout(function () {
-        if (done) return;
-        done = true;
-        reject(new Error('timeout ' + ms + 'ms'));
-      }, ms);
-      promise.then(function (v) {
-        if (done) return;
-        done = true;
-        clearTimeout(t);
-        resolve(v);
-      }, function (err) {
-        if (done) return;
-        done = true;
-        clearTimeout(t);
-        reject(err);
+  async function scanMonitors() {
+    if (hint) hint.textContent = 'Опрос мониторов через ОС…';
+    openBtn.disabled = true;
+    try {
+      var r = await fetch('{% url "tv_monitors_api" %}', {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
       });
-    });
-  }
-
-  function insecureHint() {
-    if (window.isSecureContext) return '';
-    return ' CRM открыт не через https/localhost — Chrome не отдаёт точный список. Откройте http://127.0.0.1:8000/admin-panel или выберите «Второй монитор».';
-  }
-
-  async function scanMonitors(fromUserClick) {
-    if (scanning) return;
-    scanning = true;
-    if (hint) hint.textContent = 'Поиск мониторов…';
-    log('scan', {
-      fromUserClick: !!fromUserClick,
-      hasApi: !!window.getScreenDetails,
-      secure: !!window.isSecureContext,
-      isExtended: !!(window.screen && window.screen.isExtended)
-    });
-
-    try {
-      if (window.getScreenDetails && window.isSecureContext) {
-        try {
-          var details = await withTimeout(window.getScreenDetails(), fromUserClick ? 10000 : 1200);
-          var list = (details.screens || []).map(function (s, idx) {
-            var left = (typeof s.left === 'number' ? s.left : s.availLeft) || 0;
-            var top = (typeof s.top === 'number' ? s.top : s.availTop) || 0;
-            var width = s.width || s.availWidth || 1920;
-            var height = s.height || s.availHeight || 1080;
-            return {
-              left: left, top: top, width: width, height: height,
-              isPrimary: !!s.isPrimary,
-              source: 'api',
-              apiIndex: idx,
-              label: (s.label || ('Монитор ' + (idx + 1))) +
-                ' · ' + width + '×' + height +
-                ' @' + left + ',' + top +
-                (s.isPrimary ? ' · основной' : '')
-            };
-          });
-          // Keep live ScreenDetailed refs for fullscreen targeting (same page session).
-          window.__itmTvScreens = details.screens || [];
-          if (list.length) {
-            fillSelect(list, 'Найдено мониторов: ' + list.length + '. Выберите ТВ и откройте.');
-            return;
-          }
-        } catch (e) {
-          log('getScreenDetails failed', e);
-        }
-      }
-      fillSelect(
-        heuristicScreens(),
-        'Точный список недоступен.' + insecureHint() + ' Выберите «Справа/Слева от текущего» под ваш ТВ.'
-      );
+      var data = await r.json();
+      log('scan response', data);
+      if (!data.ok) throw new Error(data.error || 'scan failed');
+      var note = 'Мониторы из ОС (' + (data.platform || '') + ').';
+      if (!data.browser) note += ' Chrome/Edge не найден — установите браузер.';
+      else note += ' Браузер: ' + data.browser;
+      fillSelect(data.monitors || [], note);
+    } catch (e) {
+      log('scan error', e);
+      if (hint) hint.textContent = 'Ошибка опроса ОС: ' + (e && e.message ? e.message : e);
+      fillSelect([], hint.textContent);
     } finally {
-      scanning = false;
+      openBtn.disabled = false;
     }
   }
 
-  var openWindows = [];
-
-  function closePreviousTvWindows() {
-    openWindows.forEach(function (w) {
-      try { if (w && !w.closed) w.close(); } catch (e) {}
-    });
-    openWindows = [];
-    // Also try closing the old fixed name used in earlier builds.
-    try {
-      var legacy = window.open('', 'itm_tv_ads');
-      if (legacy) legacy.close();
-    } catch (e) {}
-  }
-
-  function placeWindow(win, s) {
-    var left = Math.round(s.left);
-    var top = Math.round(s.top);
-    var width = Math.round(s.width);
-    var height = Math.round(s.height);
-    var tries = 0;
-    function tick() {
-      tries += 1;
-      try { win.moveTo(left, top); } catch (e) {}
-      try { win.resizeTo(width, height); } catch (e) {}
-      try { win.focus(); } catch (e) {}
-      if (tries < 12) setTimeout(tick, 50);
-    }
-    tick();
-  }
-
-  function openOnSelected() {
+  async function openSelected() {
     var idx = parseInt(select.value, 10);
-    var s = screensCache[idx];
-    log('open', idx, s);
-    if (!s) {
-      alert('Выберите монитор');
+    var m = monitors[idx];
+    if (!m) {
+      alert('Сначала нажмите «Найти мониторы» и выберите экран');
       return;
     }
-    try { localStorage.setItem(STORAGE_KEY, screenKey(s)); } catch (e) {}
-
-    closePreviousTvWindows();
-
-    var left = Math.round(s.left);
-    var top = Math.round(s.top);
-    var width = Math.round(s.width);
-    var height = Math.round(s.height);
-
-    // Unique name per monitor — otherwise Chrome reuses the old window on the left screen.
-    var winName = 'itm_tv_' + left + '_' + top;
-    var features = [
-      'left=' + left,
-      'top=' + top,
-      'width=' + width,
-      'height=' + height,
-      'popup=yes',
-      'menubar=no',
-      'toolbar=no',
-      'location=no',
-      'status=no',
-      'scrollbars=no'
-    ].join(',');
-
-    var url = '{% url "tv_ads" %}?fs=1'
-      + '&l=' + encodeURIComponent(left)
-      + '&t=' + encodeURIComponent(top)
-      + '&w=' + encodeURIComponent(width)
-      + '&h=' + encodeURIComponent(height)
-      + '&si=' + encodeURIComponent(typeof s.apiIndex === 'number' ? s.apiIndex : idx);
-
-    var win = window.open(url, winName, features);
-    if (!win) {
-      alert('Разрешите всплывающие окна для CRM и повторите.');
-      return;
+    try { localStorage.setItem(STORAGE_KEY, m.id); } catch (e) {}
+    openBtn.disabled = true;
+    if (hint) hint.textContent = 'Запуск Chrome на ' + m.label + '…';
+    try {
+      var r = await fetch('{% url "tv_open_api" %}', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrf,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ monitor_id: m.id, index: m.index })
+      });
+      var data = await r.json();
+      log('open response', data);
+      if (!data.ok) {
+        alert(data.error || 'Не удалось открыть');
+        if (hint) hint.textContent = data.error || 'Ошибка запуска';
+        return;
+      }
+      if (hint) hint.textContent = 'Открыто на ' + m.label + (data.pid ? (' · PID ' + data.pid) : '') + '. Esc — свернуть.';
+    } catch (e) {
+      log('open error', e);
+      alert('Ошибка запуска: ' + (e && e.message ? e.message : e));
+    } finally {
+      openBtn.disabled = false;
     }
-    openWindows.push(win);
-    placeWindow(win, s);
   }
 
-  openBtn.addEventListener('click', openOnSelected);
-  if (rescanBtn) rescanBtn.addEventListener('click', function () { scanMonitors(true); });
+  async function stopTv() {
+    try {
+      await fetch('{% url "tv_open_api" %}', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrf,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ action: 'stop' })
+      });
+      if (hint) hint.textContent = 'ТВ-окно закрыто (если было запущено из CRM).';
+    } catch (e) {
+      log('stop error', e);
+    }
+  }
 
-  fillSelect(heuristicScreens(), 'Если ТВ справа — выберите «Справа от текущего». Для точного списка откройте CRM через http://127.0.0.1:8000 и нажмите «Найти все мониторы».');
-  scanMonitors(false);
+  openBtn.addEventListener('click', openSelected);
+  if (rescanBtn) rescanBtn.addEventListener('click', scanMonitors);
+  if (stopBtn) stopBtn.addEventListener('click', stopTv);
+  scanMonitors();
 })();
 </script>
 {% endblock %}
