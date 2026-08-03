@@ -437,6 +437,8 @@
           : ('Вариантов: ' + screensCache.length)
       );
     }
+    log('filled', screensCache.length, screensCache);
+  }
 
   function withTimeout(promise, ms) {
     return new Promise(function (resolve, reject) {
@@ -462,7 +464,7 @@
 
   function insecureHint() {
     if (window.isSecureContext) return '';
-    return ' CRM открыт не через https/localhost — Chrome не отдаёт список мониторов. Откройте админку как http://127.0.0.1:8000/admin-panel — или выберите «Справа/Слева от текущего».';
+    return ' CRM открыт не через https/localhost — Chrome не отдаёт точный список. Откройте http://127.0.0.1:8000/admin-panel или выберите «Второй монитор».';
   }
 
   async function scanMonitors(fromUserClick) {
