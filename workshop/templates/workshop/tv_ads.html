@@ -271,10 +271,13 @@
       document.documentElement.style.background = '#000';
       document.body.style.background = '#000';
       showGate(false);
-      // Ask Django to taskkill the TV Chrome process tree (CRM untouched).
+      // Kill TV Chrome process tree (CRM untouched). Beacon survives page teardown.
       try {
-        fetch('/tv/close', { method: 'POST', credentials: 'same-origin', keepalive: true })
-          .catch(function () {});
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('/tv/close', '');
+        } else {
+          fetch('/tv/close', { method: 'POST', credentials: 'same-origin', keepalive: true });
+        }
       } catch (e) {}
       try { window.close(); } catch (e2) {}
       setTimeout(function () {
@@ -284,7 +287,7 @@
           document.body.style.background = '#000';
           location.replace('about:blank');
         } catch (e4) {}
-      }, 120);
+      }, 80);
     }
 
     async function resolveTargetScreen() {
@@ -359,21 +362,22 @@
     document.addEventListener('fullscreenchange', syncGate);
     document.addEventListener('webkitfullscreenchange', syncGate);
 
+    // Capture phase: close TV window on Esc before Chrome leaves a framed leftover.
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' || e.keyCode === 27) {
-        if (osLaunch) {
-          // Close even if fullscreen API did not engage.
-          setTimeout(function () { closeOsWindow(); }, 50);
-          return;
-        }
-        setTimeout(function () {
-          if (!isFs()) {
-            showGate(true);
-            try { window.close(); } catch (err) {}
-          }
-        }, 80);
+      if (!(e.key === 'Escape' || e.keyCode === 27)) return;
+      if (osLaunch) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeOsWindow();
+        return;
       }
-    });
+      setTimeout(function () {
+        if (!isFs()) {
+          showGate(true);
+          try { window.close(); } catch (err) {}
+        }
+      }, 80);
+    }, true);
 
     if (gate) {
       gate.addEventListener('click', function (e) {
@@ -389,13 +393,13 @@
     }
 
     if (osLaunch) {
-      // Separate OS Chrome window already opened with --start-fullscreen; no gate overlay.
+      // OS Chrome already uses --start-fullscreen + Win32 borderless cover.
       showGate(false);
       showHint(3500);
-      // Optional: also enter document fullscreen for cleaner chrome-less look.
+      // Also try document fullscreen when a gesture-less grant is available.
       setTimeout(function () {
         enterFs().then(function () { showHint(3500); }).catch(function () {});
-      }, 400);
+      }, 500);
     } else if (wantFs) {
       showGate(true);
       setTimeout(function () {

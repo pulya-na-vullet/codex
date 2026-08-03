@@ -225,8 +225,7 @@ def open_tv_on_monitor(
         "--autoplay-policy=no-user-gesture-required",
         f"--window-position={int(left)},{int(top)}",
         f"--window-size={int(width)},{int(height)}",
-        # Do NOT use --start-fullscreen: Esc would leave a blank window Chrome owns.
-        # Page enters document fullscreen; Esc closes via /tv/close (CRM untouched).
+        "--start-fullscreen",
         f"--app={url}",
     ]
 
@@ -252,8 +251,9 @@ def open_tv_on_monitor(
         def _nudge() -> None:
             _win_place_tv_window(root_pid, left, top, width, height)
 
-        threading.Timer(0.8, _nudge).start()
-        threading.Timer(2.0, _nudge).start()
+        # Chrome creates the HWND asynchronously — nudge several times.
+        for delay in (0.5, 1.0, 1.8, 3.0):
+            threading.Timer(delay, _nudge).start()
 
     return {
         "ok": True,
@@ -317,8 +317,8 @@ def _win_process_descendants(root_pid: int) -> set[int]:
 def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height: int) -> None:
     """Move ONLY windows that belong to the TV Chrome process tree (never CRM).
 
-    Never match by page title across all windows — that used to grab the CRM
-    Chrome window (title contains «ИТ-М») and drag it onto the TV.
+    Strips caption/borders and covers the full monitor (over the taskbar) so the
+    TV looks like a true fullscreen surface even if document fullscreen fails.
     """
     try:
         import ctypes
@@ -344,7 +344,6 @@ def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height:
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_out))
             if int(pid_out.value) not in allowed:
                 return True
-            # Skip tiny helper/tool windows; keep real browser chrome frames.
             rect = RECT()
             if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
                 return True
@@ -356,24 +355,71 @@ def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height:
             user32.GetClassNameW(hwnd, cls, 64)
             class_name = (cls.value or "").lower()
             if "chrome" not in class_name and "chrome_widgetwin" not in class_name:
-                # Edge/Chrome main frame is Chrome_WidgetWin_1; allow empty too early.
                 if class_name and "widgetwin" not in class_name:
                     return True
             hwnds.append(int(hwnd))
             return True
 
         user32.EnumWindows(enum_proc, 0)
-        HWND_TOP = 0
+
+        GWL_STYLE = -16
+        GWL_EXSTYLE = -20
+        WS_CAPTION = 0x00C00000
+        WS_THICKFRAME = 0x00040000
+        WS_BORDER = 0x00800000
+        WS_SYSMENU = 0x00080000
+        WS_MINIMIZEBOX = 0x00020000
+        WS_MAXIMIZEBOX = 0x00010000
+        WS_EX_WINDOWEDGE = 0x00000100
+        WS_EX_DLGMODALFRAME = 0x00000001
+        WS_EX_CLIENTEDGE = 0x00000200
+        WS_EX_STATICEDGE = 0x00020000
+        HWND_TOPMOST = -1
         SWP_SHOWWINDOW = 0x0040
+        SWP_FRAMECHANGED = 0x0020
+        SWP_NOACTIVATE = 0x0010
+        SW_SHOW = 5
+
+        get_long = getattr(user32, "GetWindowLongPtrW", None) or user32.GetWindowLongW
+        set_long = getattr(user32, "SetWindowLongPtrW", None) or user32.SetWindowLongW
+
         for hwnd in hwnds[:2]:
+            try:
+                style = int(get_long(hwnd, GWL_STYLE))
+                style &= ~(
+                    WS_CAPTION
+                    | WS_THICKFRAME
+                    | WS_BORDER
+                    | WS_SYSMENU
+                    | WS_MINIMIZEBOX
+                    | WS_MAXIMIZEBOX
+                )
+                set_long(hwnd, GWL_STYLE, style)
+                ex = int(get_long(hwnd, GWL_EXSTYLE))
+                ex &= ~(WS_EX_WINDOWEDGE | WS_EX_DLGMODALFRAME | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE)
+                set_long(hwnd, GWL_EXSTYLE, ex)
+            except Exception:
+                pass
+            user32.ShowWindow(hwnd, SW_SHOW)
+            # Cover the full OS monitor rect (including over the taskbar).
             user32.SetWindowPos(
                 hwnd,
-                HWND_TOP,
+                HWND_TOPMOST,
                 int(left),
                 int(top),
                 int(width),
                 int(height),
-                SWP_SHOWWINDOW,
+                SWP_SHOWWINDOW | SWP_FRAMECHANGED,
+            )
+            # Drop TOPMOST after sizing so CRM on the other screen stays usable.
+            user32.SetWindowPos(
+                hwnd,
+                0,  # HWND_TOP
+                int(left),
+                int(top),
+                int(width),
+                int(height),
+                SWP_SHOWWINDOW | SWP_NOACTIVATE,
             )
     except Exception:
         logger.debug("Win32 TV window place skipped", exc_info=True)
