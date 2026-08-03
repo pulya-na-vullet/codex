@@ -120,13 +120,15 @@
       position: relative;
       z-index: 1;
       height: 100%;
+      width: 100%;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       text-align: center;
-      padding: 8%;
-      gap: clamp(14px, 2.4vw, 28px);
+      /* Safe area for Max circular crop */
+      padding: 18%;
+      gap: clamp(16px, 2.6vw, 28px);
     }
 
     .logo-wrap {
@@ -187,15 +189,12 @@
     }
 
     .footer-note {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 5.5%;
+      margin: 0;
       text-align: center;
-      font-size: clamp(11px, 1.35vw, 15px);
-      letter-spacing: 0.18em;
+      font-size: clamp(12px, 1.45vw, 16px);
+      letter-spacing: 0.16em;
       text-transform: uppercase;
-      color: rgba(159, 191, 171, 0.75);
+      color: rgba(159, 191, 171, 0.85);
       animation: rise 1.35s .3s cubic-bezier(.2,.8,.2,1) both;
     }
 
@@ -220,12 +219,8 @@
       align-items: flex-start;
     }
     .poster.landscape .headline { max-width: 14ch; }
-    .poster.landscape .footer-note {
-      text-align: left;
-      left: 7%;
-      right: auto;
-      bottom: 8%;
-    }
+    .poster.landscape .poster-inner { padding: 6% 7%; }
+    .poster.landscape .footer-note { text-align: left; }
     .poster.landscape .window-echo {
       left: 72%;
       top: 50%;
