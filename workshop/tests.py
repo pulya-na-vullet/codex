@@ -141,6 +141,8 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Esc")
         self.assertContains(r, "ITM-TV-ADS-KIOSK")
         self.assertContains(r, "/tv/close")
+        self.assertContains(r, "dustCanvas")
+        self.assertContains(r, "light-shafts")
 
     def test_tv_close_api_local(self):
         anon = HttpClient()
