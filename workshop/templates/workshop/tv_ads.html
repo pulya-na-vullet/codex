@@ -29,7 +29,6 @@
       cursor: none;
     }
 
-    /* ===== MMORPG-style world ===== */
     .stage {
       position: relative;
       width: 100vw;
@@ -37,20 +36,101 @@
       overflow: hidden;
       background: #020605;
     }
-    .world {
+
+    /* ===== Locations ===== */
+    .world-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.01s linear;
+    }
+    .world-layer.is-live { opacity: 1; z-index: 0; }
+    .world-layer.is-exit {
+      animation: world-exit 2.4s ease-in forwards;
+    }
+    .world-layer.is-enter {
+      animation: world-enter 2.4s ease-out forwards;
+    }
+
+    .world-hall {
+      overflow: hidden;
+    }
+    .world-hall .bg {
       position: absolute;
       inset: -4%;
-      z-index: 0;
       background: #050a07 center / cover no-repeat;
-      background-image: url("{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}?v=atm3");
-      animation: world-drift 48s ease-in-out infinite alternate;
+      background-image: url("{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}?v=atm7");
+      animation: drift-hall 48s ease-in-out infinite alternate;
       will-change: transform;
     }
-    @keyframes world-drift {
+
+    .world-atelier {
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse 80% 55% at 50% 18%, rgba(40, 90, 55, 0.35), transparent 60%),
+        radial-gradient(ellipse 70% 50% at 50% 100%, rgba(2, 8, 5, 0.95), transparent 55%),
+        linear-gradient(180deg, #06140c 0%, #030906 45%, #010403 100%);
+    }
+    .world-atelier .bg-deep {
+      position: absolute;
+      inset: 0;
+      background: url("{% static 'workshop/promo/tv43/bg-three-windows-workshop-fhd.png' %}?v=atm7") center 20% / cover no-repeat;
+      opacity: 0.22;
+      filter: blur(6px) saturate(0.85);
+      transform: scale(1.15);
+      animation: drift-atelier-deep 56s ease-in-out infinite alternate;
+    }
+    /* Same vitraal motif, but smaller / farther in the background */
+    .world-atelier .vitraal {
+      position: absolute;
+      left: 50%;
+      top: 6%;
+      width: min(46vw, 820px);
+      height: min(34vh, 380px);
+      transform: translateX(-50%);
+      background: url("{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}?v=atm7") center 28% / 180% auto no-repeat;
+      filter: brightness(1.05) saturate(1.15);
+      opacity: 0.92;
+      mask-image: radial-gradient(ellipse 70% 80% at 50% 45%, #000 35%, transparent 78%);
+      -webkit-mask-image: radial-gradient(ellipse 70% 80% at 50% 45%, #000 35%, transparent 78%);
+      animation: drift-atelier-win 42s ease-in-out infinite alternate;
+      box-shadow: 0 0 80px rgba(125, 222, 160, 0.12);
+    }
+    .world-atelier .atelier-haze {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(2,8,5,0.15) 0%, transparent 28%, rgba(2,6,4,0.55) 62%, rgba(1,4,3,0.92) 100%),
+        radial-gradient(ellipse 50% 30% at 50% 22%, rgba(125, 222, 160, 0.12), transparent 70%);
+      pointer-events: none;
+    }
+
+    @keyframes drift-hall {
       0%   { transform: scale(1.04) translate(0, 0); }
       50%  { transform: scale(1.08) translate(-1.2%, 0.6%); }
       100% { transform: scale(1.05) translate(1%, -0.4%); }
     }
+    @keyframes drift-atelier-win {
+      0%   { transform: translateX(-50%) scale(1) translateY(0); }
+      100% { transform: translateX(-50%) scale(1.06) translateY(2%); }
+    }
+    @keyframes drift-atelier-deep {
+      from { transform: scale(1.12) translate(0, 0); }
+      to   { transform: scale(1.2) translate(-1%, 1%); }
+    }
+    @keyframes world-exit {
+      0%   { opacity: 1; filter: brightness(1); transform: scale(1); }
+      45%  { opacity: 1; filter: brightness(1.8); transform: scale(1.12); }
+      100% { opacity: 0; filter: brightness(2.4); transform: scale(1.35); }
+    }
+    @keyframes world-enter {
+      0%   { opacity: 0; filter: brightness(2.2); transform: scale(1.28); }
+      40%  { opacity: 1; filter: brightness(1.5); transform: scale(1.08); }
+      100% { opacity: 1; filter: brightness(1); transform: scale(1); }
+    }
+
     .world-fx {
       position: absolute;
       inset: 0;
@@ -62,9 +142,7 @@
     }
     .fog-floor {
       position: absolute;
-      left: -10%;
-      right: -10%;
-      bottom: -8%;
+      left: -10%; right: -10%; bottom: -8%;
       height: 42%;
       z-index: 2;
       pointer-events: none;
@@ -80,19 +158,37 @@
       to   { transform: translateX(4%) scaleX(1.12); opacity: 1; }
     }
 
-    /* ===== Promo HUD over the world ===== */
+    /* Portal flare between locations */
+    .portal {
+      position: absolute;
+      inset: 0;
+      z-index: 8;
+      pointer-events: none;
+      opacity: 0;
+      background:
+        radial-gradient(circle at 50% 28%, rgba(210, 255, 230, 0.95) 0%, rgba(125, 222, 160, 0.45) 22%, rgba(2, 8, 5, 0.92) 58%, #020605 100%);
+    }
+    .portal.is-active {
+      animation: portal-flare 2.4s ease-in-out forwards;
+    }
+    @keyframes portal-flare {
+      0%   { opacity: 0; transform: scale(0.35); filter: blur(0); }
+      35%  { opacity: 1; transform: scale(1.05); filter: blur(2px); }
+      65%  { opacity: 1; transform: scale(1.2); filter: blur(8px); }
+      100% { opacity: 0; transform: scale(1.55); filter: blur(18px); }
+    }
+
+    /* ===== Promo HUD ===== */
     .hud {
       position: absolute;
       inset: 0;
       z-index: 5;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-end;
-      padding: 0 6vw 7vh;
       pointer-events: none;
       background: linear-gradient(180deg, transparent 42%, rgba(2, 6, 4, 0.55) 72%, rgba(2, 6, 4, 0.82) 100%);
     }
+    .hud.is-dim { opacity: 0; transition: opacity .5s ease; }
+    .hud:not(.is-dim) { opacity: 1; transition: opacity .8s ease .35s; }
+
     .slide {
       position: absolute;
       left: 0; right: 0; bottom: 0;
@@ -121,7 +217,7 @@
       animation: eyebrow-glow 3.6s ease-in-out infinite;
     }
     @keyframes eyebrow-glow {
-      0%, 100% { opacity: 0.75; filter: drop-shadow(0 0 0 transparent); }
+      0%, 100% { opacity: 0.75; }
       50% { opacity: 1; filter: drop-shadow(0 0 10px rgba(125, 222, 160, 0.55)); }
     }
     .headline {
@@ -136,7 +232,7 @@
       font-size: clamp(18px, 2.8vh, 34px);
       font-weight: 500;
       color: var(--mist);
-      max-width: 28ch;
+      max-width: 30ch;
       line-height: 1.35;
     }
     .rule {
@@ -181,8 +277,7 @@
 
     .fs-hint {
       position: fixed;
-      left: 50%;
-      bottom: 18px;
+      left: 50%; bottom: 18px;
       transform: translateX(-50%);
       z-index: 20;
       padding: 8px 14px;
@@ -209,40 +304,51 @@
     .fs-gate-sub { font-size: clamp(14px, 2vw, 20px); color: #9fbfab; letter-spacing: .04em; }
 
     @media (prefers-reduced-motion: reduce) {
-      .world, .fog-floor, .eyebrow { animation: none !important; }
-      .world-fx { display: none !important; }
+      .world-hall .bg, .world-atelier .vitraal, .world-atelier .bg-deep, .fog-floor, .eyebrow { animation: none !important; }
+      .world-fx, .portal { display: none !important; }
+      .world-layer.is-exit, .world-layer.is-enter { animation: none !important; opacity: 1; }
     }
   </style>
 </head>
 <body>
-  <div class="stage" id="stage">
-    <div class="world" id="world" aria-hidden="true"></div>
+  <div class="stage" id="stage" data-scene="hall">
+    <div class="world-layer world-hall is-live" id="worldHall" aria-hidden="true">
+      <div class="bg"></div>
+    </div>
+    <div class="world-layer world-atelier" id="worldAtelier" aria-hidden="true">
+      <div class="bg-deep"></div>
+      <div class="vitraal"></div>
+      <div class="atelier-haze"></div>
+    </div>
+
     <canvas class="world-fx" id="worldFx" aria-hidden="true"></canvas>
     <div class="fog-floor" aria-hidden="true"></div>
+    <div class="portal" id="portal" aria-hidden="true"></div>
 
     <div class="hud" id="hud">
-      <section class="slide is-active">
+      <!-- HALL -->
+      <section class="slide is-active" data-scene="hall">
         <div class="eyebrow">ИТ-М</div>
         <h1 class="headline">Цифровая мастерская</h1>
         <div class="rule"></div>
         <p class="support">Статусы в Max — Низкие цены</p>
         <p class="footer">новый уровень доверия</p>
       </section>
-      <section class="slide">
+      <section class="slide" data-scene="hall">
         <div class="eyebrow">уведомления</div>
         <h1 class="headline">Статусы ремонта в Max</h1>
         <div class="rule"></div>
         <p class="support">Готовность заказа, диагностика и редкие акции — без спама</p>
         <p class="footer">подключение за 30 секунд</p>
       </section>
-      <section class="slide">
+      <section class="slide" data-scene="hall">
         <div class="eyebrow">ремонт техники</div>
         <h1 class="headline">ПК · Ноутбуки · Телефоны · ТВ</h1>
         <div class="rule"></div>
         <p class="support">Гарантия 3 месяца на работы и новые запчасти</p>
         <p class="footer">диагностика вычитается из ремонта</p>
       </section>
-      <section class="slide">
+      <section class="slide" data-scene="hall">
         <div class="eyebrow">цены</div>
         <h1 class="headline">Честный прайс</h1>
         <div class="rule"></div>
@@ -253,28 +359,57 @@
           <div class="price-pill"><div class="name">Сборка ПК под ключ</div><div class="sum">3 000<span>₽</span></div></div>
         </div>
       </section>
-      <section class="slide">
+      <section class="slide" data-scene="hall">
         <div class="eyebrow">выезд</div>
         <h1 class="headline">Мастер приедет к вам</h1>
         <div class="rule"></div>
         <p class="support">Выезд + диагностика от 1 500 ₽</p>
         <p class="footer">быстро · на месте · прозрачно</p>
       </section>
-      <section class="slide">
-        <div class="eyebrow">3D</div>
+
+      <!-- ATELIER · 3D -->
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">ателье формы</div>
+        <h1 class="headline">3D-печать в мастерской</h1>
+        <div class="rule"></div>
+        <p class="support">От эскиза до детали — спокойно, точно, без лишней магии</p>
+        <p class="footer">прототипы · запчасти · сувениры</p>
+      </section>
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">расценки 3D</div>
         <h1 class="headline">Печать и моделирование</h1>
         <div class="rule"></div>
-        <p class="support">3D-печать от 500 ₽ · сканирование · моделирование под задачу</p>
-        <p class="footer">от идеи до готовой детали</p>
+        <div class="price-row">
+          <div class="price-pill"><div class="name">3D-печать от</div><div class="sum">500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">3D-сканирование</div><div class="sum">1 500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Моделирование под задачу</div><div class="sum">от 2 000<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Доработка STL / ремонт модели</div><div class="sum">от 800<span>₽</span></div></div>
+        </div>
       </section>
-      <section class="slide">
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">материалы</div>
+        <h1 class="headline">PLA · PETG · гибкие</h1>
+        <div class="rule"></div>
+        <p class="support">Подбираем пластик под нагрузку, внешний вид и срок службы</p>
+        <p class="footer">консультация бесплатно</p>
+      </section>
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">заказ</div>
+        <h1 class="headline">Принесите идею — унесёте деталь</h1>
+        <div class="rule"></div>
+        <p class="support">Файл, эскиз или образец — посчитаем и запустим печать</p>
+        <p class="footer">срок от 1 дня</p>
+      </section>
+
+      <!-- HALL return / contacts -->
+      <section class="slide" data-scene="hall">
         <div class="eyebrow">разработка</div>
         <h1 class="headline">Чат-боты и ПО на заказ</h1>
         <div class="rule"></div>
         <p class="support">Договор, ТЗ, сопровождение — цифровой сервис мастерской</p>
         <p class="footer">заказная разработка</p>
       </section>
-      <section class="slide">
+      <section class="slide" data-scene="hall">
         <div class="eyebrow">ИТ-М</div>
         <h1 class="headline">Ждём вас в мастерской</h1>
         <div class="rule"></div>
@@ -293,12 +428,14 @@
 
   <script>
   (function () {
-    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
-    var i = 0;
-    var INTERVAL = 9000;
+    var allSlides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
     var hint = document.getElementById('fsHint');
     var gate = document.getElementById('fsGate');
     var stage = document.getElementById('stage');
+    var hud = document.getElementById('hud');
+    var portal = document.getElementById('portal');
+    var worldHall = document.getElementById('worldHall');
+    var worldAtelier = document.getElementById('worldAtelier');
     var params = new URLSearchParams(location.search);
     var wantFs = params.get('fs') === '1';
     var osLaunch = params.get('os') === '1';
@@ -309,8 +446,113 @@
     var targetH = params.has('h') ? parseInt(params.get('h'), 10) : null;
     var closing = false;
     var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var SLIDE_MS = 8500;
+    var PORTAL_MS = reduceMotion ? 200 : 2400;
+    var currentScene = 'hall';
+    var idx = 0;
+    var transitioning = false;
 
-    /* ===== Living world (MMORPG title-screen style) ===== */
+    /* Story order: hall promos → portal → atelier 3D → portal → hall close */
+    var story = [
+      { scene: 'hall', slide: 0 },
+      { scene: 'hall', slide: 1 },
+      { scene: 'hall', slide: 2 },
+      { scene: 'hall', slide: 3 },
+      { scene: 'hall', slide: 4 },
+      { scene: 'atelier', slide: 0 },
+      { scene: 'atelier', slide: 1 },
+      { scene: 'atelier', slide: 2 },
+      { scene: 'atelier', slide: 3 },
+      { scene: 'hall', slide: 5 },
+      { scene: 'hall', slide: 6 }
+    ];
+
+    function slidesOf(scene) {
+      return allSlides.filter(function (s) { return s.getAttribute('data-scene') === scene; });
+    }
+
+    function showSlide(scene, slideIndex) {
+      var list = slidesOf(scene);
+      allSlides.forEach(function (s) { s.classList.remove('is-active'); });
+      if (list[slideIndex]) list[slideIndex].classList.add('is-active');
+    }
+
+    function setWorld(scene) {
+      currentScene = scene;
+      if (stage) stage.setAttribute('data-scene', scene);
+      var live = scene === 'hall' ? worldHall : worldAtelier;
+      var other = scene === 'hall' ? worldAtelier : worldHall;
+      if (live) {
+        live.classList.add('is-live');
+        live.classList.remove('is-exit', 'is-enter');
+      }
+      if (other) {
+        other.classList.remove('is-live', 'is-exit', 'is-enter');
+      }
+    }
+
+    function runPortal(toScene, done) {
+      if (reduceMotion) {
+        setWorld(toScene);
+        if (done) done();
+        return;
+      }
+      transitioning = true;
+      if (hud) hud.classList.add('is-dim');
+      var from = currentScene === 'hall' ? worldHall : worldAtelier;
+      var to = toScene === 'hall' ? worldHall : worldAtelier;
+      if (portal) {
+        portal.classList.remove('is-active');
+        void portal.offsetWidth;
+        portal.classList.add('is-active');
+      }
+      if (from) {
+        from.classList.remove('is-enter');
+        from.classList.add('is-exit');
+      }
+      setTimeout(function () {
+        if (from) from.classList.remove('is-live', 'is-exit');
+        if (to) {
+          to.classList.add('is-live', 'is-enter');
+        }
+        currentScene = toScene;
+        if (stage) stage.setAttribute('data-scene', toScene);
+      }, Math.floor(PORTAL_MS * 0.42));
+      setTimeout(function () {
+        if (to) to.classList.remove('is-enter');
+        if (portal) portal.classList.remove('is-active');
+        if (hud) hud.classList.remove('is-dim');
+        transitioning = false;
+        if (done) done();
+      }, PORTAL_MS);
+    }
+
+    function playStep() {
+      if (transitioning) return;
+      var step = story[idx];
+      var prev = story[(idx - 1 + story.length) % story.length];
+      var needPortal = prev && prev.scene !== step.scene;
+
+      function reveal() {
+        showSlide(step.scene, step.slide);
+      }
+
+      if (needPortal) {
+        runPortal(step.scene, reveal);
+      } else {
+        if (currentScene !== step.scene) setWorld(step.scene);
+        reveal();
+      }
+      idx = (idx + 1) % story.length;
+    }
+
+    // Start
+    setWorld('hall');
+    showSlide('hall', 0);
+    idx = 1;
+    setInterval(playStep, SLIDE_MS);
+
+    /* ===== Atmosphere (light + dust; no dragon) ===== */
     (function initWorldFx() {
       var canvas = document.getElementById('worldFx');
       if (!canvas || !stage || reduceMotion) return;
@@ -318,7 +560,6 @@
       var dpr = Math.min(window.devicePixelRatio || 1, 1.75);
       var W = 0, H = 0;
       var dust = [];
-      var embers = [];
       var t0 = performance.now();
 
       function resize() {
@@ -331,176 +572,65 @@
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
+      function focus() {
+        // Hall: large centre window. Atelier: smaller distant vitraal higher up.
+        if (currentScene === 'atelier') {
+          return { cx: W * 0.5, cy: H * 0.16, cone: 0.12, bloom: 0.12 };
+        }
+        return { cx: W * 0.5, cy: H * 0.26, cone: 0.18, bloom: 0.2 };
+      }
+
       function spawnDust(p, fromTop) {
-        var cx = W * 0.5;
-        p.x = cx + (Math.random() - 0.5) * W * 0.22;
-        p.y = fromTop ? H * (0.16 + Math.random() * 0.1) : H * (0.18 + Math.random() * 0.55);
+        var f = focus();
+        p.x = f.cx + (Math.random() - 0.5) * W * (f.cone + 0.06);
+        p.y = fromTop ? f.cy + H * Math.random() * 0.08 : f.cy + H * Math.random() * 0.5;
         p.z = 0.4 + Math.random() * 0.6;
-        // Visible size 4–8 px (radius 2–4).
-        p.r = 2 + Math.random() * 2;
-        p.vx = (Math.random() - 0.5) * 0.25 * p.z;
-        p.vy = (0.12 + Math.random() * 0.35) * p.z;
+        p.r = 2 + Math.random() * 2; // 4–8 px
+        p.vx = (Math.random() - 0.5) * 0.22 * p.z;
+        p.vy = (0.1 + Math.random() * 0.3) * p.z;
         p.phase = Math.random() * Math.PI * 2;
         p.spin = 0.4 + Math.random() * 1.2;
       }
 
-      function spawnEmber(p) {
-        p.x = W * (0.35 + Math.random() * 0.3);
-        p.y = H * (0.55 + Math.random() * 0.35);
-        p.r = 2 + Math.random() * 2;
-        p.vx = (Math.random() - 0.5) * 0.35;
-        p.vy = -(0.35 + Math.random() * 0.7);
-        p.life = 1;
-        p.decay = 0.003 + Math.random() * 0.006;
-        p.hue = 90 + Math.random() * 40;
-      }
-
       function ensure() {
-        while (dust.length < 90) {
+        while (dust.length < 80) {
           var d = {};
           spawnDust(d, false);
           dust.push(d);
         }
-        while (embers.length < 18) {
-          var e = {};
-          spawnEmber(e);
-          embers.push(e);
-        }
       }
 
-      /** Soft cloud occlusion 0..1 — only dims light, never draws shapes. */
       function cloudAt(t) {
         var a = 0.5 + 0.5 * Math.sin(t * (Math.PI * 2 / 13));
         var b = 0.5 + 0.5 * Math.sin(t * (Math.PI * 2 / 21) + 1.4);
-        var cover = Math.pow(a * 0.6 + b * 0.4, 2.4);
-        return cover * 0.72;
+        return Math.pow(a * 0.6 + b * 0.4, 2.4) * 0.72;
       }
 
-      /**
-       * Dragon fly-by behind the centre window.
-       * Returns {x, y, scale, facing, flap, visible, cover} in screen space.
-       */
-      function dragonState(t) {
-        var period = 26;
-        var flight = 5.2;
-        var u = t % period;
-        if (u > flight) {
-          return { visible: false, cover: 0 };
-        }
-        var p = u / flight; // 0..1 across the sky
-        var facing = (Math.floor(t / period) % 2 === 0) ? 1 : -1;
-        var x0 = facing > 0 ? -0.18 : 1.18;
-        var x1 = facing > 0 ? 1.18 : -0.18;
-        var x = (x0 + (x1 - x0) * p) * W;
-        var y = H * (0.22 + Math.sin(p * Math.PI) * 0.04 + Math.sin(t * 2.1) * 0.008);
-        var flap = Math.sin(t * 9.5);
-        // Stronger cover when crossing the bright centre pane.
-        var dist = Math.abs(x - W * 0.5) / (W * 0.28);
-        var cover = Math.max(0, 1 - dist) * Math.sin(p * Math.PI);
-        return {
-          visible: true,
-          x: x,
-          y: y,
-          scale: Math.min(W, H) * 0.11,
-          facing: facing,
-          flap: flap,
-          cover: cover * 0.55
-        };
-      }
-
-      function traceDragon(flap) {
-        // Unit silhouette facing +X, origin at chest. Wings beat with flap (-1..1).
-        var wu = -0.62 - flap * 0.28;
-        var wl = 0.18 + flap * 0.12;
-        ctx.beginPath();
-        // Tail
-        ctx.moveTo(-0.95, 0.08);
-        ctx.quadraticCurveTo(-0.7, -0.05, -0.45, 0.02);
-        // Back / body
-        ctx.quadraticCurveTo(-0.15, -0.12, 0.2, -0.1);
-        // Neck
-        ctx.quadraticCurveTo(0.4, -0.16, 0.58, -0.22);
-        // Head + horn + snout
-        ctx.lineTo(0.62, -0.38);
-        ctx.lineTo(0.7, -0.26);
-        ctx.lineTo(0.88, -0.2);
-        ctx.lineTo(0.78, -0.08);
-        ctx.lineTo(0.62, -0.04);
-        // Chest / belly
-        ctx.quadraticCurveTo(0.25, 0.12, -0.05, 0.14);
-        // Hind leg tuck
-        ctx.quadraticCurveTo(-0.25, 0.22, -0.4, 0.12);
-        ctx.quadraticCurveTo(-0.65, 0.18, -0.95, 0.08);
-        ctx.closePath();
-        // Upper wing
-        ctx.moveTo(0.02, -0.06);
-        ctx.quadraticCurveTo(-0.05, wu, -0.55, wu - 0.05);
-        ctx.quadraticCurveTo(-0.25, wu + 0.2, -0.02, 0.02);
-        ctx.closePath();
-        // Lower wing membrane
-        ctx.moveTo(0.0, 0.0);
-        ctx.quadraticCurveTo(0.05, wl, -0.35, wl + 0.15);
-        ctx.quadraticCurveTo(-0.12, wl * 0.4, 0.02, 0.04);
-        ctx.closePath();
-      }
-
-      function drawDragonShadow(drag) {
-        if (!drag.visible) return;
-        ctx.save();
-        // Clip roughly to the three window band so the silhouette reads “behind glass”.
-        ctx.beginPath();
-        ctx.ellipse(W * 0.5, H * 0.3, W * 0.42, H * 0.28, 0, 0, Math.PI * 2);
-        ctx.clip();
-
-        ctx.translate(drag.x, drag.y);
-        ctx.scale(drag.facing * drag.scale, drag.scale);
-
-        // Soft outer umbra (through stained glass).
-        ctx.save();
-        ctx.shadowColor = 'rgba(0,0,0,0.55)';
-        ctx.shadowBlur = 18;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-        traceDragon(drag.flap);
-        ctx.fill('nonzero');
-        ctx.restore();
-
-        // Crisper core silhouette.
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
-        traceDragon(drag.flap);
-        ctx.fill('nonzero');
-
-        ctx.restore();
-      }
-
-      /** Soft bloom only — no hard trapezoid / “frame” shafts. */
-      function drawLight(cx, cy, power) {
+      function drawLight(f, power) {
         if (power < 0.04) return;
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-
-        var core = ctx.createRadialGradient(cx, cy, 0, cx, cy, W * 0.2);
+        var core = ctx.createRadialGradient(f.cx, f.cy, 0, f.cx, f.cy, W * f.bloom);
         core.addColorStop(0, 'rgba(220,255,230,' + (0.22 * power).toFixed(3) + ')');
         core.addColorStop(0.4, 'rgba(140,230,170,' + (0.1 * power).toFixed(3) + ')');
         core.addColorStop(1, 'rgba(47,143,79,0)');
         ctx.fillStyle = core;
         ctx.beginPath();
-        ctx.arc(cx, cy, W * 0.2, 0, Math.PI * 2);
+        ctx.arc(f.cx, f.cy, W * f.bloom, 0, Math.PI * 2);
         ctx.fill();
-
-        // Soft volumetric falloff down the centre (stacked soft discs, no polygons).
         for (var i = 0; i < 10; i++) {
           var tt = i / 9;
-          var yy = cy + H * (0.04 + tt * 0.62);
-          var spread = W * (0.05 + tt * 0.14);
+          var yy = f.cy + H * (0.03 + tt * 0.55);
+          var spread = W * ((f.cone * 0.35) + tt * f.cone);
           var a = power * (0.1 * (1 - tt) * (1 - tt));
           if (a < 0.008) continue;
-          var g = ctx.createRadialGradient(cx, yy, 0, cx, yy, spread);
+          var g = ctx.createRadialGradient(f.cx, yy, 0, f.cx, yy, spread);
           g.addColorStop(0, 'rgba(170,245,195,' + a.toFixed(3) + ')');
           g.addColorStop(0.55, 'rgba(90,180,120,' + (a * 0.35).toFixed(3) + ')');
           g.addColorStop(1, 'rgba(47,143,79,0)');
           ctx.fillStyle = g;
           ctx.beginPath();
-          ctx.arc(cx, yy, spread, 0, Math.PI * 2);
+          ctx.arc(f.cx, yy, spread, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.restore();
@@ -509,16 +639,10 @@
       function frame(now) {
         var t = (now - t0) / 1000;
         var breath = 0.8 + 0.2 * (0.5 + 0.5 * Math.sin(t * 0.28));
-        var cloud = cloudAt(t);
-        var drag = dragonState(t);
-        var sun = breath * (1 - cloud) * (1 - (drag.cover || 0));
-        var cx = W * 0.5;
-        var cy = H * 0.26;
-
+        var sun = breath * (1 - cloudAt(t));
+        var f = focus();
         ctx.clearRect(0, 0, W, H);
-        drawLight(cx, cy, sun);
-        drawDragonShadow(drag);
-
+        drawLight(f, sun);
         ensure();
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
@@ -527,9 +651,9 @@
           p.phase += 0.03 * p.spin;
           p.x += p.vx + Math.sin(p.phase) * 0.15 * p.z;
           p.y += p.vy;
-          var yNorm = Math.max(0, (p.y - H * 0.16) / (H * 0.7));
-          var halfW = W * (0.05 + yNorm * 0.18);
-          if (p.x < cx - halfW || p.x > cx + halfW || p.y > H * 0.88 || p.y < H * 0.14) {
+          var yNorm = Math.max(0, (p.y - f.cy) / (H * 0.65));
+          var halfW = W * (f.cone * 0.35 + yNorm * f.cone);
+          if (p.x < f.cx - halfW || p.x > f.cx + halfW || p.y > H * 0.88 || p.y < f.cy - H * 0.02) {
             spawnDust(p, true);
             continue;
           }
@@ -540,29 +664,8 @@
           ctx.fillStyle = 'rgba(230,255,235,' + (a * 0.9).toFixed(3) + ')';
           ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
           ctx.fill();
-          ctx.beginPath();
-          ctx.fillStyle = 'rgba(255,255,245,' + (a * 0.35).toFixed(3) + ')';
-          ctx.arc(p.x, p.y, Math.max(1, p.r * 0.35), 0, Math.PI * 2);
-          ctx.fill();
-        }
-        for (var m = 0; m < embers.length; m++) {
-          var e = embers[m];
-          e.x += e.vx;
-          e.y += e.vy;
-          e.life -= e.decay;
-          if (e.life <= 0 || e.y < H * 0.2) {
-            spawnEmber(e);
-            continue;
-          }
-          var ea = e.life * sun * 0.45;
-          if (ea < 0.04) continue;
-          ctx.beginPath();
-          ctx.fillStyle = 'hsla(' + e.hue + ',65%,72%,' + ea.toFixed(3) + ')';
-          ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
-          ctx.fill();
         }
         ctx.restore();
-
         requestAnimationFrame(frame);
       }
 
@@ -579,27 +682,19 @@
       } catch (e) {}
     }
 
-    setInterval(function () {
-      i = (i + 1) % slides.length;
-      slides.forEach(function (s, idx) { s.classList.toggle('is-active', idx === i); });
-    }, INTERVAL);
-
     function showHint(ms) {
       if (!hint) return;
       hint.classList.add('is-visible');
       clearTimeout(showHint._t);
       showHint._t = setTimeout(function () { hint.classList.remove('is-visible'); }, ms || 3500);
     }
-
     function isFs() {
       return !!(document.fullscreenElement || document.webkitFullscreenElement);
     }
-
     function showGate(show) {
       if (!gate || osLaunch) return;
       gate.classList.toggle('is-visible', !!show);
     }
-
     function closeOsWindow() {
       if (closing) return;
       closing = true;

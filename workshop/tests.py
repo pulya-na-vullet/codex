@@ -143,6 +143,9 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "/tv/close")
         self.assertContains(r, "worldFx")
         self.assertContains(r, "Цифровая мастерская")
+        self.assertContains(r, "worldAtelier")
+        self.assertContains(r, "3D-печать в мастерской")
+        self.assertContains(r, "portal")
 
     def test_tv_close_api_local(self):
         anon = HttpClient()
