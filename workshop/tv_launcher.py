@@ -155,8 +155,8 @@ def find_browser(chrome_path: str = "") -> str | None:
 def _tv_url() -> str:
     port = int(os.getenv("IT_MASTER_PORT", "8000"))
     host = os.getenv("IT_MASTER_TV_HOST", "127.0.0.1")
-    # os=1 → page knows it was launched by OS helper (try auto fullscreen / Esc closes)
-    return f"http://{host}:{port}/tv?fs=1&os=1"
+    # Unique marker in query + page title so Win32 never matches the CRM window.
+    return f"http://{host}:{port}/tv?fs=1&os=1&kiosk=ITM-TV-ADS-KIOSK"
 
 
 def stop_tv_browser() -> None:
@@ -165,6 +165,7 @@ def stop_tv_browser() -> None:
     _chrome_proc = None
     if not proc:
         return
+    pid = proc.pid
     try:
         proc.terminate()
         try:
@@ -173,6 +174,21 @@ def stop_tv_browser() -> None:
             proc.kill()
     except Exception:
         logger.exception("Failed to stop TV browser")
+    if platform.system() == "Windows" and pid:
+        _win_kill_process_tree(pid)
+
+
+def _win_kill_process_tree(root_pid: int) -> None:
+    """Best-effort kill of Chrome child processes for the TV profile."""
+    try:
+        subprocess.run(
+            ["taskkill", "/PID", str(root_pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except Exception:
+        pass
 
 
 def open_tv_on_monitor(
@@ -196,21 +212,22 @@ def open_tv_on_monitor(
     profile_dir.mkdir(parents=True, exist_ok=True)
     url = _tv_url()
 
-    # Separate profile so CRM tabs are never touched.
-    # 1) Position on target monitor  2) start-fullscreen (Esc exits FS; Alt+F4 closes).
+    # Separate profile — never attach to the CRM browser profile/window.
     args = [
         browser,
         f"--user-data-dir={profile_dir}",
+        "--profile-directory=TVAds",
         "--no-first-run",
         "--no-default-browser-check",
         "--disable-session-crashed-bubble",
         "--disable-infobars",
+        "--disable-features=TranslateUI",
         "--autoplay-policy=no-user-gesture-required",
         f"--window-position={int(left)},{int(top)}",
         f"--window-size={int(width)},{int(height)}",
-        "--start-fullscreen",
-        "--new-window",
-        url,
+        # Do NOT use --start-fullscreen: Esc would leave a blank window Chrome owns.
+        # Page enters document fullscreen; Esc closes via /tv/close (CRM untouched).
+        f"--app={url}",
     ]
 
     popen_kwargs: dict[str, Any] = {
@@ -218,12 +235,9 @@ def open_tv_on_monitor(
         "stderr": subprocess.DEVNULL,
     }
     if platform.system() == "Windows":
-        # Detach from Django console; do not create a console window.
         creation = 0
-        creation |= getattr(subprocess, "DETACHED_PROCESS", 0)
         creation |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         popen_kwargs["creationflags"] = creation
-        popen_kwargs["close_fds"] = True
 
     try:
         _chrome_proc = subprocess.Popen(args, **popen_kwargs)
@@ -231,55 +245,127 @@ def open_tv_on_monitor(
         logger.exception("TV browser launch failed")
         return {"ok": False, "error": str(exc)}
 
-    if platform.system() == "Windows":
-        def _nudge() -> None:
-            _win_force_fullscreen(left, top, width, height)
-
-        # Page title appears after load — nudge a couple of times.
+    root_pid = int(_chrome_proc.pid) if _chrome_proc and _chrome_proc.pid else 0
+    if platform.system() == "Windows" and root_pid:
         import threading
 
-        threading.Timer(0.6, _nudge).start()
-        threading.Timer(1.8, _nudge).start()
-        threading.Timer(3.0, _nudge).start()
+        def _nudge() -> None:
+            _win_place_tv_window(root_pid, left, top, width, height)
+
+        threading.Timer(0.8, _nudge).start()
+        threading.Timer(2.0, _nudge).start()
 
     return {
         "ok": True,
-        "pid": _chrome_proc.pid if _chrome_proc else None,
+        "pid": root_pid or None,
         "url": url,
         "browser": browser,
         "bounds": {"left": left, "top": top, "width": width, "height": height},
     }
 
 
-def _win_force_fullscreen(left: int, top: int, width: int, height: int) -> None:
-    """Find the TV Chrome window by title and move + maximize on target monitor."""
+def _win_process_descendants(root_pid: int) -> set[int]:
+    """Return root PID + children via CreateToolhelp32Snapshot."""
+    import ctypes
+    from ctypes import wintypes
+
+    pids = {int(root_pid)}
+    TH32CS_SNAPPROCESS = 0x00000002
+
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", wintypes.WCHAR * 260),
+        ]
+
+    kernel32 = ctypes.windll.kernel32
+    snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if snap == -1:
+        return pids
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        if not kernel32.Process32FirstW(snap, ctypes.byref(entry)):
+            return pids
+        # Multi-pass to catch nested children.
+        for _ in range(4):
+            changed = False
+            kernel32.Process32FirstW(snap, ctypes.byref(entry))
+            while True:
+                ppid = int(entry.th32ParentProcessID)
+                pid = int(entry.th32ProcessID)
+                if ppid in pids and pid not in pids:
+                    pids.add(pid)
+                    changed = True
+                if not kernel32.Process32NextW(snap, ctypes.byref(entry)):
+                    break
+            if not changed:
+                break
+    finally:
+        kernel32.CloseHandle(snap)
+    return pids
+
+
+def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height: int) -> None:
+    """Move ONLY windows that belong to the TV Chrome process tree (never CRM).
+
+    Never match by page title across all windows — that used to grab the CRM
+    Chrome window (title contains «ИТ-М») and drag it onto the TV.
+    """
     try:
         import ctypes
         from ctypes import wintypes
 
         user32 = ctypes.windll.user32
+        allowed = _win_process_descendants(root_pid)
         hwnds: list[int] = []
+        pid_out = wintypes.DWORD()
+
+        class RECT(ctypes.Structure):
+            _fields_ = [
+                ("left", wintypes.LONG),
+                ("top", wintypes.LONG),
+                ("right", wintypes.LONG),
+                ("bottom", wintypes.LONG),
+            ]
 
         @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
         def enum_proc(hwnd, _lparam):
             if not user32.IsWindowVisible(hwnd):
                 return True
-            length = user32.GetWindowTextLengthW(hwnd)
-            if length <= 0:
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_out))
+            if int(pid_out.value) not in allowed:
                 return True
-            buf = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buf, length + 1)
-            title = (buf.value or "").lower()
-            # Title contains page title once loaded.
-            if "тв-реклама" in title or "ит-м" in title or "/tv" in title or "tv" in title:
-                hwnds.append(int(hwnd))
+            # Skip tiny helper/tool windows; keep real browser chrome frames.
+            rect = RECT()
+            if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                return True
+            w = int(rect.right) - int(rect.left)
+            h = int(rect.bottom) - int(rect.top)
+            if w < 200 or h < 200:
+                return True
+            cls = ctypes.create_unicode_buffer(64)
+            user32.GetClassNameW(hwnd, cls, 64)
+            class_name = (cls.value or "").lower()
+            if "chrome" not in class_name and "chrome_widgetwin" not in class_name:
+                # Edge/Chrome main frame is Chrome_WidgetWin_1; allow empty too early.
+                if class_name and "widgetwin" not in class_name:
+                    return True
+            hwnds.append(int(hwnd))
             return True
 
         user32.EnumWindows(enum_proc, 0)
-        SW_SHOW = 5
         HWND_TOP = 0
         SWP_SHOWWINDOW = 0x0040
-        for hwnd in hwnds[:3]:
+        for hwnd in hwnds[:2]:
             user32.SetWindowPos(
                 hwnd,
                 HWND_TOP,
@@ -289,10 +375,8 @@ def _win_force_fullscreen(left: int, top: int, width: int, height: int) -> None:
                 int(height),
                 SWP_SHOWWINDOW,
             )
-            user32.ShowWindow(hwnd, SW_SHOW)
-            # Borderless-ish fullscreen via size covering the monitor; true FS already from --start-fullscreen.
     except Exception:
-        logger.debug("Win32 reposition skipped", exc_info=True)
+        logger.debug("Win32 TV window place skipped", exc_info=True)
 
 
 def resolve_monitor(monitor_id: str = "", index: int | None = None) -> dict[str, Any] | None:

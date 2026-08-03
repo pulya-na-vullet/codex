@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ИТ-М · ТВ-реклама</title>
+  <title>ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -201,10 +201,10 @@
       <p class="footer">скидка 10% с третьего заказа</p>
     </section>
   </div>
-  <div class="fs-hint" id="fsHint">Esc — свернуть</div>
+  <div class="fs-hint" id="fsHint">Esc — закрыть</div>
   <button type="button" class="fs-gate" id="fsGate" aria-label="На весь экран">
     <span class="fs-gate-title">На весь экран</span>
-    <span class="fs-gate-sub">Нажмите — реклама развернётся на выбранном мониторе · Esc — свернуть</span>
+    <span class="fs-gate-sub">Нажмите — реклама развернётся на выбранном мониторе · Esc — закрыть</span>
   </button>
   <style>
     .fs-gate {
@@ -227,14 +227,17 @@
     var gate = document.getElementById('fsGate');
     var params = new URLSearchParams(location.search);
     var wantFs = params.get('fs') === '1';
+    // OS launcher opens a separate Chrome --app window; Esc must kill it (no white leftover).
+    var osLaunch = params.get('os') === '1';
     var targetLeft = params.has('l') ? parseInt(params.get('l'), 10) : null;
     var targetTop = params.has('t') ? parseInt(params.get('t'), 10) : null;
     var targetSi = params.has('si') ? parseInt(params.get('si'), 10) : null;
     var targetW = params.has('w') ? parseInt(params.get('w'), 10) : null;
     var targetH = params.has('h') ? parseInt(params.get('h'), 10) : null;
+    var closing = false;
 
     // Try to land the popup on the requested monitor before fullscreen.
-    if (wantFs && targetLeft != null && targetTop != null) {
+    if (wantFs && !osLaunch && targetLeft != null && targetTop != null) {
       try {
         window.moveTo(targetLeft, targetTop);
         if (targetW && targetH) window.resizeTo(targetW, targetH);
@@ -258,8 +261,30 @@
     }
 
     function showGate(show) {
-      if (!gate) return;
+      if (!gate || osLaunch) return;
       gate.classList.toggle('is-visible', !!show);
+    }
+
+    function closeOsWindow() {
+      if (closing) return;
+      closing = true;
+      document.documentElement.style.background = '#000';
+      document.body.style.background = '#000';
+      showGate(false);
+      // Ask Django to taskkill the TV Chrome process tree (CRM untouched).
+      try {
+        fetch('/tv/close', { method: 'POST', credentials: 'same-origin', keepalive: true })
+          .catch(function () {});
+      } catch (e) {}
+      try { window.close(); } catch (e2) {}
+      setTimeout(function () {
+        try { window.close(); } catch (e3) {}
+        try {
+          document.body.innerHTML = '';
+          document.body.style.background = '#000';
+          location.replace('about:blank');
+        } catch (e4) {}
+      }, 120);
     }
 
     async function resolveTargetScreen() {
@@ -310,7 +335,19 @@
       }
     }
 
+    var wasFs = false;
+
     function syncGate() {
+      if (osLaunch) {
+        if (isFs()) {
+          wasFs = true;
+          showHint(3500);
+          return;
+        }
+        // Esc exits document fullscreen → close the TV app window (no white leftover).
+        if (wasFs && !closing) closeOsWindow();
+        return;
+      }
       if (isFs()) {
         showGate(false);
         showHint(3500);
@@ -324,6 +361,11 @@
 
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' || e.keyCode === 27) {
+        if (osLaunch) {
+          // Close even if fullscreen API did not engage.
+          setTimeout(function () { closeOsWindow(); }, 50);
+          return;
+        }
         setTimeout(function () {
           if (!isFs()) {
             showGate(true);
@@ -346,7 +388,15 @@
       });
     }
 
-    if (wantFs) {
+    if (osLaunch) {
+      // Separate OS Chrome window already opened with --start-fullscreen; no gate overlay.
+      showGate(false);
+      showHint(3500);
+      // Optional: also enter document fullscreen for cleaner chrome-less look.
+      setTimeout(function () {
+        enterFs().then(function () { showHint(3500); }).catch(function () {});
+      }, 400);
+    } else if (wantFs) {
       showGate(true);
       setTimeout(function () {
         enterFs().then(syncGate).catch(function () { syncGate(); });

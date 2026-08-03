@@ -2715,7 +2715,33 @@ def software_pdf(request: HttpRequest, contract_id: int):
 @require_GET
 def tv_ads(request: HttpRequest):
     """Client-zone fullscreen ads carousel (opened from admin onto a chosen monitor)."""
-    return render(request, "workshop/tv_ads.html", {"title": "ИТ-М · ТВ-реклама"})
+    # Title marker must stay unique so OS placement never confuses this with CRM.
+    return render(request, "workshop/tv_ads.html", {"title": "ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK"})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def tv_close_api(request: HttpRequest):
+    """Stop the OS-launched TV Chrome window. Loopback only (Esc from /tv?os=1)."""
+    from workshop.tv_launcher import stop_tv_browser
+
+    remote = (request.META.get("REMOTE_ADDR") or "").strip()
+    # Trust X-Forwarded-For only when the immediate peer is loopback (local reverse proxy).
+    if remote in ("127.0.0.1", "::1", "localhost"):
+        forwarded = (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")[0].strip()
+        if forwarded:
+            remote = forwarded
+    if remote not in ("127.0.0.1", "::1", "localhost", ""):
+        # Still allow empty/unknown in single-PC LAN installs when Host is localhost.
+        host = (request.get_host() or "").split(":")[0].lower()
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            return HttpResponse(
+                json.dumps({"ok": False, "error": "forbidden"}),
+                content_type="application/json",
+                status=403,
+            )
+    stop_tv_browser()
+    return HttpResponse(json.dumps({"ok": True, "stopped": True}), content_type="application/json")
 
 
 @require_GET

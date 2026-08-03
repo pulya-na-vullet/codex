@@ -39,6 +39,7 @@ urlpatterns = [
     path("marketing/bot-qr.png", views.max_bot_qr, name="max_bot_qr"),
     path("admin-panel", views.admin_panel, name="admin_panel"),
     path("tv", views.tv_ads, name="tv_ads"),
+    path("tv/close", views.tv_close_api, name="tv_close_api"),
     path("admin-panel/tv-monitors", views.tv_monitors_api, name="tv_monitors_api"),
     path("admin-panel/tv-open", views.tv_open_api, name="tv_open_api"),
     path("admin-panel/max-log", views.max_message_log, name="max_message_log"),

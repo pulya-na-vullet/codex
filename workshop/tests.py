@@ -139,6 +139,14 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Цифровая мастерская")
         self.assertContains(r, "Esc")
+        self.assertContains(r, "ITM-TV-ADS-KIOSK")
+        self.assertContains(r, "/tv/close")
+
+    def test_tv_close_api_local(self):
+        anon = HttpClient()
+        r = anon.post("/tv/close")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json().get("ok"))
 
     def test_tv_monitors_api(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
