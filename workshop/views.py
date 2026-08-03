@@ -2716,7 +2716,10 @@ def software_pdf(request: HttpRequest, contract_id: int):
 def tv_ads(request: HttpRequest):
     """Client-zone fullscreen ads carousel (opened from admin onto a chosen monitor)."""
     # Title marker must stay unique so OS placement never confuses this with CRM.
-    return render(request, "workshop/tv_ads.html", {"title": "ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK"})
+    response = render(request, "workshop/tv_ads.html", {"title": "ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK"})
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response["Pragma"] = "no-cache"
+    return response
 
 
 @csrf_exempt
