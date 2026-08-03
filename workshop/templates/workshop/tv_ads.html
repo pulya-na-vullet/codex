@@ -202,6 +202,21 @@
     </section>
   </div>
   <div class="fs-hint" id="fsHint">Esc — свернуть</div>
+  <button type="button" class="fs-gate" id="fsGate" aria-label="На весь экран">
+    <span class="fs-gate-title">На весь экран</span>
+    <span class="fs-gate-sub">Нажмите, чтобы скрыть панель задач · Esc — свернуть</span>
+  </button>
+  <style>
+    .fs-gate {
+      position: fixed; inset: 0; z-index: 50; display: none;
+      flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+      border: 0; cursor: pointer; background: rgba(5, 10, 7, 0.82); color: #f7fbf8;
+      font-family: Manrope, "Segoe UI", sans-serif;
+    }
+    .fs-gate.is-visible { display: flex; }
+    .fs-gate-title { font-size: clamp(28px, 5vw, 56px); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+    .fs-gate-sub { font-size: clamp(14px, 2vw, 20px); color: #9fbfab; letter-spacing: .04em; }
+  </style>
 
   <script>
   (function () {
@@ -209,6 +224,7 @@
     var i = 0;
     var INTERVAL = 9000;
     var hint = document.getElementById('fsHint');
+    var gate = document.getElementById('fsGate');
     var params = new URLSearchParams(location.search);
     var wantFs = params.get('fs') === '1';
     var targetLeft = params.has('l') ? parseInt(params.get('l'), 10) : null;
@@ -220,6 +236,7 @@
     }, INTERVAL);
 
     function showHint(ms) {
+      if (!hint) return;
       hint.classList.add('is-visible');
       clearTimeout(showHint._t);
       showHint._t = setTimeout(function () { hint.classList.remove('is-visible'); }, ms || 3500);
@@ -229,67 +246,77 @@
       return !!(document.fullscreenElement || document.webkitFullscreenElement);
     }
 
+    function showGate(show) {
+      if (!gate) return;
+      gate.classList.toggle('is-visible', !!show);
+    }
+
     async function enterFs() {
       var el = document.documentElement;
       var opts = { navigationUI: 'hide' };
-      // Prefer locking fullscreen onto the chosen display (Chrome Window Management API).
-      if (window.getScreenDetails && targetLeft != null && targetTop != null) {
+      if (window.getScreenDetails && window.isSecureContext && targetLeft != null && targetTop != null) {
         try {
           var details = await window.getScreenDetails();
           var match = (details.screens || []).find(function (s) {
-            return s.availLeft === targetLeft && s.availTop === targetTop;
-          }) || (details.screens || []).find(function (s) {
-            return Math.abs(s.availLeft - targetLeft) < 16 && Math.abs(s.availTop - targetTop) < 16;
+            var left = (typeof s.left === 'number' ? s.left : s.availLeft) || 0;
+            var top = (typeof s.top === 'number' ? s.top : s.availTop) || 0;
+            return Math.abs(left - targetLeft) < 48 && Math.abs(top - targetTop) < 48;
           });
           if (match) opts.screen = match;
         } catch (e) {}
       }
       var req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-      if (!req) return;
+      if (!req) throw new Error('Fullscreen API unavailable');
       try {
         var p = req.call(el, opts);
         if (p && p.then) await p;
       } catch (e) {
-        try { req.call(el); } catch (e2) {}
+        var p2 = req.call(el);
+        if (p2 && p2.then) await p2;
       }
     }
 
-    function exitFs() {
-      var exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-      if (exit && isFs()) {
-        try { exit.call(document); } catch (e) {}
+    function syncGate() {
+      if (isFs()) {
+        showGate(false);
+        showHint(3500);
+      } else if (wantFs) {
+        showGate(true);
       }
     }
 
-    document.addEventListener('fullscreenchange', function () {
-      if (isFs()) showHint(4000);
-    });
-    document.addEventListener('webkitfullscreenchange', function () {
-      if (isFs()) showHint(4000);
-    });
+    document.addEventListener('fullscreenchange', syncGate);
+    document.addEventListener('webkitfullscreenchange', syncGate);
 
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' || e.keyCode === 27) {
-        // Native Esc already leaves fullscreen; after that, close popup.
         setTimeout(function () {
           if (!isFs()) {
+            showGate(true);
             try { window.close(); } catch (err) {}
           }
-        }, 50);
+        }, 80);
       }
     });
 
-    document.addEventListener('click', function () {
-      if (!isFs()) enterFs().then(function () { showHint(2500); });
-    });
+    if (gate) {
+      gate.addEventListener('click', function (e) {
+        e.preventDefault();
+        enterFs().then(syncGate).catch(function (err) {
+          console.warn('[TV] fullscreen failed', err);
+          if (hint) {
+            hint.textContent = 'Не удалось войти в fullscreen — разрешите сайту полный экран';
+            showHint(6000);
+          }
+        });
+      });
+    }
 
     if (wantFs) {
+      showGate(true);
       setTimeout(function () {
-        enterFs().then(function () { showHint(4000); }).catch(function () {
-          hint.textContent = 'Клик — полный экран · Esc — свернуть';
-          showHint(8000);
-        });
-      }, 250);
+        enterFs().then(syncGate).catch(function () { syncGate(); });
+      }, 300);
     }
   })();
   </script>
