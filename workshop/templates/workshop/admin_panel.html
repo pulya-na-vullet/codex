@@ -368,31 +368,44 @@
     var top = (typeof window.screen.top === 'number' ? window.screen.top : (window.screen.availTop || 0));
     var width = window.screen.width || window.screen.availWidth || 1920;
     var height = window.screen.height || window.screen.availHeight || 1080;
-    return { left: left, top: top, width: width, height: height, isPrimary: true, source: 'current' };
+    return { left: left, top: top, width: width, height: height };
   }
 
   function heuristicScreens() {
     var p = primaryGuess();
     var list = [{
       left: p.left, top: p.top, width: p.width, height: p.height,
-      isPrimary: true, source: 'current',
-      label: 'Текущий монитор · ' + p.width + '×' + p.height
+      isPrimary: (p.left === 0 && p.top === 0),
+      source: 'current',
+      label: 'Текущий (CRM) · ' + p.width + '×' + p.height + ' @' + p.left + ',' + p.top
     }];
-    // Typical extended desktop layouts when API is unavailable (LAN http, denied permission).
+
+    // Dual-monitor heuristic (Windows): primary is always @0,0.
+    // If CRM is already on a side monitor (left != 0), the other one is almost always primary.
+    if (p.left !== 0 || p.top !== 0) {
+      list.push({
+        left: 0, top: 0, width: p.width, height: p.height,
+        isPrimary: true, source: 'other-primary',
+        label: 'Второй монитор · ' + p.width + '×' + p.height + ' @0,0'
+      });
+      return list;
+    }
+
+    // CRM is on primary @0,0 — offer the usual neighbor positions for the TV.
     list.push({
-      left: p.left + p.width, top: p.top, width: p.width, height: p.height,
+      left: p.width, top: 0, width: p.width, height: p.height,
       isPrimary: false, source: 'right',
-      label: 'Справа от текущего · ' + p.width + '×' + p.height + ' @' + (p.left + p.width) + ',0'
+      label: 'Справа · ' + p.width + '×' + p.height + ' @' + p.width + ',0'
     });
     list.push({
-      left: p.left - p.width, top: p.top, width: p.width, height: p.height,
+      left: -p.width, top: 0, width: p.width, height: p.height,
       isPrimary: false, source: 'left',
-      label: 'Слева от текущего · ' + p.width + '×' + p.height + ' @' + (p.left - p.width) + ',0'
+      label: 'Слева · ' + p.width + '×' + p.height + ' @' + (-p.width) + ',0'
     });
     list.push({
-      left: p.left, top: p.top + p.height, width: p.width, height: p.height,
+      left: 0, top: p.height, width: p.width, height: p.height,
       isPrimary: false, source: 'below',
-      label: 'Ниже текущего · ' + p.width + '×' + p.height
+      label: 'Ниже · ' + p.width + '×' + p.height + ' @0,' + p.height
     });
     return list;
   }
@@ -411,13 +424,19 @@
       select.appendChild(opt);
     });
     if (!matched) {
-      // Prefer non-primary heuristic (usually the TV) when present.
-      var tvIdx = screensCache.findIndex(function (s) { return s.source === 'right'; });
-      select.selectedIndex = tvIdx >= 0 ? tvIdx : 0;
+      // Prefer the other monitor when CRM is on a side screen; else prefer "right".
+      var prefer = screensCache.findIndex(function (s) {
+        return s.source === 'other-primary' || s.source === 'right';
+      });
+      select.selectedIndex = prefer >= 0 ? prefer : 0;
     }
-    if (hint) hint.textContent = note || ('Вариантов: ' + screensCache.length);
-    log('filled', screensCache.length, screensCache);
-  }
+    if (hint) {
+      hint.textContent = note || (
+        screensCache.length === 2
+          ? 'Два варианта: текущий (CRM) и второй монитор. Для ТВ обычно берите «Второй».'
+          : ('Вариантов: ' + screensCache.length)
+      );
+    }
 
   function withTimeout(promise, ms) {
     return new Promise(function (resolve, reject) {
