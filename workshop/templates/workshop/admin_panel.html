@@ -491,11 +491,15 @@
               left: left, top: top, width: width, height: height,
               isPrimary: !!s.isPrimary,
               source: 'api',
-              label: (s.label || ('Экран ' + (idx + 1))) +
+              apiIndex: idx,
+              label: (s.label || ('Монитор ' + (idx + 1))) +
                 ' · ' + width + '×' + height +
+                ' @' + left + ',' + top +
                 (s.isPrimary ? ' · основной' : '')
             };
           });
+          // Keep live ScreenDetailed refs for fullscreen targeting (same page session).
+          window.__itmTvScreens = details.screens || [];
           if (list.length) {
             fillSelect(list, 'Найдено мониторов: ' + list.length + '. Выберите ТВ и откройте.');
             return;
@@ -513,6 +517,36 @@
     }
   }
 
+  var openWindows = [];
+
+  function closePreviousTvWindows() {
+    openWindows.forEach(function (w) {
+      try { if (w && !w.closed) w.close(); } catch (e) {}
+    });
+    openWindows = [];
+    // Also try closing the old fixed name used in earlier builds.
+    try {
+      var legacy = window.open('', 'itm_tv_ads');
+      if (legacy) legacy.close();
+    } catch (e) {}
+  }
+
+  function placeWindow(win, s) {
+    var left = Math.round(s.left);
+    var top = Math.round(s.top);
+    var width = Math.round(s.width);
+    var height = Math.round(s.height);
+    var tries = 0;
+    function tick() {
+      tries += 1;
+      try { win.moveTo(left, top); } catch (e) {}
+      try { win.resizeTo(width, height); } catch (e) {}
+      try { win.focus(); } catch (e) {}
+      if (tries < 12) setTimeout(tick, 50);
+    }
+    tick();
+  }
+
   function openOnSelected() {
     var idx = parseInt(select.value, 10);
     var s = screensCache[idx];
@@ -523,12 +557,21 @@
     }
     try { localStorage.setItem(STORAGE_KEY, screenKey(s)); } catch (e) {}
 
-    // Open covering the whole display pixel box; ads page then enters real fullscreen (hides taskbar).
+    closePreviousTvWindows();
+
+    var left = Math.round(s.left);
+    var top = Math.round(s.top);
+    var width = Math.round(s.width);
+    var height = Math.round(s.height);
+
+    // Unique name per monitor — otherwise Chrome reuses the old window on the left screen.
+    var winName = 'itm_tv_' + left + '_' + top;
     var features = [
-      'left=' + Math.round(s.left),
-      'top=' + Math.round(s.top),
-      'width=' + Math.round(s.width),
-      'height=' + Math.round(s.height),
+      'left=' + left,
+      'top=' + top,
+      'width=' + width,
+      'height=' + height,
+      'popup=yes',
       'menubar=no',
       'toolbar=no',
       'location=no',
@@ -537,19 +580,19 @@
     ].join(',');
 
     var url = '{% url "tv_ads" %}?fs=1'
-      + '&l=' + encodeURIComponent(Math.round(s.left))
-      + '&t=' + encodeURIComponent(Math.round(s.top))
-      + '&w=' + encodeURIComponent(Math.round(s.width))
-      + '&h=' + encodeURIComponent(Math.round(s.height));
+      + '&l=' + encodeURIComponent(left)
+      + '&t=' + encodeURIComponent(top)
+      + '&w=' + encodeURIComponent(width)
+      + '&h=' + encodeURIComponent(height)
+      + '&si=' + encodeURIComponent(typeof s.apiIndex === 'number' ? s.apiIndex : idx);
 
-    var win = window.open(url, 'itm_tv_ads', features);
+    var win = window.open(url, winName, features);
     if (!win) {
       alert('Разрешите всплывающие окна для CRM и повторите.');
       return;
     }
-    try { win.moveTo(Math.round(s.left), Math.round(s.top)); } catch (e) { log('moveTo blocked', e); }
-    try { win.resizeTo(Math.round(s.width), Math.round(s.height)); } catch (e) { log('resizeTo blocked', e); }
-    try { win.focus(); } catch (e) {}
+    openWindows.push(win);
+    placeWindow(win, s);
   }
 
   openBtn.addEventListener('click', openOnSelected);

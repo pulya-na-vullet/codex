@@ -204,7 +204,7 @@
   <div class="fs-hint" id="fsHint">Esc — свернуть</div>
   <button type="button" class="fs-gate" id="fsGate" aria-label="На весь экран">
     <span class="fs-gate-title">На весь экран</span>
-    <span class="fs-gate-sub">Нажмите, чтобы скрыть панель задач · Esc — свернуть</span>
+    <span class="fs-gate-sub">Нажмите — реклама развернётся на выбранном мониторе · Esc — свернуть</span>
   </button>
   <style>
     .fs-gate {
@@ -229,6 +229,17 @@
     var wantFs = params.get('fs') === '1';
     var targetLeft = params.has('l') ? parseInt(params.get('l'), 10) : null;
     var targetTop = params.has('t') ? parseInt(params.get('t'), 10) : null;
+    var targetSi = params.has('si') ? parseInt(params.get('si'), 10) : null;
+    var targetW = params.has('w') ? parseInt(params.get('w'), 10) : null;
+    var targetH = params.has('h') ? parseInt(params.get('h'), 10) : null;
+
+    // Try to land the popup on the requested monitor before fullscreen.
+    if (wantFs && targetLeft != null && targetTop != null) {
+      try {
+        window.moveTo(targetLeft, targetTop);
+        if (targetW && targetH) window.resizeTo(targetW, targetH);
+      } catch (e) {}
+    }
 
     setInterval(function () {
       i = (i + 1) % slides.length;
@@ -251,18 +262,40 @@
       gate.classList.toggle('is-visible', !!show);
     }
 
+    async function resolveTargetScreen() {
+      if (!window.getScreenDetails || !window.isSecureContext) return null;
+      var details = await window.getScreenDetails();
+      var screens = details.screens || [];
+      if (!screens.length) return null;
+      if (typeof targetSi === 'number' && !isNaN(targetSi) && screens[targetSi]) {
+        return screens[targetSi];
+      }
+      if (targetLeft != null && targetTop != null) {
+        var match = screens.find(function (s) {
+          var left = (typeof s.left === 'number' ? s.left : s.availLeft) || 0;
+          var top = (typeof s.top === 'number' ? s.top : s.availTop) || 0;
+          return Math.abs(left - targetLeft) < 48 && Math.abs(top - targetTop) < 48;
+        });
+        if (match) return match;
+      }
+      return null;
+    }
+
     async function enterFs() {
       var el = document.documentElement;
       var opts = { navigationUI: 'hide' };
-      if (window.getScreenDetails && window.isSecureContext && targetLeft != null && targetTop != null) {
+      var match = null;
+      try { match = await resolveTargetScreen(); } catch (e) { console.warn('[TV] resolve screen', e); }
+      if (match) {
+        opts.screen = match;
         try {
-          var details = await window.getScreenDetails();
-          var match = (details.screens || []).find(function (s) {
-            var left = (typeof s.left === 'number' ? s.left : s.availLeft) || 0;
-            var top = (typeof s.top === 'number' ? s.top : s.availTop) || 0;
-            return Math.abs(left - targetLeft) < 48 && Math.abs(top - targetTop) < 48;
-          });
-          if (match) opts.screen = match;
+          window.moveTo(match.left || match.availLeft || 0, match.top || match.availTop || 0);
+          window.resizeTo(match.width || match.availWidth || screen.width, match.height || match.availHeight || screen.height);
+        } catch (e) {}
+      } else if (targetLeft != null && targetTop != null) {
+        try {
+          window.moveTo(targetLeft, targetTop);
+          if (targetW && targetH) window.resizeTo(targetW, targetH);
         } catch (e) {}
       }
       var req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
@@ -271,7 +304,8 @@
         var p = req.call(el, opts);
         if (p && p.then) await p;
       } catch (e) {
-        var p2 = req.call(el);
+        console.warn('[TV] fullscreen with screen failed, retry plain', e);
+        var p2 = req.call(el, { navigationUI: 'hide' });
         if (p2 && p2.then) await p2;
       }
     }
