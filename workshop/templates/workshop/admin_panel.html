@@ -278,19 +278,18 @@
         <div class="card mb-3"><div class="card-body">
             <h5 class="mb-2">ТВ-реклама (клиентская зона)</h5>
             <p class="small-muted mb-3">
-                Открывает рекламный слайд-шоу на выбранном мониторе сразу на весь экран
-                (как игра). <strong>Esc</strong> — свернуть / выйти из полного экрана.
+                Открывает рекламу на выбранном мониторе. После открытия нажмите
+                <strong>«На весь экран»</strong> на ТВ (иначе останется панель задач).
+                <strong>Esc</strong> — свернуть.
             </p>
             <div class="mb-2">
                 <label class="form-label" for="tvMonitorSelect">Монитор</label>
-                <select class="form-select" id="tvMonitorSelect">
-                    <option value="0">Текущий экран</option>
-                </select>
-                <div class="small-muted mt-1" id="tvMonitorHint">Нажмите «Обновить список», чтобы увидеть все мониторы.</div>
+                <select class="form-select" id="tvMonitorSelect"></select>
+                <div class="small-muted mt-1" id="tvMonitorHint"></div>
             </div>
             <div class="d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-primary btn-sm" id="tvOpenFullscreenBtn">Открыть на весь экран</button>
-                <button type="button" class="btn btn-outline-light btn-sm" id="tvRescanMonitorsBtn">Обновить список</button>
+                <button type="button" class="btn btn-primary btn-sm" id="tvOpenFullscreenBtn">Открыть на мониторе</button>
+                <button type="button" class="btn btn-outline-light btn-sm" id="tvRescanMonitorsBtn">Найти все мониторы</button>
             </div>
         </div></div>
         <div class="card mb-3"><div class="card-body">
@@ -360,31 +359,47 @@
   }
 
   function screenKey(s) {
-    return [s.left, s.top, s.width, s.height, s.isPrimary ? '1' : '0', s.label || ''].join('|');
+    return [s.left, s.top, s.width, s.height, s.source || '', s.label || ''].join('|');
   }
 
-  function currentScreenFallback() {
-    return [{
-      left: window.screen.availLeft || 0,
-      top: window.screen.availTop || 0,
-      width: window.screen.availWidth || 1920,
-      height: window.screen.availHeight || 1080,
-      isPrimary: true,
-      label: 'Текущий экран · ' + (window.screen.availWidth || 1920) + '×' + (window.screen.availHeight || 1080)
+  function primaryGuess() {
+    // Full pixel size (not avail*) so window covers taskbar area before FS.
+    var left = (typeof window.screen.left === 'number' ? window.screen.left : (window.screen.availLeft || 0));
+    var top = (typeof window.screen.top === 'number' ? window.screen.top : (window.screen.availTop || 0));
+    var width = window.screen.width || window.screen.availWidth || 1920;
+    var height = window.screen.height || window.screen.availHeight || 1080;
+    return { left: left, top: top, width: width, height: height, isPrimary: true, source: 'current' };
+  }
+
+  function heuristicScreens() {
+    var p = primaryGuess();
+    var list = [{
+      left: p.left, top: p.top, width: p.width, height: p.height,
+      isPrimary: true, source: 'current',
+      label: 'Текущий монитор · ' + p.width + '×' + p.height
     }];
+    // Typical extended desktop layouts when API is unavailable (LAN http, denied permission).
+    list.push({
+      left: p.left + p.width, top: p.top, width: p.width, height: p.height,
+      isPrimary: false, source: 'right',
+      label: 'Справа от текущего · ' + p.width + '×' + p.height + ' @' + (p.left + p.width) + ',0'
+    });
+    list.push({
+      left: p.left - p.width, top: p.top, width: p.width, height: p.height,
+      isPrimary: false, source: 'left',
+      label: 'Слева от текущего · ' + p.width + '×' + p.height + ' @' + (p.left - p.width) + ',0'
+    });
+    list.push({
+      left: p.left, top: p.top + p.height, width: p.width, height: p.height,
+      isPrimary: false, source: 'below',
+      label: 'Ниже текущего · ' + p.width + '×' + p.height
+    });
+    return list;
   }
 
   function fillSelect(screens, note) {
     screensCache = screens || [];
     select.innerHTML = '';
-    if (!screensCache.length) {
-      var empty = document.createElement('option');
-      empty.value = '';
-      empty.textContent = 'Мониторы не найдены';
-      select.appendChild(empty);
-      if (hint) hint.textContent = note || 'Нет мониторов';
-      return;
-    }
     var saved = '';
     try { saved = localStorage.getItem(STORAGE_KEY) || ''; } catch (e) {}
     var matched = false;
@@ -395,9 +410,13 @@
       if (screenKey(s) === saved) { opt.selected = true; matched = true; }
       select.appendChild(opt);
     });
-    if (!matched) select.selectedIndex = screensCache.length > 1 ? screensCache.length - 1 : 0;
-    if (hint) hint.textContent = note || ('Найдено экранов: ' + screensCache.length);
-    log('filled', screensCache.length, note);
+    if (!matched) {
+      // Prefer non-primary heuristic (usually the TV) when present.
+      var tvIdx = screensCache.findIndex(function (s) { return s.source === 'right'; });
+      select.selectedIndex = tvIdx >= 0 ? tvIdx : 0;
+    }
+    if (hint) hint.textContent = note || ('Вариантов: ' + screensCache.length);
+    log('filled', screensCache.length, screensCache);
   }
 
   function withTimeout(promise, ms) {
@@ -422,51 +441,54 @@
     });
   }
 
+  function insecureHint() {
+    if (window.isSecureContext) return '';
+    return ' CRM открыт не через https/localhost — Chrome не отдаёт список мониторов. Откройте админку как http://127.0.0.1:8000/admin-panel — или выберите «Справа/Слева от текущего».';
+  }
+
   async function scanMonitors(fromUserClick) {
-    if (scanning) {
-      log('scan already running');
-      return;
-    }
+    if (scanning) return;
     scanning = true;
-    if (hint) hint.textContent = 'Сканирование мониторов…';
-    log('scan start', { fromUserClick: !!fromUserClick, hasApi: !!window.getScreenDetails });
+    if (hint) hint.textContent = 'Поиск мониторов…';
+    log('scan', {
+      fromUserClick: !!fromUserClick,
+      hasApi: !!window.getScreenDetails,
+      secure: !!window.isSecureContext,
+      isExtended: !!(window.screen && window.screen.isExtended)
+    });
 
     try {
-      if (window.getScreenDetails) {
+      if (window.getScreenDetails && window.isSecureContext) {
         try {
-          // Permission prompt only works reliably from a user gesture.
-          var details = await withTimeout(window.getScreenDetails(), fromUserClick ? 8000 : 1500);
+          var details = await withTimeout(window.getScreenDetails(), fromUserClick ? 10000 : 1200);
           var list = (details.screens || []).map(function (s, idx) {
+            var left = (typeof s.left === 'number' ? s.left : s.availLeft) || 0;
+            var top = (typeof s.top === 'number' ? s.top : s.availTop) || 0;
+            var width = s.width || s.availWidth || 1920;
+            var height = s.height || s.availHeight || 1080;
             return {
-              left: s.availLeft,
-              top: s.availTop,
-              width: s.availWidth,
-              height: s.availHeight,
+              left: left, top: top, width: width, height: height,
               isPrimary: !!s.isPrimary,
+              source: 'api',
               label: (s.label || ('Экран ' + (idx + 1))) +
-                ' · ' + s.availWidth + '×' + s.availHeight +
+                ' · ' + width + '×' + height +
                 (s.isPrimary ? ' · основной' : '')
             };
           });
-          log('getScreenDetails ok', list.length, list);
-          fillSelect(list, 'Выберите телевизор и нажмите «Открыть на весь экран».');
-          return;
+          if (list.length) {
+            fillSelect(list, 'Найдено мониторов: ' + list.length + '. Выберите ТВ и откройте.');
+            return;
+          }
         } catch (e) {
           log('getScreenDetails failed', e);
-          if (hint) {
-            hint.textContent = fromUserClick
-              ? ('Не удалось получить все мониторы: ' + (e && e.message ? e.message : e) + '. Показан текущий экран. Разрешите «Window management» для сайта.')
-              : 'Нажмите «Обновить список» и разрешите доступ к мониторам (Chrome/Edge). Пока показан текущий экран.';
-          }
         }
-      } else {
-        log('getScreenDetails API missing');
-        if (hint) hint.textContent = 'API нескольких мониторов нет в этом браузере — используйте Chrome/Edge. Показан текущий экран.';
       }
-      fillSelect(currentScreenFallback(), hint ? hint.textContent : '');
+      fillSelect(
+        heuristicScreens(),
+        'Точный список недоступен.' + insecureHint() + ' Выберите «Справа/Слева от текущего» под ваш ТВ.'
+      );
     } finally {
       scanning = false;
-      log('scan end');
     }
   }
 
@@ -475,11 +497,12 @@
     var s = screensCache[idx];
     log('open', idx, s);
     if (!s) {
-      alert('Сначала выберите монитор (или нажмите «Обновить список»)');
+      alert('Выберите монитор');
       return;
     }
     try { localStorage.setItem(STORAGE_KEY, screenKey(s)); } catch (e) {}
 
+    // Open covering the whole display pixel box; ads page then enters real fullscreen (hides taskbar).
     var features = [
       'left=' + Math.round(s.left),
       'top=' + Math.round(s.top),
@@ -497,22 +520,21 @@
       + '&t=' + encodeURIComponent(Math.round(s.top))
       + '&w=' + encodeURIComponent(Math.round(s.width))
       + '&h=' + encodeURIComponent(Math.round(s.height));
+
     var win = window.open(url, 'itm_tv_ads', features);
     if (!win) {
-      alert('Браузер заблокировал всплывающее окно. Разрешите pop-up для CRM.');
+      alert('Разрешите всплывающие окна для CRM и повторите.');
       return;
     }
+    try { win.moveTo(Math.round(s.left), Math.round(s.top)); } catch (e) { log('moveTo blocked', e); }
+    try { win.resizeTo(Math.round(s.width), Math.round(s.height)); } catch (e) { log('resizeTo blocked', e); }
     try { win.focus(); } catch (e) {}
   }
 
   openBtn.addEventListener('click', openOnSelected);
-  if (rescanBtn) {
-    rescanBtn.addEventListener('click', function () { scanMonitors(true); });
-  }
+  if (rescanBtn) rescanBtn.addEventListener('click', function () { scanMonitors(true); });
 
-  // Immediate fallback so UI never hangs on "Сканирование…".
-  fillSelect(currentScreenFallback(), 'Нажмите «Обновить список», чтобы увидеть все мониторы (нужно разрешение Chrome).');
-  // Soft probe without blocking UI forever.
+  fillSelect(heuristicScreens(), 'Если ТВ справа — выберите «Справа от текущего». Для точного списка откройте CRM через http://127.0.0.1:8000 и нажмите «Найти все мониторы».');
   scanMonitors(false);
 })();
 </script>
