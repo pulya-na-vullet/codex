@@ -156,7 +156,7 @@ def _tv_url() -> str:
     port = int(os.getenv("IT_MASTER_PORT", "8000"))
     host = os.getenv("IT_MASTER_TV_HOST", "127.0.0.1")
     # Unique marker in query + page title so Win32 never matches the CRM window.
-    return f"http://{host}:{port}/tv?fs=1&os=1&kiosk=ITM-TV-ADS-KIOSK&v=atm3"
+    return f"http://{host}:{port}/tv?fs=1&os=1&kiosk=ITM-TV-ADS-KIOSK&v=atm4"
 
 
 def stop_tv_browser() -> None:
@@ -377,8 +377,7 @@ def _win_activate_window(hwnd: int) -> None:
 def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height: int) -> None:
     """Move ONLY windows that belong to the TV Chrome process tree (never CRM).
 
-    Strips caption/borders, covers the full monitor (over the taskbar), and
-    forces foreground so --start-fullscreen applies without a taskbar click.
+    Forces a popup (no caption) HWND covering the full monitor over the taskbar.
     """
     try:
         import ctypes
@@ -424,19 +423,17 @@ def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height:
 
         GWL_STYLE = -16
         GWL_EXSTYLE = -20
-        WS_CAPTION = 0x00C00000
-        WS_THICKFRAME = 0x00040000
-        WS_BORDER = 0x00800000
-        WS_SYSMENU = 0x00080000
-        WS_MINIMIZEBOX = 0x00020000
-        WS_MAXIMIZEBOX = 0x00010000
-        WS_EX_WINDOWEDGE = 0x00000100
-        WS_EX_DLGMODALFRAME = 0x00000001
-        WS_EX_CLIENTEDGE = 0x00000200
-        WS_EX_STATICEDGE = 0x00020000
+        WS_POPUP = 0x80000000
+        WS_VISIBLE = 0x10000000
+        WS_CLIPSIBLINGS = 0x04000000
+        WS_CLIPCHILDREN = 0x02000000
+        WS_EX_TOPMOST = 0x00000008
+        WS_EX_TOOLWINDOW = 0x00000080
+        WS_EX_APPWINDOW = 0x00040000
         HWND_TOPMOST = -1
         SWP_SHOWWINDOW = 0x0040
         SWP_FRAMECHANGED = 0x0020
+        SWP_NOCOPYBITS = 0x0100
         SW_SHOW = 5
 
         get_long = getattr(user32, "GetWindowLongPtrW", None) or user32.GetWindowLongW
@@ -444,23 +441,17 @@ def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height:
 
         for hwnd in hwnds[:2]:
             try:
-                style = int(get_long(hwnd, GWL_STYLE))
-                style &= ~(
-                    WS_CAPTION
-                    | WS_THICKFRAME
-                    | WS_BORDER
-                    | WS_SYSMENU
-                    | WS_MINIMIZEBOX
-                    | WS_MAXIMIZEBOX
-                )
-                set_long(hwnd, GWL_STYLE, style)
+                # Replace style entirely — stripping bits alone leaves Chrome app caption.
+                popup = WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
+                set_long(hwnd, GWL_STYLE, popup)
                 ex = int(get_long(hwnd, GWL_EXSTYLE))
-                ex &= ~(WS_EX_WINDOWEDGE | WS_EX_DLGMODALFRAME | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE)
+                ex |= WS_EX_TOPMOST | WS_EX_APPWINDOW
+                ex &= ~WS_EX_TOOLWINDOW
                 set_long(hwnd, GWL_EXSTYLE, ex)
             except Exception:
                 pass
             user32.ShowWindow(hwnd, SW_SHOW)
-            # Cover full monitor and stay TOPMOST so taskbar stays hidden on the TV.
+            flags = SWP_SHOWWINDOW | SWP_FRAMECHANGED | SWP_NOCOPYBITS
             user32.SetWindowPos(
                 hwnd,
                 HWND_TOPMOST,
@@ -468,11 +459,15 @@ def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height:
                 int(top),
                 int(width),
                 int(height),
-                SWP_SHOWWINDOW | SWP_FRAMECHANGED,
+                flags,
             )
             prev_fg = user32.GetForegroundWindow()
             _win_activate_window(hwnd)
-            # Re-assert size after activation (Chrome sometimes shrinks until focused).
+            # Re-apply popup + size after Chrome finishes creating its frame.
+            try:
+                set_long(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN)
+            except Exception:
+                pass
             user32.SetWindowPos(
                 hwnd,
                 HWND_TOPMOST,
@@ -480,10 +475,9 @@ def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height:
                 int(top),
                 int(width),
                 int(height),
-                SWP_SHOWWINDOW | SWP_FRAMECHANGED,
+                flags,
             )
-            # Return keyboard focus to CRM so the operator can keep working;
-            # TOPMOST keeps ads covering the TV (including over the taskbar).
+            # Return focus to CRM; kiosk/TOPMOST stays covering the TV without a title bar.
             if prev_fg and prev_fg != hwnd:
                 try:
                     import threading
@@ -494,7 +488,7 @@ def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height:
                         except Exception:
                             pass
 
-                    threading.Timer(0.35, _restore_crm).start()
+                    threading.Timer(0.6, _restore_crm).start()
                 except Exception:
                     pass
     except Exception:
