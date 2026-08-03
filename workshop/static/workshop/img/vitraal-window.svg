@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 780" role="img" aria-hidden="true">
+  <defs>
+    <linearGradient id="frame" x1="80" y1="40" x2="560" y2="740" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7ddea0" stop-opacity=".95"/>
+      <stop offset=".45" stop-color="#f7fbf8" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#2f8f4f" stop-opacity=".85"/>
+    </linearGradient>
+    <linearGradient id="glassA" x1="180" y1="80" x2="460" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2f8f4f" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#7ddea0" stop-opacity=".18"/>
+    </linearGradient>
+    <linearGradient id="glassB" x1="180" y1="300" x2="460" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1a5f32" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#2f8f4f" stop-opacity=".22"/>
+    </linearGradient>
+    <linearGradient id="glassC" x1="180" y1="480" x2="460" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0b1a11" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#2f8f4f" stop-opacity=".45"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="48%">
+      <stop stop-color="#7ddea0" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#07140c" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="1.2"/>
+    </filter>
+  </defs>
+
+  <rect width="640" height="780" fill="url(#glow)"/>
+
+  <!-- Outer gothic arch -->
+  <path d="M120 700 V360 C120 150 220 70 320 70 C420 70 520 150 520 360 V700 Z"
+        fill="url(#glassA)" stroke="url(#frame)" stroke-width="8" stroke-linejoin="round"/>
+
+  <!-- Inner arch -->
+  <path d="M168 700 V370 C168 190 230 118 320 118 C410 118 472 190 472 370 V700 Z"
+        fill="url(#glassB)" stroke="url(#frame)" stroke-width="5.5" stroke-linejoin="round" opacity=".95"/>
+
+  <!-- Upper tracery panes -->
+  <path d="M320 118 C280 210 230 265 168 305 L320 305 Z" fill="#7ddea0" fill-opacity=".16" stroke="url(#frame)" stroke-width="3.5"/>
+  <path d="M320 118 C360 210 410 265 472 305 L320 305 Z" fill="#2f8f4f" fill-opacity=".22" stroke="url(#frame)" stroke-width="3.5"/>
+  <path d="M220 175 C265 235 320 270 320 270 C320 270 375 235 420 175"
+        fill="none" stroke="url(#frame)" stroke-width="3.5" stroke-linecap="round"/>
+
+  <!-- Mid mullion + cross bars -->
+  <path d="M320 270 V700" stroke="url(#frame)" stroke-width="5.5" stroke-linecap="round"/>
+  <path d="M168 390 H472" stroke="url(#frame)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M120 520 H520" stroke="url(#frame)" stroke-width="5.5" stroke-linecap="round"/>
+
+  <!-- Lower pane fills -->
+  <path d="M168 390 H320 V520 H168 Z" fill="#d9ebe0" fill-opacity=".08"/>
+  <path d="M320 390 H472 V520 H320 Z" fill="#2f8f4f" fill-opacity=".14"/>
+  <path d="M120 520 H320 V700 H120 Z" fill="url(#glassC)"/>
+  <path d="M320 520 H520 V700 H320 Z" fill="#1a5f32" fill-opacity=".28"/>
+
+  <!-- Small verticals in mid band -->
+  <path d="M244 390 V520" stroke="url(#frame)" stroke-width="3.2" stroke-linecap="round" opacity=".9"/>
+  <path d="M396 390 V520" stroke="url(#frame)" stroke-width="3.2" stroke-linecap="round" opacity=".9"/>
+
+  <!-- Bottom cinquefoil echo -->
+  <path d="M168 520 C220 600 270 640 320 640 C370 640 420 600 472 520"
+        fill="none" stroke="url(#frame)" stroke-width="4" stroke-linecap="round" filter="url(#soft)"/>
+
+  <!-- Base sill -->
+  <path d="M100 700 H540" stroke="url(#frame)" stroke-width="10" stroke-linecap="round" opacity=".85"/>
+</svg>

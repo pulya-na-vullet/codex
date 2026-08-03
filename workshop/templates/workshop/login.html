@@ -1,31 +1,48 @@
 {% extends "workshop/base.html" %}
 {% load static %}
-{% block content %}
-<div class="row justify-content-center">
-    <div class="col-12 col-md-5 col-lg-4">
-        <div class="brand-hero">
-            <img class="brand-mark" src="{% static 'workshop/img/logo-mark.png' %}" width="72" height="72" alt="ИТ-М">
-            <div class="brand-word">
-                <div class="brand-word-title">ИТ<span>-</span>М</div>
-                <div class="brand-word-sub">ит-мастерская</div>
-            </div>
+
+{% block body_class %}page-login{% endblock %}
+{% block title %}Вход · ИТ-М{% endblock %}
+
+{% block page %}
+<div class="login-stage">
+    <div class="login-atmosphere" aria-hidden="true"></div>
+    <div class="login-vitraal" aria-hidden="true">
+        <img src="{% static 'workshop/img/vitraal-window.svg' %}" width="920" height="1120" alt="">
+    </div>
+
+    <div class="login-panel">
+        <div class="login-brand">
+            <img class="login-logo" src="{% static 'workshop/img/logo-mark.png' %}" width="112" height="112" alt="ИТ-М">
+            <h1 class="login-title">ИТ<span>-</span>М</h1>
+            <p class="login-tagline">Цифровая мастерская</p>
+            <div class="login-rule" aria-hidden="true"></div>
+            <p class="login-sub">Статусы в Max — Низкие цены</p>
         </div>
-        <div class="card"><div class="card-body">
-            <h4 class="mb-1">Вход в систему</h4>
-            <p class="small-muted mb-3">Доступ к веб-интерфейсу мастерской</p>
-            <form method="post" class="vstack gap-2">{% csrf_token %}
-                <input type="hidden" name="next" value="{{ next_url }}">
-                <div>
-                    <label class="form-label">Логин</label>
-                    <input class="form-control" name="username" value="ITM" required autofocus>
-                </div>
-                <div>
-                    <label class="form-label">Пароль</label>
-                    <input class="form-control" type="password" name="password" required>
-                </div>
-                <button class="btn btn-primary mt-2" type="submit">Войти</button>
-            </form>
-        </div></div>
+
+        {% if messages %}
+        <div class="login-messages">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags|default:'info' }} py-2 mb-2" role="alert">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <form method="post" class="login-form" autocomplete="username">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next_url }}">
+            <div>
+                <label class="form-label" for="login-username">Логин</label>
+                <input class="form-control" id="login-username" name="username" value="ITM" required autofocus>
+            </div>
+            <div>
+                <label class="form-label" for="login-password">Пароль</label>
+                <input class="form-control" id="login-password" type="password" name="password" required>
+            </div>
+            <button class="btn btn-primary login-submit" type="submit">Войти в CRM</button>
+        </form>
+
+        <p class="login-footnote">новый уровень доверия</p>
     </div>
 </div>
 {% endblock %}

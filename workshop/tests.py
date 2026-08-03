@@ -120,8 +120,10 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "workshop/img/favicon.ico")
         self.assertContains(r, "workshop/img/logo-mark.png")
+        self.assertContains(r, "workshop/img/vitraal-window.svg")
         self.assertContains(r, "ИТ")
-        self.assertContains(r, "brand-lockup")
+        self.assertContains(r, "Цифровая мастерская")
+        self.assertContains(r, "login-vitraal")
         # Static assets exist for deploy / collectstatic.
         from pathlib import Path
 
@@ -129,6 +131,7 @@ class AuthAndPagesTests(TestCase):
         self.assertTrue((base / "favicon.ico").is_file())
         self.assertTrue((base / "logo-mark.png").is_file())
         self.assertTrue((base / "favicon-32.png").is_file())
+        self.assertTrue((base / "vitraal-window.svg").is_file())
 
     def test_login_and_dashboard(self):
         r = self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
