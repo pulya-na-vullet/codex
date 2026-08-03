@@ -1,0 +1,297 @@
+{% load static %}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ИТ-М · ТВ-реклама</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --green: #2f8f4f;
+      --mist: #d9ebe0;
+      --soft: #9fbfab;
+      --white: #f7fbf8;
+      --mint: #7ddea0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: var(--white);
+      font-family: "Manrope", sans-serif;
+      cursor: none;
+    }
+    .stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #050a07 center / cover no-repeat;
+      background-image: url("{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}");
+    }
+    .stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(5,10,7,.18) 0%, rgba(5,10,7,.28) 42%, rgba(5,10,7,.72) 100%),
+        radial-gradient(60% 50% at 50% 100%, rgba(7,20,12,.55), transparent 70%);
+    }
+    .slide {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      text-align: center;
+      padding: 0 6vw 8vh;
+      gap: 1.2vh;
+    }
+    .slide.is-active { display: flex; }
+    .eyebrow {
+      font-size: clamp(16px, 2.2vh, 28px);
+      font-weight: 700;
+      letter-spacing: .28em;
+      text-transform: uppercase;
+      color: var(--mint);
+    }
+    .headline {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-weight: 600;
+      font-size: clamp(36px, 7vh, 92px);
+      line-height: 1.05;
+      max-width: 16ch;
+      text-shadow: 0 10px 40px rgba(0,0,0,.55);
+    }
+    .support {
+      font-size: clamp(18px, 2.8vh, 34px);
+      font-weight: 500;
+      color: var(--mist);
+      max-width: 28ch;
+      line-height: 1.35;
+    }
+    .rule {
+      width: 88px;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--green), transparent);
+    }
+    .footer {
+      margin-top: .4vh;
+      font-size: clamp(12px, 1.8vh, 22px);
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: rgba(159, 191, 171, 0.88);
+    }
+    .phone {
+      font-size: clamp(24px, 3.6vh, 40px);
+      font-weight: 800;
+      letter-spacing: .04em;
+    }
+    .phone span { color: var(--mint); }
+    .price-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.2vh 1.5vw;
+      justify-content: center;
+      max-width: 1500px;
+      margin-top: .5vh;
+    }
+    .price-pill {
+      min-width: min(280px, 40vw);
+      padding: 1.4vh 1.4vw;
+      border: 1px solid rgba(125, 222, 160, 0.28);
+      background: rgba(7, 20, 12, 0.55);
+      border-radius: 18px;
+      text-align: left;
+    }
+    .price-pill .name { font-size: clamp(14px, 1.8vh, 22px); color: var(--soft); margin-bottom: .4vh; }
+    .price-pill .sum { font-size: clamp(22px, 3vh, 36px); font-weight: 800; }
+    .price-pill .sum span { font-size: .6em; color: var(--mint); margin-left: 6px; }
+    .fs-hint {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      z-index: 20;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(7, 20, 12, 0.75);
+      border: 1px solid rgba(125, 222, 160, 0.25);
+      color: var(--soft);
+      font-size: 13px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      cursor: default;
+      opacity: 0;
+      transition: opacity .4s ease;
+      pointer-events: none;
+    }
+    .fs-hint.is-visible { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <section class="slide is-active">
+      <div class="eyebrow">ИТ-М</div>
+      <h1 class="headline">Цифровая мастерская</h1>
+      <div class="rule"></div>
+      <p class="support">Статусы в Max — Низкие цены</p>
+      <p class="footer">новый уровень доверия</p>
+    </section>
+    <section class="slide">
+      <div class="eyebrow">уведомления</div>
+      <h1 class="headline">Статусы ремонта в Max</h1>
+      <div class="rule"></div>
+      <p class="support">Готовность заказа, диагностика и редкие акции — без спама</p>
+      <p class="footer">подключение за 30 секунд</p>
+    </section>
+    <section class="slide">
+      <div class="eyebrow">ремонт техники</div>
+      <h1 class="headline">ПК · Ноутбуки · Телефоны · ТВ</h1>
+      <div class="rule"></div>
+      <p class="support">Гарантия 3 месяца на работы и новые запчасти</p>
+      <p class="footer">диагностика вычитается из ремонта</p>
+    </section>
+    <section class="slide">
+      <div class="eyebrow">цены</div>
+      <h1 class="headline">Честный прайс</h1>
+      <div class="rule"></div>
+      <div class="price-row">
+        <div class="price-pill"><div class="name">Диагностика</div><div class="sum">500<span>₽</span></div></div>
+        <div class="price-pill"><div class="name">Чистка ноутбука + термопаста</div><div class="sum">2 500<span>₽</span></div></div>
+        <div class="price-pill"><div class="name">Установка Windows + драйверы</div><div class="sum">2 500<span>₽</span></div></div>
+        <div class="price-pill"><div class="name">Сборка ПК под ключ</div><div class="sum">3 000<span>₽</span></div></div>
+      </div>
+    </section>
+    <section class="slide">
+      <div class="eyebrow">выезд</div>
+      <h1 class="headline">Мастер приедет к вам</h1>
+      <div class="rule"></div>
+      <p class="support">Выезд + диагностика от 1 500 ₽</p>
+      <p class="footer">быстро · на месте · прозрачно</p>
+    </section>
+    <section class="slide">
+      <div class="eyebrow">3D</div>
+      <h1 class="headline">Печать и моделирование</h1>
+      <div class="rule"></div>
+      <p class="support">3D-печать от 500 ₽ · сканирование · моделирование под задачу</p>
+      <p class="footer">от идеи до готовой детали</p>
+    </section>
+    <section class="slide">
+      <div class="eyebrow">разработка</div>
+      <h1 class="headline">Чат-боты и ПО на заказ</h1>
+      <div class="rule"></div>
+      <p class="support">Договор, ТЗ, сопровождение — цифровой сервис мастерской</p>
+      <p class="footer">заказная разработка</p>
+    </section>
+    <section class="slide">
+      <div class="eyebrow">ИТ-М</div>
+      <h1 class="headline">Ждём вас в мастерской</h1>
+      <div class="rule"></div>
+      <p class="phone">+7 (918) <span>802-87-67</span></p>
+      <p class="support">р. Татарстан, д. Куюки, ул. 24 квартал, дом 1</p>
+      <p class="footer">скидка 10% с третьего заказа</p>
+    </section>
+  </div>
+  <div class="fs-hint" id="fsHint">Esc — свернуть</div>
+
+  <script>
+  (function () {
+    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    var i = 0;
+    var INTERVAL = 9000;
+    var hint = document.getElementById('fsHint');
+    var params = new URLSearchParams(location.search);
+    var wantFs = params.get('fs') === '1';
+    var targetLeft = params.has('l') ? parseInt(params.get('l'), 10) : null;
+    var targetTop = params.has('t') ? parseInt(params.get('t'), 10) : null;
+
+    setInterval(function () {
+      i = (i + 1) % slides.length;
+      slides.forEach(function (s, idx) { s.classList.toggle('is-active', idx === i); });
+    }, INTERVAL);
+
+    function showHint(ms) {
+      hint.classList.add('is-visible');
+      clearTimeout(showHint._t);
+      showHint._t = setTimeout(function () { hint.classList.remove('is-visible'); }, ms || 3500);
+    }
+
+    function isFs() {
+      return !!(document.fullscreenElement || document.webkitFullscreenElement);
+    }
+
+    async function enterFs() {
+      var el = document.documentElement;
+      var opts = { navigationUI: 'hide' };
+      // Prefer locking fullscreen onto the chosen display (Chrome Window Management API).
+      if (window.getScreenDetails && targetLeft != null && targetTop != null) {
+        try {
+          var details = await window.getScreenDetails();
+          var match = (details.screens || []).find(function (s) {
+            return s.availLeft === targetLeft && s.availTop === targetTop;
+          }) || (details.screens || []).find(function (s) {
+            return Math.abs(s.availLeft - targetLeft) < 16 && Math.abs(s.availTop - targetTop) < 16;
+          });
+          if (match) opts.screen = match;
+        } catch (e) {}
+      }
+      var req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+      if (!req) return;
+      try {
+        var p = req.call(el, opts);
+        if (p && p.then) await p;
+      } catch (e) {
+        try { req.call(el); } catch (e2) {}
+      }
+    }
+
+    function exitFs() {
+      var exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+      if (exit && isFs()) {
+        try { exit.call(document); } catch (e) {}
+      }
+    }
+
+    document.addEventListener('fullscreenchange', function () {
+      if (isFs()) showHint(4000);
+    });
+    document.addEventListener('webkitfullscreenchange', function () {
+      if (isFs()) showHint(4000);
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' || e.keyCode === 27) {
+        // Native Esc already leaves fullscreen; after that, close popup.
+        setTimeout(function () {
+          if (!isFs()) {
+            try { window.close(); } catch (err) {}
+          }
+        }, 50);
+      }
+    });
+
+    document.addEventListener('click', function () {
+      if (!isFs()) enterFs().then(function () { showHint(2500); });
+    });
+
+    if (wantFs) {
+      setTimeout(function () {
+        enterFs().then(function () { showHint(4000); }).catch(function () {
+          hint.textContent = 'Клик — полный экран · Esc — свернуть';
+          showHint(8000);
+        });
+      }, 250);
+    }
+  })();
+  </script>
+</body>
+</html>

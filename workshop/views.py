@@ -2710,3 +2710,9 @@ def software_pdf(request: HttpRequest, contract_id: int):
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="{contract.contract_number}.pdf"'
     return response
+
+
+@require_GET
+def tv_ads(request: HttpRequest):
+    """Client-zone fullscreen ads carousel (opened from admin onto a chosen monitor)."""
+    return render(request, "workshop/tv_ads.html", {"title": "ИТ-М · ТВ-реклама"})

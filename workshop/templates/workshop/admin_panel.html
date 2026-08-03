@@ -276,6 +276,24 @@
     </div>
     <div class="col-lg-5">
         <div class="card mb-3"><div class="card-body">
+            <h5 class="mb-2">ТВ-реклама (клиентская зона)</h5>
+            <p class="small-muted mb-3">
+                Открывает рекламный слайд-шоу на выбранном мониторе сразу на весь экран
+                (как игра). <strong>Esc</strong> — свернуть / выйти из полного экрана.
+            </p>
+            <div class="mb-2">
+                <label class="form-label" for="tvMonitorSelect">Монитор</label>
+                <select class="form-select" id="tvMonitorSelect">
+                    <option value="">Сканирование…</option>
+                </select>
+                <div class="small-muted mt-1" id="tvMonitorHint">Нужен Chrome или Edge.</div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary btn-sm" id="tvOpenFullscreenBtn">Открыть на весь экран</button>
+                <button type="button" class="btn btn-outline-light btn-sm" id="tvRescanMonitorsBtn">Обновить список</button>
+            </div>
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
             <h5 class="mb-2">Как подключить клиента</h5>
             <ol class="small mb-0">
                 <li>Создайте бота в Max для бизнеса и вставьте токен сюда</li>
@@ -322,3 +340,116 @@
     </div>
 </div>
 {% endblock %}
+
+<script>
+(function () {
+  var select = document.getElementById('tvMonitorSelect');
+  var hint = document.getElementById('tvMonitorHint');
+  var openBtn = document.getElementById('tvOpenFullscreenBtn');
+  var rescanBtn = document.getElementById('tvRescanMonitorsBtn');
+  if (!select || !openBtn) return;
+
+  var screensCache = [];
+  var STORAGE_KEY = 'itm_tv_monitor_key';
+
+  function screenKey(s) {
+    return [s.left, s.top, s.width, s.height, s.isPrimary ? '1' : '0', s.label || ''].join('|');
+  }
+
+  function fillSelect(screens) {
+    screensCache = screens || [];
+    select.innerHTML = '';
+    if (!screensCache.length) {
+      var opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Мониторы не найдены';
+      select.appendChild(opt);
+      return;
+    }
+    var saved = '';
+    try { saved = localStorage.getItem(STORAGE_KEY) || ''; } catch (e) {}
+    screensCache.forEach(function (s, idx) {
+      var opt = document.createElement('option');
+      opt.value = String(idx);
+      opt.textContent = s.label;
+      if (screenKey(s) === saved) opt.selected = true;
+      select.appendChild(opt);
+    });
+  }
+
+  async function scanMonitors() {
+    hint.textContent = 'Сканирование мониторов…';
+    // Window Management API (Chrome/Edge) — реальные координаты всех экранов.
+    if (window.getScreenDetails) {
+      try {
+        var details = await window.getScreenDetails();
+        var list = (details.screens || []).map(function (s, idx) {
+          return {
+            left: s.availLeft,
+            top: s.availTop,
+            width: s.availWidth,
+            height: s.availHeight,
+            isPrimary: !!s.isPrimary,
+            label: (s.label || ('Экран ' + (idx + 1))) +
+              ' · ' + s.availWidth + '×' + s.availHeight +
+              (s.isPrimary ? ' · основной' : '')
+          };
+        });
+        fillSelect(list);
+        hint.textContent = 'Выберите телевизор и нажмите «Открыть на весь экран». Выбор запоминается в браузере.';
+        return;
+      } catch (e) {
+        hint.textContent = 'Нет доступа к списку мониторов (' + (e && e.message ? e.message : e) + '). Разрешите «Управление окнами».';
+      }
+    }
+    // Fallback: только текущий экран.
+    fillSelect([{
+      left: window.screen.availLeft || 0,
+      top: window.screen.availTop || 0,
+      width: window.screen.availWidth || 1920,
+      height: window.screen.availHeight || 1080,
+      isPrimary: true,
+      label: 'Текущий экран · ' + (window.screen.availWidth || 1920) + '×' + (window.screen.availHeight || 1080)
+    }]);
+    hint.textContent = 'API нескольких мониторов недоступен — откроется на текущем экране. В Chrome включите доступ к экранам.';
+  }
+
+  function openOnSelected() {
+    var idx = parseInt(select.value, 10);
+    var s = screensCache[idx];
+    if (!s) {
+      alert('Сначала выберите монитор');
+      return;
+    }
+    try { localStorage.setItem(STORAGE_KEY, screenKey(s)); } catch (e) {}
+
+    var features = [
+      'left=' + Math.round(s.left),
+      'top=' + Math.round(s.top),
+      'width=' + Math.round(s.width),
+      'height=' + Math.round(s.height),
+      'menubar=no',
+      'toolbar=no',
+      'location=no',
+      'status=no',
+      'scrollbars=no'
+    ].join(',');
+
+    var url = '{% url "tv_ads" %}?fs=1'
+      + '&l=' + encodeURIComponent(Math.round(s.left))
+      + '&t=' + encodeURIComponent(Math.round(s.top))
+      + '&w=' + encodeURIComponent(Math.round(s.width))
+      + '&h=' + encodeURIComponent(Math.round(s.height));
+    var win = window.open(url, 'itm_tv_ads', features);
+    if (!win) {
+      alert('Браузер заблокировал всплывающее окно. Разрешите pop-up для CRM.');
+      return;
+    }
+    try { win.focus(); } catch (e) {}
+  }
+
+  openBtn.addEventListener('click', openOnSelected);
+  if (rescanBtn) rescanBtn.addEventListener('click', scanMonitors);
+  scanMonitors();
+})();
+</script>

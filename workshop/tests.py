@@ -133,6 +133,13 @@ class AuthAndPagesTests(TestCase):
         self.assertTrue((base / "favicon-32.png").is_file())
         self.assertTrue((base / "vitraal-window.svg").is_file())
 
+    def test_tv_ads_page(self):
+        anon = HttpClient()
+        r = anon.get("/tv?fs=1")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Цифровая мастерская")
+        self.assertContains(r, "Esc")
+
     def test_login_and_dashboard(self):
         r = self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         self.assertEqual(r.status_code, 302)
