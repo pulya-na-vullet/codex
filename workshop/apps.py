@@ -39,3 +39,11 @@ class WorkshopConfig(AppConfig):
             import logging
 
             logging.getLogger(__name__).exception("Failed to start Yandex AI report scheduler")
+        try:
+            from workshop.client_display import start_client_display_agent
+
+            start_client_display_agent()
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception("Failed to start client display agent")

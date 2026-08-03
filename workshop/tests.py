@@ -1676,3 +1676,99 @@ class SoftwareDevContractsTests(TestCase):
         self.assertFalse(contract.price_needs_reagree)
         self.assertEqual(contract.amount, Decimal("13500"))
         self.assertContains(r, "Новая цена зафиксирована")
+
+
+@override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False, CLIENT_DISPLAY_ENABLED=False)
+class ClientDisplayTests(TestCase):
+    def setUp(self):
+        from workshop.models import StaffUser
+
+        StaffUser.ensure_bootstrap_admin()
+        self.http = HttpClient()
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+
+    def test_tv_page_public(self):
+        anon = HttpClient()
+        r = anon.get("/tv")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Цифровая мастерская")
+        self.assertContains(r, "bg-three-windows-fhd.png")
+
+    def test_tv_state_and_mirror_frame(self):
+        anon = HttpClient()
+        r = anon.get("/tv/state")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertIn(data["mode"], ("ads", "mirror"))
+        r = anon.get("/tv/mirror.jpg")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "image/jpeg")
+
+    def test_toggle_and_persist_monitors(self):
+        from workshop.models import ClientDisplayMode, ClientDisplaySettings
+
+        cfg = ClientDisplaySettings.get_solo()
+        self.assertEqual(cfg.mode, ClientDisplayMode.ADS)
+
+        r = self.http.post("/client-display/toggle", {"mirror": "1"}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        cfg.refresh_from_db()
+        self.assertEqual(cfg.mode, ClientDisplayMode.MIRROR)
+
+        r = self.http.post("/client-display/toggle", {"mirror": "0"}, follow=True)
+        cfg.refresh_from_db()
+        self.assertEqual(cfg.mode, ClientDisplayMode.ADS)
+
+        monitors = [
+            {
+                "key": "TV|1920x1080@1920,0",
+                "name": "TV",
+                "label": "TV · 1920×1080",
+                "left": 1920,
+                "top": 0,
+                "width": 1920,
+                "height": 1080,
+                "primary": False,
+                "index": 1,
+            },
+            {
+                "key": "CRM|1920x1080@0,0",
+                "name": "CRM",
+                "label": "CRM · 1920×1080 · основной",
+                "left": 0,
+                "top": 0,
+                "width": 1920,
+                "height": 1080,
+                "primary": True,
+                "index": 0,
+            },
+        ]
+        cfg.monitors_cache = monitors
+        cfg.save()
+        r = self.http.post(
+            "/admin-panel/client-display",
+            {
+                "action": "save",
+                "display_enabled": "1",
+                "display_mode": "ads",
+                "tv_monitor_key": "TV|1920x1080@1920,0",
+                "crm_monitor_key": "CRM|1920x1080@0,0",
+                "slide_interval_sec": "8",
+                "chrome_path": "",
+            },
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        cfg.refresh_from_db()
+        self.assertEqual(cfg.tv_monitor_key, "TV|1920x1080@1920,0")
+        self.assertEqual(cfg.crm_monitor_key, "CRM|1920x1080@0,0")
+        self.assertEqual(cfg.tv_left, 1920)
+        self.assertEqual(cfg.crm_left, 0)
+        self.assertEqual(cfg.slide_interval_sec, 8)
+        self.assertTrue(cfg.enabled)
+
+    def test_navbar_toggle_present(self):
+        r = self.http.get("/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "clientDisplaySwitch")
+        self.assertContains(r, "ТВ")

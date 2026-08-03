@@ -99,6 +99,7 @@ PRINT_COPIES = 2
 PRINT_WORKER_ENABLED = os.getenv("IT_MASTER_PRINT_WORKER", "1") == "1"
 PRINT_FALLBACK_WAIT_SEC = float(os.getenv("IT_MASTER_PRINT_FALLBACK_WAIT", "8"))
 PRINT_JOB_TIMEOUT_SEC = float(os.getenv("IT_MASTER_PRINT_TIMEOUT", "600"))
+CLIENT_DISPLAY_ENABLED = os.getenv("IT_MASTER_CLIENT_DISPLAY", "1") == "1"
 
 # Костыль: учёт долгов только для заказов с этой даты.
 # Историю за полгода завели пачкой 09.07.2026 — их не считаем долгом.
@@ -116,6 +117,7 @@ if "test" in sys.argv:
     YANDEX_AI_SCHEDULER = False
     MAX_LONG_POLL_WORKER = False
     PRINT_WORKER_ENABLED = False
+    CLIENT_DISPLAY_ENABLED = False
 
 from django.contrib.messages import constants as message_constants
 

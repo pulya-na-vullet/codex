@@ -31,6 +31,17 @@ def workshop_settings(request):
                 break
         except Exception:
             pending_rating = None
+    display_mode = "ads"
+    display_enabled = False
+    if getattr(request, "session", None) and request.session.get("workshop_authenticated"):
+        try:
+            from workshop.models import ClientDisplaySettings
+
+            dcfg = ClientDisplaySettings.get_solo()
+            display_mode = dcfg.mode
+            display_enabled = bool(dcfg.enabled)
+        except Exception:
+            pass
     return {
         "COMPANY_NAME": getattr(settings, "COMPANY_NAME", "ИТ-М"),
         "COMPANY_PHONE": getattr(settings, "COMPANY_PHONE", ""),
@@ -42,4 +53,6 @@ def workshop_settings(request):
         "is_workshop_admin": is_admin(request) if getattr(request, "session", None) else False,
         "can_workshop_delete": can_delete(request) if getattr(request, "session", None) else False,
         "pending_rating_brief": pending_rating,
+        "client_display_mode": display_mode,
+        "client_display_enabled": display_enabled,
     }

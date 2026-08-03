@@ -1400,6 +1400,11 @@ def admin_panel(request: HttpRequest):
         messages.success(request, "Настройки Max сохранены")
         return redirect("admin_panel")
 
+    from workshop.client_display import agent_status, is_client_display_agent_running
+    from workshop.models import ClientDisplaySettings
+
+    display_cfg = ClientDisplaySettings.get_solo()
+
     return render(
         request,
         "workshop/admin_panel.html",
@@ -1407,6 +1412,9 @@ def admin_panel(request: HttpRequest):
             "cfg": cfg,
             "ai_cfg": ai_cfg,
             "hub_cfg": hub_cfg,
+            "display_cfg": display_cfg,
+            "display_agent": agent_status(),
+            "display_agent_running": is_client_display_agent_running(),
             "staff_users": staff_users,
             "staff_roles": StaffRole.choices,
             "report_time_msk": f"{int(ai_cfg.report_hour_msk or 0):02d}:{int(ai_cfg.report_minute_msk or 0):02d}",
@@ -2710,3 +2718,149 @@ def software_pdf(request: HttpRequest, contract_id: int):
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="{contract.contract_number}.pdf"'
     return response
+
+
+@require_GET
+def tv_display(request: HttpRequest):
+    """Fullscreen client-zone TV page (ads or mirror). No CRM chrome."""
+    import json
+
+    from workshop.models import ClientDisplaySettings
+
+    cfg = ClientDisplaySettings.get_solo()
+    return render(
+        request,
+        "workshop/tv_display.html",
+        {
+            "mode": cfg.mode,
+            "mode_json": json.dumps(cfg.mode),
+            "slide_interval_sec": int(cfg.slide_interval_sec or 9),
+        },
+    )
+
+
+@require_GET
+def tv_display_state(request: HttpRequest):
+    from workshop.client_display import agent_status
+    from workshop.models import ClientDisplaySettings
+
+    cfg = ClientDisplaySettings.get_solo()
+    st = agent_status()
+    return HttpResponse(
+        json.dumps(
+            {
+                "mode": cfg.mode,
+                "enabled": cfg.enabled,
+                "tv_monitor_key": cfg.tv_monitor_key,
+                "crm_monitor_key": cfg.crm_monitor_key,
+                "agent_running": st.get("running"),
+                "last_error": cfg.last_error or st.get("last_error") or "",
+            }
+        ),
+        content_type="application/json",
+    )
+
+
+@require_GET
+def tv_mirror_frame(request: HttpRequest):
+    """Latest JPEG frame of the CRM monitor (for TV mirror mode)."""
+    from workshop.client_display import get_latest_jpeg
+
+    frame = get_latest_jpeg()
+    if not frame:
+        # 1x1 dark pixel so <img> does not break hard
+        import base64
+
+        frame = base64.b64decode(
+            "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGcP//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Bf//Z"
+        )
+    resp = HttpResponse(frame, content_type="image/jpeg")
+    resp["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return resp
+
+
+@require_http_methods(["GET", "POST"])
+def client_display_toggle(request: HttpRequest):
+    """Navbar tumbler: ads (default) <-> mirror CRM."""
+    from workshop.client_display import wake_client_display_agent
+    from workshop.models import ClientDisplayMode, ClientDisplaySettings
+
+    cfg = ClientDisplaySettings.get_solo()
+    if request.method == "POST":
+        wanted = (request.POST.get("mode") or "").strip()
+        if wanted not in dict(ClientDisplayMode.choices):
+            # checkbox style: on => mirror, off => ads
+            wanted = ClientDisplayMode.MIRROR if request.POST.get("mirror") == "1" else ClientDisplayMode.ADS
+        cfg.mode = wanted
+        cfg.save(update_fields=["mode", "updated_at"])
+        wake_client_display_agent()
+        log_action(request, "client_display_mode", entity_type="display", details=cfg.mode)
+        if request.headers.get("x-requested-with") == "XMLHttpRequest" or "application/json" in (
+            request.headers.get("Accept") or ""
+        ):
+            return HttpResponse(json.dumps({"ok": True, "mode": cfg.mode}), content_type="application/json")
+        messages.success(
+            request,
+            "Клиентский экран: " + ("дубль CRM" if cfg.mode == ClientDisplayMode.MIRROR else "реклама"),
+        )
+        return redirect(request.META.get("HTTP_REFERER") or "dashboard")
+    return HttpResponse(json.dumps({"mode": cfg.mode, "enabled": cfg.enabled}), content_type="application/json")
+
+
+@require_admin
+@require_http_methods(["POST"])
+def client_display_settings_save(request: HttpRequest):
+    """Persist TV/CRM monitor assignment and agent options."""
+    from workshop.client_display import list_monitors, refresh_monitors_cache, wake_client_display_agent
+    from workshop.models import ClientDisplayMode, ClientDisplaySettings
+
+    cfg = ClientDisplaySettings.get_solo()
+    action = (request.POST.get("action") or "save").strip()
+
+    if action == "scan":
+        monitors = refresh_monitors_cache()
+        wake_client_display_agent()
+        messages.success(request, f"Найдено мониторов: {len(monitors)}")
+        return redirect("admin_panel")
+
+    cfg.enabled = request.POST.get("display_enabled") == "1"
+    mode = (request.POST.get("display_mode") or cfg.mode).strip()
+    if mode in dict(ClientDisplayMode.choices):
+        cfg.mode = mode
+    cfg.chrome_path = (request.POST.get("chrome_path") or "").strip()
+    try:
+        cfg.slide_interval_sec = max(4, min(120, int(request.POST.get("slide_interval_sec") or 9)))
+    except ValueError:
+        cfg.slide_interval_sec = 9
+
+    monitors = list_monitors() or list(cfg.monitors_cache or [])
+    # Merge previously cached monitors so remembered keys still resolve to bounds.
+    by_key = {m.get("key"): m for m in (cfg.monitors_cache or []) if m.get("key")}
+    for m in monitors:
+        if m.get("key"):
+            by_key[m["key"]] = m
+    monitors = list(by_key.values())
+
+    tv_key = (request.POST.get("tv_monitor_key") or "").strip()
+    crm_key = (request.POST.get("crm_monitor_key") or "").strip()
+    if tv_key and tv_key in by_key:
+        cfg.apply_monitor("tv", by_key[tv_key])
+    elif tv_key:
+        cfg.tv_monitor_key = tv_key
+    if crm_key and crm_key in by_key:
+        cfg.apply_monitor("crm", by_key[crm_key])
+    elif crm_key:
+        cfg.crm_monitor_key = crm_key
+
+    cfg.monitors_cache = monitors
+    cfg.save()
+    wake_client_display_agent()
+    log_action(
+        request,
+        "client_display_settings",
+        entity_type="display",
+        details=f"tv={cfg.tv_monitor_key} crm={cfg.crm_monitor_key} mode={cfg.mode}",
+    )
+    messages.success(request, "Настройки клиентского ТВ сохранены")
+    return redirect("admin_panel")
+

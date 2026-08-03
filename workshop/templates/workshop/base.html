@@ -528,6 +528,17 @@
             <a class="btn btn-sm nav-page-btn {% nav_active 'max_log' %}" href="{% url 'max_message_log' %}">Max лог</a>
             {% endif %}
             <a class="btn btn-sm nav-page-btn {% nav_active 'create_order' %}" href="{% url 'create_order' %}">Новый заказ</a>
+            <form method="post" action="{% url 'client_display_toggle' %}" class="d-inline-flex align-items-center gap-2 ms-1" title="Клиентский ТВ: выкл = реклама, вкл = дубль экрана CRM" id="clientDisplayToggleForm">
+                {% csrf_token %}
+                <input type="hidden" name="mirror" id="clientDisplayMirrorValue" value="{% if client_display_mode == 'mirror' %}0{% else %}1{% endif %}">
+                <div class="form-check form-switch m-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="clientDisplaySwitch"
+                           {% if client_display_mode == 'mirror' %}checked{% endif %}
+                           {% if not client_display_enabled %}disabled{% endif %}
+                           onchange="document.getElementById('clientDisplayMirrorValue').value=this.checked?'1':'0'; this.form.submit();">
+                    <label class="form-check-label small text-secondary" for="clientDisplaySwitch">ТВ{% if client_display_mode == 'mirror' %}: CRM{% else %}: реклама{% endif %}</label>
+                </div>
+            </form>
             {% if workshop_user %}<span class="small text-secondary align-self-center">{{ workshop_user }}</span>{% endif %}
             <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}
                 <button class="btn btn-outline-warning btn-sm" type="submit">Выйти</button>

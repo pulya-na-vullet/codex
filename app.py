@@ -40,6 +40,17 @@ def _backup_db() -> None:
         print(f"Предупреждение: не удалось сделать бэкап БД в dumpDB/: {exc}", file=sys.stderr, flush=True)
 
 
+def _start_client_display_agent() -> None:
+    """Launch TV ads / CRM-mirror agent (monitors remembered in DB)."""
+    try:
+        from workshop.client_display import start_client_display_agent
+
+        start_client_display_agent()
+        print("=== Клиентский экран (ТВ): агент запущен ===", flush=True)
+    except Exception as exc:
+        print(f"Предупреждение: агент клиентского ТВ не запущен: {exc}", file=sys.stderr, flush=True)
+
+
 def main():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     host = os.getenv("IT_MASTER_HOST", "0.0.0.0")
@@ -50,6 +61,7 @@ def main():
     print_access_urls(host, port)
     _run_migrate()
     _backup_db()
+    _start_client_display_agent()
 
     from django.core.management import execute_from_command_line
 

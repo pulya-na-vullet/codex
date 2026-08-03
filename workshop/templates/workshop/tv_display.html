@@ -1,0 +1,253 @@
+{% load static %}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ИТ-М · клиентский экран</title>
+  <style>
+    :root {
+      --green: #2f8f4f;
+      --mint: #7ddea0;
+      --mist: #d9ebe0;
+      --soft: #9fbfab;
+      --white: #f7fbf8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #050a07;
+      color: var(--white);
+      font-family: Manrope, "Segoe UI", sans-serif;
+      cursor: none;
+    }
+    .stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #050a07 center / cover no-repeat;
+      background-image: url("{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}");
+    }
+    .stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(5,10,7,.18) 0%, rgba(5,10,7,.28) 42%, rgba(5,10,7,.72) 100%);
+      z-index: 1;
+      pointer-events: none;
+    }
+    .slide, .mirror-wrap {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      text-align: center;
+      padding: 0 6vw 8vh;
+      gap: 1.2vh;
+    }
+    .slide.is-active, .mirror-wrap.is-active { display: flex; }
+    .eyebrow {
+      font-size: clamp(16px, 2.2vh, 28px);
+      font-weight: 700;
+      letter-spacing: .28em;
+      text-transform: uppercase;
+      color: var(--mint);
+    }
+    .headline {
+      font-family: Georgia, "Times New Roman", serif;
+      font-weight: 600;
+      font-size: clamp(36px, 7vh, 92px);
+      line-height: 1.05;
+      max-width: 16ch;
+      text-shadow: 0 10px 40px rgba(0,0,0,.55);
+    }
+    .support {
+      font-size: clamp(18px, 2.8vh, 34px);
+      font-weight: 500;
+      color: var(--mist);
+      max-width: 28ch;
+      line-height: 1.35;
+    }
+    .rule {
+      width: 88px; height: 3px;
+      background: linear-gradient(90deg, transparent, var(--green), transparent);
+    }
+    .footer {
+      margin-top: .4vh;
+      font-size: clamp(12px, 1.8vh, 22px);
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: rgba(159, 191, 171, 0.88);
+    }
+    .phone {
+      font-size: clamp(24px, 3.6vh, 40px);
+      font-weight: 800;
+      letter-spacing: .04em;
+    }
+    .phone span { color: var(--mint); }
+    .price-row {
+      display: flex; flex-wrap: wrap;
+      gap: 1.2vh 1.5vw;
+      justify-content: center;
+      max-width: 1500px;
+      margin-top: .5vh;
+    }
+    .price-pill {
+      min-width: min(280px, 40vw);
+      padding: 1.4vh 1.4vw;
+      border: 1px solid rgba(125, 222, 160, 0.28);
+      background: rgba(7, 20, 12, 0.55);
+      border-radius: 18px;
+      text-align: left;
+    }
+    .price-pill .name { font-size: clamp(14px, 1.8vh, 22px); color: var(--soft); margin-bottom: .4vh; }
+    .price-pill .sum { font-size: clamp(22px, 3vh, 36px); font-weight: 800; }
+    .price-pill .sum span { font-size: .6em; color: var(--mint); margin-left: 6px; }
+    .mirror-wrap {
+      justify-content: center;
+      padding: 0;
+      background: #000;
+    }
+    .mirror-wrap img {
+      width: 100%; height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+    .mirror-fallback {
+      color: var(--soft);
+      font-size: clamp(18px, 2.5vh, 32px);
+      padding: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <section class="slide is-active" data-i="0">
+      <div class="eyebrow">ИТ-М</div>
+      <h1 class="headline">Цифровая мастерская</h1>
+      <div class="rule"></div>
+      <p class="support">Статусы в Max — Низкие цены</p>
+      <p class="footer">новый уровень доверия</p>
+    </section>
+    <section class="slide" data-i="1">
+      <div class="eyebrow">уведомления</div>
+      <h1 class="headline">Статусы ремонта в Max</h1>
+      <div class="rule"></div>
+      <p class="support">Готовность заказа, диагностика и редкие акции — без спама</p>
+      <p class="footer">подключение за 30 секунд</p>
+    </section>
+    <section class="slide" data-i="2">
+      <div class="eyebrow">ремонт техники</div>
+      <h1 class="headline">ПК · Ноутбуки · Телефоны · ТВ</h1>
+      <div class="rule"></div>
+      <p class="support">Гарантия 3 месяца на работы и новые запчасти</p>
+      <p class="footer">диагностика вычитается из ремонта</p>
+    </section>
+    <section class="slide" data-i="3">
+      <div class="eyebrow">цены</div>
+      <h1 class="headline">Честный прайс</h1>
+      <div class="rule"></div>
+      <div class="price-row">
+        <div class="price-pill"><div class="name">Диагностика</div><div class="sum">500<span>₽</span></div></div>
+        <div class="price-pill"><div class="name">Чистка ноутбука + термопаста</div><div class="sum">2 500<span>₽</span></div></div>
+        <div class="price-pill"><div class="name">Установка Windows + драйверы</div><div class="sum">2 500<span>₽</span></div></div>
+        <div class="price-pill"><div class="name">Сборка ПК под ключ</div><div class="sum">3 000<span>₽</span></div></div>
+      </div>
+    </section>
+    <section class="slide" data-i="4">
+      <div class="eyebrow">выезд</div>
+      <h1 class="headline">Мастер приедет к вам</h1>
+      <div class="rule"></div>
+      <p class="support">Выезд + диагностика от 1 500 ₽</p>
+      <p class="footer">быстро · на месте · прозрачно</p>
+    </section>
+    <section class="slide" data-i="5">
+      <div class="eyebrow">3D</div>
+      <h1 class="headline">Печать и моделирование</h1>
+      <div class="rule"></div>
+      <p class="support">3D-печать от 500 ₽ · сканирование · моделирование под задачу</p>
+      <p class="footer">от идеи до готовой детали</p>
+    </section>
+    <section class="slide" data-i="6">
+      <div class="eyebrow">разработка</div>
+      <h1 class="headline">Чат-боты и ПО на заказ</h1>
+      <div class="rule"></div>
+      <p class="support">Договор, ТЗ, сопровождение — цифровой сервис мастерской</p>
+      <p class="footer">заказная разработка</p>
+    </section>
+    <section class="slide" data-i="7">
+      <div class="eyebrow">ИТ-М</div>
+      <h1 class="headline">Ждём вас в мастерской</h1>
+      <div class="rule"></div>
+      <p class="phone">+7 (918) <span>802-87-67</span></p>
+      <p class="support">р. Татарстан, д. Куюки, ул. 24 квартал, дом 1</p>
+      <p class="footer">скидка 10% с третьего заказа</p>
+    </section>
+
+    <section class="mirror-wrap" id="mirrorWrap">
+      <img id="mirrorImg" alt="Дубль экрана CRM" src="">
+      <div class="mirror-fallback" id="mirrorFallback">Ожидание кадра с монитора CRM…</div>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const slides = [...document.querySelectorAll('.slide')];
+      const mirrorWrap = document.getElementById('mirrorWrap');
+      const mirrorImg = document.getElementById('mirrorImg');
+      const mirrorFallback = document.getElementById('mirrorFallback');
+      const intervalSec = {{ slide_interval_sec|default:9 }};
+      let i = 0;
+      let mode = {{ mode_json|safe }};
+      let timer = null;
+
+      function showAds() {
+        mirrorWrap.classList.remove('is-active');
+        slides.forEach((s, idx) => s.classList.toggle('is-active', idx === i));
+        if (!timer) {
+          timer = setInterval(function () {
+            i = (i + 1) % slides.length;
+            slides.forEach((s, idx) => s.classList.toggle('is-active', idx === i));
+          }, Math.max(4, intervalSec) * 1000);
+        }
+      }
+
+      function showMirror() {
+        if (timer) { clearInterval(timer); timer = null; }
+        slides.forEach(s => s.classList.remove('is-active'));
+        mirrorWrap.classList.add('is-active');
+        mirrorImg.onload = function () { mirrorFallback.style.display = 'none'; };
+        mirrorImg.onerror = function () { mirrorFallback.style.display = 'block'; };
+        // cache-bust poll as fallback if MJPEG unsupported
+        mirrorImg.src = '/tv/mirror.jpg?t=' + Date.now();
+      }
+
+      function applyMode(m) {
+        mode = m;
+        if (m === 'mirror') showMirror();
+        else showAds();
+      }
+
+      applyMode(mode);
+
+      setInterval(async function () {
+        try {
+          const r = await fetch('/tv/state', { cache: 'no-store' });
+          if (!r.ok) return;
+          const data = await r.json();
+          if (data.mode && data.mode !== mode) applyMode(data.mode);
+          if (data.mode === 'mirror') {
+            mirrorImg.src = '/tv/mirror.jpg?t=' + Date.now();
+          }
+        } catch (e) {}
+      }, 1500);
+    })();
+  </script>
+</body>
+</html>

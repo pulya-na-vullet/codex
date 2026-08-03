@@ -276,6 +276,83 @@
     </div>
     <div class="col-lg-5">
         <div class="card mb-3"><div class="card-body">
+            <h5 class="mb-2">Клиентский ТВ (55″)</h5>
+            <p class="small-muted mb-3">
+                ПК с 2 мониторами + телевизор. Назначьте, какой экран — ТВ (реклама), какой — источник CRM для дубля.
+                Выбор сохраняется в БД и поднимается при старте через <code>app.py</code>.
+            </p>
+            <form method="post" action="{% url 'client_display_settings_save' %}" class="vstack gap-3">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="save">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="display_enabled" value="1" id="display-enabled" {% if display_cfg.enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="display-enabled">Агент включён (окно на ТВ)</label>
+                </div>
+                <div>
+                    <label class="form-label">Режим по умолчанию</label>
+                    <select class="form-select" name="display_mode">
+                        <option value="ads" {% if display_cfg.mode == 'ads' %}selected{% endif %}>Реклама</option>
+                        <option value="mirror" {% if display_cfg.mode == 'mirror' %}selected{% endif %}>Дубль CRM</option>
+                    </select>
+                    <div class="small-muted mt-1">Тумблер в шапке CRM переключает режим мгновенно.</div>
+                </div>
+                <div>
+                    <label class="form-label">Монитор телевизора (клиентская зона)</label>
+                    <select class="form-select" name="tv_monitor_key">
+                        <option value="">— не выбран —</option>
+                        {% for m in display_cfg.monitors_cache %}
+                        <option value="{{ m.key }}" {% if display_cfg.tv_monitor_key == m.key %}selected{% endif %}>
+                            {{ m.label }} ({{ m.left }},{{ m.top }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% if display_cfg.tv_monitor_key %}
+                    <div class="small-muted mt-1">Запомнено: {{ display_cfg.tv_width }}×{{ display_cfg.tv_height }} @ {{ display_cfg.tv_left }},{{ display_cfg.tv_top }}</div>
+                    {% endif %}
+                </div>
+                <div>
+                    <label class="form-label">Монитор CRM (что дублировать)</label>
+                    <select class="form-select" name="crm_monitor_key">
+                        <option value="">— не выбран —</option>
+                        {% for m in display_cfg.monitors_cache %}
+                        <option value="{{ m.key }}" {% if display_cfg.crm_monitor_key == m.key %}selected{% endif %}>
+                            {{ m.label }} ({{ m.left }},{{ m.top }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% if display_cfg.crm_monitor_key %}
+                    <div class="small-muted mt-1">Запомнено: {{ display_cfg.crm_width }}×{{ display_cfg.crm_height }} @ {{ display_cfg.crm_left }},{{ display_cfg.crm_top }}</div>
+                    {% endif %}
+                </div>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label">Интервал слайдов, сек</label>
+                        <input class="form-control" type="number" min="4" max="120" name="slide_interval_sec" value="{{ display_cfg.slide_interval_sec }}">
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Путь к Chrome/Edge (опционально)</label>
+                        <input class="form-control" name="chrome_path" value="{{ display_cfg.chrome_path }}" placeholder="C:\Program Files\Google\Chrome\Application\chrome.exe">
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-primary btn-sm" type="submit">Сохранить мониторы</button>
+                    <a class="btn btn-outline-light btn-sm" href="{% url 'tv_display' %}" target="_blank">Превью /tv</a>
+                </div>
+            </form>
+            <form method="post" action="{% url 'client_display_settings_save' %}" class="mt-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="scan">
+                <button class="btn btn-outline-warning btn-sm" type="submit">Сканировать мониторы сейчас</button>
+            </form>
+            <div class="small-muted mt-3">
+                Агент: {% if display_agent_running %}<span class="text-success">работает</span>{% else %}<span class="text-danger">не запущен</span>{% endif %}
+                {% if display_agent.chrome_pid %} · Chrome PID {{ display_agent.chrome_pid }}{% endif %}
+            </div>
+            {% if display_cfg.last_error or display_agent.last_error %}
+            <div class="alert alert-warning py-2 mt-2 mb-0">{{ display_cfg.last_error|default:display_agent.last_error }}</div>
+            {% endif %}
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
             <h5 class="mb-2">Как подключить клиента</h5>
             <ol class="small mb-0">
                 <li>Создайте бота в Max для бизнеса и вставьте токен сюда</li>

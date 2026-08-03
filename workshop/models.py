@@ -1352,3 +1352,82 @@ class SoftwareDevPhoto(models.Model):
         ordering = ["id"]
         verbose_name = "Фото к ТЗ"
         verbose_name_plural = "Фото к ТЗ"
+
+
+class ClientDisplayMode(models.TextChoices):
+    ADS = "ads", "Реклама"
+    MIRROR = "mirror", "Дубль CRM"
+
+
+class ClientDisplaySettings(models.Model):
+    """Singleton: клиентский ТВ (реклама / дубль экрана CRM) + запомненные мониторы."""
+
+    enabled = models.BooleanField("Агент клиентского экрана", default=True)
+    mode = models.CharField(
+        "Режим",
+        max_length=16,
+        choices=ClientDisplayMode.choices,
+        default=ClientDisplayMode.ADS,
+        db_index=True,
+    )
+    tv_monitor_key = models.CharField("Ключ монитора ТВ", max_length=128, blank=True, default="")
+    crm_monitor_key = models.CharField("Ключ монитора CRM", max_length=128, blank=True, default="")
+    tv_left = models.IntegerField("ТВ left", default=0)
+    tv_top = models.IntegerField("ТВ top", default=0)
+    tv_width = models.PositiveIntegerField("ТВ width", default=1920)
+    tv_height = models.PositiveIntegerField("ТВ height", default=1080)
+    crm_left = models.IntegerField("CRM left", default=0)
+    crm_top = models.IntegerField("CRM top", default=0)
+    crm_width = models.PositiveIntegerField("CRM width", default=1920)
+    crm_height = models.PositiveIntegerField("CRM height", default=1080)
+    monitors_cache = models.JSONField("Кэш списка мониторов", default=list, blank=True)
+    chrome_path = models.CharField("Путь к Chrome/Edge", max_length=512, blank=True, default="")
+    slide_interval_sec = models.PositiveIntegerField("Интервал слайдов (сек)", default=9)
+    last_error = models.CharField("Последняя ошибка агента", max_length=500, blank=True, default="")
+    updated_at = models.DateTimeField("Обновлено", auto_now=True)
+
+    class Meta:
+        verbose_name = "Клиентский экран (ТВ)"
+        verbose_name_plural = "Клиентский экран (ТВ)"
+
+    def __str__(self) -> str:
+        return f"ТВ ({self.get_mode_display()})"
+
+    @classmethod
+    def get_solo(cls) -> "ClientDisplaySettings":
+        obj = cls.objects.first()
+        if obj:
+            return obj
+        return cls.objects.create()
+
+    def tv_bounds(self) -> dict:
+        return {
+            "left": int(self.tv_left),
+            "top": int(self.tv_top),
+            "width": int(self.tv_width or 1920),
+            "height": int(self.tv_height or 1080),
+        }
+
+    def crm_bounds(self) -> dict:
+        return {
+            "left": int(self.crm_left),
+            "top": int(self.crm_top),
+            "width": int(self.crm_width or 1920),
+            "height": int(self.crm_height or 1080),
+        }
+
+    def apply_monitor(self, role: str, monitor: dict) -> None:
+        """Persist selected monitor key + bounds (role: tv|crm)."""
+        key = str(monitor.get("key") or "")
+        left = int(monitor.get("left") or 0)
+        top = int(monitor.get("top") or 0)
+        width = max(1, int(monitor.get("width") or 1920))
+        height = max(1, int(monitor.get("height") or 1080))
+        if role == "tv":
+            self.tv_monitor_key = key
+            self.tv_left, self.tv_top = left, top
+            self.tv_width, self.tv_height = width, height
+        elif role == "crm":
+            self.crm_monitor_key = key
+            self.crm_left, self.crm_top = left, top
+            self.crm_width, self.crm_height = width, height
