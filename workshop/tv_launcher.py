@@ -156,7 +156,7 @@ def _tv_url() -> str:
     port = int(os.getenv("IT_MASTER_PORT", "8000"))
     host = os.getenv("IT_MASTER_TV_HOST", "127.0.0.1")
     # Unique marker in query + page title so Win32 never matches the CRM window.
-    return f"http://{host}:{port}/tv?fs=1&os=1&kiosk=ITM-TV-ADS-KIOSK&v=atm5"
+    return f"http://{host}:{port}/tv?fs=1&os=1&kiosk=ITM-TV-ADS-KIOSK&v=atm6"
 
 
 def stop_tv_browser() -> None:

@@ -376,6 +376,102 @@
         return cover * 0.72;
       }
 
+      /**
+       * Dragon fly-by behind the centre window.
+       * Returns {x, y, scale, facing, flap, visible, cover} in screen space.
+       */
+      function dragonState(t) {
+        var period = 26;
+        var flight = 5.2;
+        var u = t % period;
+        if (u > flight) {
+          return { visible: false, cover: 0 };
+        }
+        var p = u / flight; // 0..1 across the sky
+        var facing = (Math.floor(t / period) % 2 === 0) ? 1 : -1;
+        var x0 = facing > 0 ? -0.18 : 1.18;
+        var x1 = facing > 0 ? 1.18 : -0.18;
+        var x = (x0 + (x1 - x0) * p) * W;
+        var y = H * (0.22 + Math.sin(p * Math.PI) * 0.04 + Math.sin(t * 2.1) * 0.008);
+        var flap = Math.sin(t * 9.5);
+        // Stronger cover when crossing the bright centre pane.
+        var dist = Math.abs(x - W * 0.5) / (W * 0.28);
+        var cover = Math.max(0, 1 - dist) * Math.sin(p * Math.PI);
+        return {
+          visible: true,
+          x: x,
+          y: y,
+          scale: Math.min(W, H) * 0.11,
+          facing: facing,
+          flap: flap,
+          cover: cover * 0.55
+        };
+      }
+
+      function traceDragon(flap) {
+        // Unit silhouette facing +X, origin at chest. Wings beat with flap (-1..1).
+        var wu = -0.62 - flap * 0.28;
+        var wl = 0.18 + flap * 0.12;
+        ctx.beginPath();
+        // Tail
+        ctx.moveTo(-0.95, 0.08);
+        ctx.quadraticCurveTo(-0.7, -0.05, -0.45, 0.02);
+        // Back / body
+        ctx.quadraticCurveTo(-0.15, -0.12, 0.2, -0.1);
+        // Neck
+        ctx.quadraticCurveTo(0.4, -0.16, 0.58, -0.22);
+        // Head + horn + snout
+        ctx.lineTo(0.62, -0.38);
+        ctx.lineTo(0.7, -0.26);
+        ctx.lineTo(0.88, -0.2);
+        ctx.lineTo(0.78, -0.08);
+        ctx.lineTo(0.62, -0.04);
+        // Chest / belly
+        ctx.quadraticCurveTo(0.25, 0.12, -0.05, 0.14);
+        // Hind leg tuck
+        ctx.quadraticCurveTo(-0.25, 0.22, -0.4, 0.12);
+        ctx.quadraticCurveTo(-0.65, 0.18, -0.95, 0.08);
+        ctx.closePath();
+        // Upper wing
+        ctx.moveTo(0.02, -0.06);
+        ctx.quadraticCurveTo(-0.05, wu, -0.55, wu - 0.05);
+        ctx.quadraticCurveTo(-0.25, wu + 0.2, -0.02, 0.02);
+        ctx.closePath();
+        // Lower wing membrane
+        ctx.moveTo(0.0, 0.0);
+        ctx.quadraticCurveTo(0.05, wl, -0.35, wl + 0.15);
+        ctx.quadraticCurveTo(-0.12, wl * 0.4, 0.02, 0.04);
+        ctx.closePath();
+      }
+
+      function drawDragonShadow(drag) {
+        if (!drag.visible) return;
+        ctx.save();
+        // Clip roughly to the three window band so the silhouette reads “behind glass”.
+        ctx.beginPath();
+        ctx.ellipse(W * 0.5, H * 0.3, W * 0.42, H * 0.28, 0, 0, Math.PI * 2);
+        ctx.clip();
+
+        ctx.translate(drag.x, drag.y);
+        ctx.scale(drag.facing * drag.scale, drag.scale);
+
+        // Soft outer umbra (through stained glass).
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.55)';
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+        traceDragon(drag.flap);
+        ctx.fill('nonzero');
+        ctx.restore();
+
+        // Crisper core silhouette.
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+        traceDragon(drag.flap);
+        ctx.fill('nonzero');
+
+        ctx.restore();
+      }
+
       /** Soft bloom only — no hard trapezoid / “frame” shafts. */
       function drawLight(cx, cy, power) {
         if (power < 0.04) return;
@@ -393,10 +489,10 @@
 
         // Soft volumetric falloff down the centre (stacked soft discs, no polygons).
         for (var i = 0; i < 10; i++) {
-          var t = i / 9;
-          var yy = cy + H * (0.04 + t * 0.62);
-          var spread = W * (0.05 + t * 0.14);
-          var a = power * (0.1 * (1 - t) * (1 - t));
+          var tt = i / 9;
+          var yy = cy + H * (0.04 + tt * 0.62);
+          var spread = W * (0.05 + tt * 0.14);
+          var a = power * (0.1 * (1 - tt) * (1 - tt));
           if (a < 0.008) continue;
           var g = ctx.createRadialGradient(cx, yy, 0, cx, yy, spread);
           g.addColorStop(0, 'rgba(170,245,195,' + a.toFixed(3) + ')');
@@ -414,12 +510,14 @@
         var t = (now - t0) / 1000;
         var breath = 0.8 + 0.2 * (0.5 + 0.5 * Math.sin(t * 0.28));
         var cloud = cloudAt(t);
-        var sun = breath * (1 - cloud);
+        var drag = dragonState(t);
+        var sun = breath * (1 - cloud) * (1 - (drag.cover || 0));
         var cx = W * 0.5;
         var cy = H * 0.26;
 
         ctx.clearRect(0, 0, W, H);
         drawLight(cx, cy, sun);
+        drawDragonShadow(drag);
 
         ensure();
         ctx.save();
