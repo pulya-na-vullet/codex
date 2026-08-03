@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ИТ-М — ТВ-реклама Full HD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --green: #2f8f4f;
+      --green-deep: #1a5f32;
+      --ink: #07140c;
+      --mist: #d9ebe0;
+      --soft: #9fbfab;
+      --white: #f7fbf8;
+      --mint: #7ddea0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: #000;
+      color: var(--white);
+      font-family: "Manrope", sans-serif;
+      overflow: hidden;
+    }
+    body.export {
+      width: 1920px;
+      height: 1080px;
+    }
+    .stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #050a07 center/cover no-repeat;
+      background-image: url("bg-three-windows-fhd.png");
+    }
+    .stage::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(5,10,7,.18) 0%, rgba(5,10,7,.28) 42%, rgba(5,10,7,.72) 100%),
+        radial-gradient(60% 50% at 50% 100%, rgba(7,20,12,.55), transparent 70%);
+      pointer-events: none;
+      z-index: 1;
+    }
+    .slide {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      text-align: center;
+      padding: 0 120px 110px;
+      gap: 22px;
+    }
+    .slide.is-active { display: flex; }
+    body.export .slide { display: none !important; }
+    body.export .slide.is-active { display: flex !important; }
+
+    .eyebrow {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: .28em;
+      text-transform: uppercase;
+      color: var(--mint);
+    }
+    .headline {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-weight: 600;
+      font-size: 92px;
+      line-height: 1.05;
+      max-width: 16ch;
+      color: var(--white);
+      text-shadow: 0 10px 40px rgba(0,0,0,.55);
+    }
+    .support {
+      font-size: 34px;
+      font-weight: 500;
+      color: var(--mist);
+      max-width: 28ch;
+      line-height: 1.35;
+    }
+    .price-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px 28px;
+      justify-content: center;
+      margin-top: 8px;
+      max-width: 1500px;
+    }
+    .price-pill {
+      min-width: 280px;
+      padding: 18px 26px;
+      border: 1px solid rgba(125, 222, 160, 0.28);
+      background: rgba(7, 20, 12, 0.55);
+      backdrop-filter: blur(8px);
+      border-radius: 18px;
+      text-align: left;
+    }
+    .price-pill .name {
+      font-size: 22px;
+      color: var(--soft);
+      margin-bottom: 6px;
+    }
+    .price-pill .sum {
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--white);
+      letter-spacing: .02em;
+    }
+    .price-pill .sum span {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--mint);
+      margin-left: 6px;
+    }
+    .rule {
+      width: 88px;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--green), transparent);
+      margin: 4px 0;
+    }
+    .footer {
+      margin-top: 10px;
+      font-size: 22px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: rgba(159, 191, 171, 0.88);
+    }
+    .phone {
+      font-size: 40px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      color: var(--white);
+    }
+    .phone span { color: var(--mint); }
+
+    /* toolbar only when previewing in browser */
+    .toolbar {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      z-index: 20;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .toolbar button, .toolbar a {
+      appearance: none;
+      border: 1px solid rgba(47,143,79,.45);
+      background: rgba(26,95,50,.45);
+      color: #fff;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font: 600 13px/1 Manrope, sans-serif;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    body.export .toolbar { display: none !important; }
+    body.tv .toolbar { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <!-- 01 Brand -->
+    <section class="slide is-active" data-slide="01">
+      <div class="eyebrow">ИТ-М</div>
+      <h1 class="headline">Цифровая мастерская</h1>
+      <div class="rule"></div>
+      <p class="support">Статусы в Max — Низкие цены</p>
+      <p class="footer">новый уровень доверия</p>
+    </section>
+
+    <!-- 02 Max -->
+    <section class="slide" data-slide="02">
+      <div class="eyebrow">уведомления</div>
+      <h1 class="headline">Статусы ремонта в Max</h1>
+      <div class="rule"></div>
+      <p class="support">Готовность заказа, диагностика и редкие акции — без спама</p>
+      <p class="footer">подключение за 30 секунд</p>
+    </section>
+
+    <!-- 03 Warranty / spectrum -->
+    <section class="slide" data-slide="03">
+      <div class="eyebrow">ремонт техники</div>
+      <h1 class="headline">ПК · Ноутбуки · Телефоны · ТВ</h1>
+      <div class="rule"></div>
+      <p class="support">Гарантия 3 месяца на работы и новые запчасти</p>
+      <p class="footer">диагностика вычитается из ремонта</p>
+    </section>
+
+    <!-- 04 Prices -->
+    <section class="slide" data-slide="04">
+      <div class="eyebrow">цены</div>
+      <h1 class="headline">Честный прайс</h1>
+      <div class="rule"></div>
+      <div class="price-row">
+        <div class="price-pill"><div class="name">Диагностика</div><div class="sum">500<span>₽</span></div></div>
+        <div class="price-pill"><div class="name">Чистка ноутбука + термопаста</div><div class="sum">2 500<span>₽</span></div></div>
+        <div class="price-pill"><div class="name">Установка Windows + драйверы</div><div class="sum">2 500<span>₽</span></div></div>
+        <div class="price-pill"><div class="name">Сборка ПК под ключ</div><div class="sum">3 000<span>₽</span></div></div>
+      </div>
+    </section>
+
+    <!-- 05 Visit -->
+    <section class="slide" data-slide="05">
+      <div class="eyebrow">выезд</div>
+      <h1 class="headline">Мастер приедет к вам</h1>
+      <div class="rule"></div>
+      <p class="support">Выезд + диагностика от 1 500 ₽</p>
+      <p class="footer">быстро · на месте · прозрачно</p>
+    </section>
+
+    <!-- 06 3D -->
+    <section class="slide" data-slide="06">
+      <div class="eyebrow">3D</div>
+      <h1 class="headline">Печать и моделирование</h1>
+      <div class="rule"></div>
+      <p class="support">3D-печать от 500 ₽ · сканирование · моделирование под задачу</p>
+      <p class="footer">от идеи до готовой детали</p>
+    </section>
+
+    <!-- 07 Software -->
+    <section class="slide" data-slide="07">
+      <div class="eyebrow">разработка</div>
+      <h1 class="headline">Чат-боты и ПО на заказ</h1>
+      <div class="rule"></div>
+      <p class="support">Договор, ТЗ, сопровождение — цифровой сервис мастерской</p>
+      <p class="footer">заказная разработка</p>
+    </section>
+
+    <!-- 08 Contact -->
+    <section class="slide" data-slide="08">
+      <div class="eyebrow">ИТ-М</div>
+      <h1 class="headline">Ждём вас в мастерской</h1>
+      <div class="rule"></div>
+      <p class="phone">+7 (918) <span>802-87-67</span></p>
+      <p class="support">р. Татарстан, д. Куюки, ул. 24 квартал, дом 1</p>
+      <p class="footer">скидка 10% с третьего заказа</p>
+    </section>
+  </div>
+
+  <div class="toolbar">
+    <button type="button" id="prev">←</button>
+    <button type="button" id="next">→</button>
+    <button type="button" id="tv">ТВ-режим</button>
+    <a href="bg-three-windows-fhd.png" download>Фон PNG</a>
+  </div>
+
+  <script>
+    (function () {
+      const slides = [...document.querySelectorAll('.slide')];
+      let i = 0;
+      let timer = null;
+      const INTERVAL = 9000;
+
+      function show(n) {
+        i = (n + slides.length) % slides.length;
+        slides.forEach((s, idx) => s.classList.toggle('is-active', idx === i));
+        document.title = 'ИТ-М TV · ' + slides[i].dataset.slide;
+      }
+
+      function next() { show(i + 1); }
+      function prev() { show(i - 1); }
+
+      function startTv() {
+        document.body.classList.add('tv');
+        clearInterval(timer);
+        timer = setInterval(next, INTERVAL);
+        show(i);
+      }
+
+      document.getElementById('next').onclick = () => { next(); if (timer) startTv(); };
+      document.getElementById('prev').onclick = () => { prev(); if (timer) startTv(); };
+      document.getElementById('tv').onclick = startTv;
+
+      const params = new URLSearchParams(location.search);
+      if (params.has('tv')) startTv();
+      if (params.has('slide')) {
+        const n = parseInt(params.get('slide'), 10) - 1;
+        if (!Number.isNaN(n)) show(n);
+      }
+      if (params.has('export')) {
+        document.body.classList.add('export');
+        const n = parseInt(params.get('slide') || '1', 10) - 1;
+        show(Number.isNaN(n) ? 0 : n);
+      }
+    })();
+  </script>
+</body>
+</html>
