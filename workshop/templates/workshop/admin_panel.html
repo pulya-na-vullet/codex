@@ -276,6 +276,26 @@
     </div>
     <div class="col-lg-5">
         <div class="card mb-3"><div class="card-body">
+            <h5 class="mb-2">ТВ-реклама (клиентская зона)</h5>
+            <p class="small-muted mb-3">
+                Мониторы читаются через ОС. Открывается <strong>новое окно Chrome/Edge</strong>
+                на выбранном экране сразу в полноэкранном режиме.
+                CRM-окно не трогается. <strong>Esc</strong> — свернуть, <strong>Alt+F4</strong> — закрыть.
+            </p>
+            <div class="mb-2">
+                <label class="form-label" for="tvMonitorSelect">Монитор</label>
+                <select class="form-select" id="tvMonitorSelect">
+                    <option value="">Нажмите «Найти мониторы»</option>
+                </select>
+                <div class="small-muted mt-1" id="tvMonitorHint"></div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-light btn-sm" id="tvRescanMonitorsBtn">Найти мониторы</button>
+                <button type="button" class="btn btn-primary btn-sm" id="tvOpenFullscreenBtn">Открыть на весь экран</button>
+                <button type="button" class="btn btn-outline-warning btn-sm" id="tvStopBtn">Закрыть ТВ-окно</button>
+            </div>
+        </div></div>
+        <div class="card mb-3"><div class="card-body">
             <h5 class="mb-2">Как подключить клиента</h5>
             <ol class="small mb-0">
                 <li>Создайте бота в Max для бизнеса и вставьте токен сюда</li>
@@ -321,4 +341,142 @@
         </div></div>
     </div>
 </div>
+
+<script>
+(function () {
+  var select = document.getElementById('tvMonitorSelect');
+  var hint = document.getElementById('tvMonitorHint');
+  var openBtn = document.getElementById('tvOpenFullscreenBtn');
+  var rescanBtn = document.getElementById('tvRescanMonitorsBtn');
+  var stopBtn = document.getElementById('tvStopBtn');
+  if (!select || !openBtn) return;
+
+  var monitors = [];
+  var STORAGE_KEY = 'itm_tv_monitor_id';
+  var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
+
+  function log() {
+    try { console.log.apply(console, ['[TV-OS]'].concat([].slice.call(arguments))); } catch (e) {}
+  }
+
+  function fillSelect(list, note) {
+    monitors = list || [];
+    select.innerHTML = '';
+    if (!monitors.length) {
+      var empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Мониторы не найдены';
+      select.appendChild(empty);
+      if (hint) hint.textContent = note || 'Нет мониторов';
+      return;
+    }
+    var saved = '';
+    try { saved = localStorage.getItem(STORAGE_KEY) || ''; } catch (e) {}
+    var matched = false;
+    monitors.forEach(function (m, idx) {
+      var opt = document.createElement('option');
+      opt.value = String(idx);
+      opt.textContent = m.label;
+      if (m.id === saved) { opt.selected = true; matched = true; }
+      select.appendChild(opt);
+    });
+    if (!matched) {
+      var prefer = monitors.findIndex(function (m) { return !m.primary; });
+      select.selectedIndex = prefer >= 0 ? prefer : 0;
+    }
+    if (hint) hint.textContent = note || ('Найдено мониторов ОС: ' + monitors.length);
+    log('monitors', monitors);
+  }
+
+  async function scanMonitors() {
+    if (hint) hint.textContent = 'Опрос мониторов через ОС…';
+    openBtn.disabled = true;
+    try {
+      var r = await fetch('{% url "tv_monitors_api" %}', {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      var data = await r.json();
+      log('scan response', data);
+      if (!data.ok) throw new Error(data.error || 'scan failed');
+      var note = 'Мониторы из ОС (' + (data.platform || '') + ').';
+      if (!data.browser) note += ' Chrome/Edge не найден — установите браузер.';
+      else note += ' Браузер: ' + data.browser;
+      fillSelect(data.monitors || [], note);
+    } catch (e) {
+      log('scan error', e);
+      if (hint) hint.textContent = 'Ошибка опроса ОС: ' + (e && e.message ? e.message : e);
+      fillSelect([], hint.textContent);
+    } finally {
+      openBtn.disabled = false;
+    }
+  }
+
+  async function openSelected() {
+    var idx = parseInt(select.value, 10);
+    var m = monitors[idx];
+    if (!m) {
+      alert('Сначала нажмите «Найти мониторы» и выберите экран');
+      return;
+    }
+    try { localStorage.setItem(STORAGE_KEY, m.id); } catch (e) {}
+    openBtn.disabled = true;
+    if (hint) hint.textContent = 'Запуск Chrome на ' + m.label + '…';
+    try {
+      var r = await fetch('{% url "tv_open_api" %}', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrf,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ monitor_id: m.id, index: m.index })
+      });
+      var data = await r.json();
+      log('open response', data);
+      if (!data.ok) {
+        alert(data.error || 'Не удалось открыть');
+        if (hint) hint.textContent = data.error || 'Ошибка запуска';
+        return;
+      }
+      if (hint) {
+        hint.textContent = 'Открыто на ' + m.label
+          + (data.pid ? (' · PID ' + data.pid) : '')
+          + (data.url ? (' · ' + data.url) : '')
+          + '. Esc — свернуть.';
+      }
+    } catch (e) {
+      log('open error', e);
+      alert('Ошибка запуска: ' + (e && e.message ? e.message : e));
+    } finally {
+      openBtn.disabled = false;
+    }
+  }
+
+  async function stopTv() {
+    try {
+      await fetch('{% url "tv_open_api" %}', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrf,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ action: 'stop' })
+      });
+      if (hint) hint.textContent = 'ТВ-окно закрыто (если было запущено из CRM).';
+    } catch (e) {
+      log('stop error', e);
+    }
+  }
+
+  openBtn.addEventListener('click', openSelected);
+  if (rescanBtn) rescanBtn.addEventListener('click', scanMonitors);
+  if (stopBtn) stopBtn.addEventListener('click', stopTv);
+  scanMonitors();
+})();
+</script>
 {% endblock %}

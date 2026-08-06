@@ -1,0 +1,582 @@
+"""OS-level TV ads launcher: enumerate monitors and start Chrome fullscreen.
+
+Does not move/close the CRM browser window. Uses a separate Chrome user-data-dir.
+
+TV URL must hit THIS CRM (workshop), not another Django app on :8000 (e.g. hub_portal).
+Prefer IT_MASTER_TV_BASE_URL, else the admin request origin, else IT_MASTER_PORT.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import platform
+import shutil
+import subprocess
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+_chrome_proc: subprocess.Popen | None = None
+_TV_CACHE_BUST = "atm13"
+
+
+def resolve_tv_base_url(request=None) -> str:
+    """Base origin for /tv — must be the CRM process, not HUB on a shared port."""
+    explicit = (os.environ.get("IT_MASTER_TV_BASE_URL") or "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    if request is not None:
+        scheme = "https" if request.is_secure() else "http"
+        host = (request.get_host() or "").strip()
+        # Bind address is not a client-reachable host.
+        if host.startswith("0.0.0.0"):
+            host = "127.0.0.1" + host[len("0.0.0.0") :]
+        elif host.startswith("[::]"):
+            host = "127.0.0.1" + host[len("[::]") :]
+        if host:
+            return f"{scheme}://{host}"
+    host = (os.environ.get("IT_MASTER_TV_HOST") or "127.0.0.1").strip() or "127.0.0.1"
+    port = (os.environ.get("IT_MASTER_PORT") or "8000").strip() or "8000"
+    return f"http://{host}:{port}"
+
+
+def _tv_url(base_url: str = "") -> str:
+    base = (base_url or resolve_tv_base_url()).rstrip("/")
+    # Unique marker in query + page title so Win32 never matches the CRM window.
+    return f"{base}/tv?fs=1&os=1&kiosk=ITM-TV-ADS-KIOSK&v={_TV_CACHE_BUST}"
+
+
+def assert_tv_endpoint(base_url: str) -> None:
+    """Fail fast if /tv is missing (common when :8000 is hub_portal, not CRM)."""
+    base = (base_url or "").rstrip("/")
+    probe = f"{base}/tv"
+    req = urllib.request.Request(
+        probe,
+        headers={"User-Agent": "ITM-TV-Probe", "Accept": "text/html"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            body = resp.read(12000).decode("utf-8", errors="ignore")
+    except urllib.error.HTTPError as exc:
+        if int(exc.code) == 404:
+            raise RuntimeError(
+                f"Страница /tv не найдена на {base} — это не CRM ИТ-М "
+                f"(часто на :8000 крутится HUB). Откройте админку CRM и "
+                f"задайте IT_MASTER_TV_BASE_URL на адрес CRM, например "
+                f"http://127.0.0.1:<порт_CRM>."
+            ) from exc
+        raise RuntimeError(f"Проверка /tv не удалась: HTTP {exc.code} для {probe}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Не удалось проверить {probe}: {exc}") from exc
+
+    markers = ('id="tv-root"', "id='tv-root'", "ITM-TV-ADS-KIOSK", "tv-root")
+    if not any(m in body for m in markers):
+        raise RuntimeError(
+            f"По адресу {probe} нет страницы ТВ CRM (ответ без маркера tv-root). "
+            f"Возможно, открыт другой сайт на этом порту. "
+            f"Укажите IT_MASTER_TV_BASE_URL=http://127.0.0.1:<порт_CRM>."
+        )
+
+
+def list_monitors() -> list[dict[str, Any]]:
+    system = platform.system()
+    if system == "Windows":
+        return _list_monitors_windows()
+    return _list_monitors_fallback()
+
+
+def _list_monitors_windows() -> list[dict[str, Any]]:
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    monitors: list[dict[str, Any]] = []
+
+    class RECT(ctypes.Structure):
+        _fields_ = [
+            ("left", wintypes.LONG),
+            ("top", wintypes.LONG),
+            ("right", wintypes.LONG),
+            ("bottom", wintypes.LONG),
+        ]
+
+    class MONITORINFOEXW(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD),
+            ("rcMonitor", RECT),
+            ("rcWork", RECT),
+            ("dwFlags", wintypes.DWORD),
+            ("szDevice", wintypes.WCHAR * 32),
+        ]
+
+    MonitorEnumProc = ctypes.WINFUNCTYPE(
+        wintypes.BOOL,
+        wintypes.HMONITOR,
+        wintypes.HDC,
+        ctypes.POINTER(RECT),
+        wintypes.LPARAM,
+    )
+
+    def _callback(hmonitor, _hdc, _lprect, _lparam):
+        info = MONITORINFOEXW()
+        info.cbSize = ctypes.sizeof(MONITORINFOEXW)
+        if not user32.GetMonitorInfoW(hmonitor, ctypes.byref(info)):
+            return True
+        left, top = int(info.rcMonitor.left), int(info.rcMonitor.top)
+        right, bottom = int(info.rcMonitor.right), int(info.rcMonitor.bottom)
+        width, height = right - left, bottom - top
+        device = str(info.szDevice or "").strip() or f"DISPLAY{len(monitors)+1}"
+        primary = bool(info.dwFlags & 1)
+        monitors.append(
+            {
+                "id": f"{device}|{width}x{height}@{left},{top}",
+                "device": device,
+                "left": left,
+                "top": top,
+                "width": width,
+                "height": height,
+                "primary": primary,
+                "label": (
+                    f"{'Основной' if primary else 'Монитор'} · {width}×{height} "
+                    f"@{left},{top} ({device})"
+                ),
+            }
+        )
+        return True
+
+    user32.EnumDisplayMonitors(0, 0, MonitorEnumProc(_callback), 0)
+    monitors.sort(key=lambda m: (not m["primary"], m["left"], m["top"]))
+    for i, m in enumerate(monitors):
+        m["index"] = i
+    return monitors
+
+
+def _list_monitors_fallback() -> list[dict[str, Any]]:
+    width, height = 1920, 1080
+    try:
+        import tkinter as tk
+
+        root = tk.Tk()
+        root.withdraw()
+        width = int(root.winfo_screenwidth() or width)
+        height = int(root.winfo_screenheight() or height)
+        root.destroy()
+    except Exception:
+        pass
+    return [
+        {
+            "id": f"SCREEN-0|{width}x{height}@0,0",
+            "device": "SCREEN-0",
+            "left": 0,
+            "top": 0,
+            "width": width,
+            "height": height,
+            "primary": True,
+            "index": 0,
+            "label": f"Основной · {width}×{height} @0,0",
+        }
+    ]
+
+
+def find_browser(chrome_path: str = "") -> str | None:
+    candidates: list[str] = []
+    if chrome_path:
+        candidates.append(chrome_path)
+    env = os.getenv("IT_MASTER_CHROME_PATH", "").strip()
+    if env:
+        candidates.append(env)
+    if platform.system() == "Windows":
+        pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+        pf86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+        local = os.environ.get("LOCALAPPDATA", "")
+        candidates.extend(
+            [
+                str(Path(pf) / "Google" / "Chrome" / "Application" / "chrome.exe"),
+                str(Path(pf86) / "Google" / "Chrome" / "Application" / "chrome.exe"),
+                str(Path(local) / "Google" / "Chrome" / "Application" / "chrome.exe") if local else "",
+                str(Path(pf) / "Microsoft" / "Edge" / "Application" / "msedge.exe"),
+                str(Path(pf86) / "Microsoft" / "Edge" / "Application" / "msedge.exe"),
+            ]
+        )
+    else:
+        for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge"):
+            found = shutil.which(name)
+            if found:
+                candidates.append(found)
+    for path in candidates:
+        if path and Path(path).exists():
+            return path
+    return None
+
+
+def stop_tv_browser() -> None:
+    global _chrome_proc
+    proc = _chrome_proc
+    _chrome_proc = None
+    if not proc:
+        return
+    pid = proc.pid
+    try:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    except Exception:
+        logger.exception("Failed to stop TV browser")
+    if platform.system() == "Windows" and pid:
+        _win_kill_process_tree(pid)
+
+
+def _win_kill_process_tree(root_pid: int) -> None:
+    """Best-effort kill of Chrome child processes for the TV profile."""
+    try:
+        subprocess.run(
+            ["taskkill", "/PID", str(root_pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except Exception:
+        pass
+
+
+def open_tv_on_monitor(
+    *,
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+    chrome_path: str = "",
+    base_url: str = "",
+) -> dict[str, Any]:
+    """Launch a separate Chrome/Edge window on the given OS monitor, fullscreen."""
+    global _chrome_proc
+
+    browser = find_browser(chrome_path)
+    if not browser:
+        return {"ok": False, "error": "Chrome/Edge не найден. Укажите путь или установите браузер."}
+
+    base = (base_url or resolve_tv_base_url()).rstrip("/")
+    try:
+        assert_tv_endpoint(base)
+    except RuntimeError as exc:
+        return {"ok": False, "error": str(exc), "base_url": base}
+
+    stop_tv_browser()
+
+    profile_dir = Path(settings.BASE_DIR) / "runtime" / "tv-chrome-profile"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    url = _tv_url(base)
+
+    # Separate profile — never attach to the CRM browser profile/window.
+    # --kiosk = no title bar / no browser chrome (unlike --app, which keeps a caption).
+    # Win32 then pins the HWND to the chosen monitor and keeps it TOPMOST over the taskbar.
+    args = [
+        browser,
+        f"--user-data-dir={profile_dir}",
+        "--profile-directory=TVAds",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-session-crashed-bubble",
+        "--disable-infobars",
+        "--disable-features=TranslateUI",
+        "--autoplay-policy=no-user-gesture-required",
+        f"--window-position={int(left)},{int(top)}",
+        f"--window-size={int(width)},{int(height)}",
+        "--kiosk",
+        "--kiosk-printing",
+        url,
+    ]
+
+    popen_kwargs: dict[str, Any] = {
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if platform.system() == "Windows":
+        creation = 0
+        creation |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        popen_kwargs["creationflags"] = creation
+
+    try:
+        _chrome_proc = subprocess.Popen(args, **popen_kwargs)
+    except Exception as exc:
+        logger.exception("TV browser launch failed")
+        return {"ok": False, "error": str(exc)}
+
+    root_pid = int(_chrome_proc.pid) if _chrome_proc and _chrome_proc.pid else 0
+    if platform.system() == "Windows" and root_pid:
+        import threading
+
+        def _nudge() -> None:
+            _win_place_tv_window(root_pid, left, top, width, height)
+
+        # Chrome creates the HWND asynchronously — nudge several times.
+        for delay in (0.5, 1.0, 1.8, 3.0):
+            threading.Timer(delay, _nudge).start()
+
+    return {
+        "ok": True,
+        "pid": root_pid or None,
+        "url": url,
+        "base_url": base,
+        "browser": browser,
+        "bounds": {"left": left, "top": top, "width": width, "height": height},
+    }
+
+
+def _win_process_descendants(root_pid: int) -> set[int]:
+    """Return root PID + children via CreateToolhelp32Snapshot."""
+    import ctypes
+    from ctypes import wintypes
+
+    pids = {int(root_pid)}
+    TH32CS_SNAPPROCESS = 0x00000002
+
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", wintypes.WCHAR * 260),
+        ]
+
+    kernel32 = ctypes.windll.kernel32
+    snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if snap == -1:
+        return pids
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        if not kernel32.Process32FirstW(snap, ctypes.byref(entry)):
+            return pids
+        # Multi-pass to catch nested children.
+        for _ in range(4):
+            changed = False
+            kernel32.Process32FirstW(snap, ctypes.byref(entry))
+            while True:
+                ppid = int(entry.th32ParentProcessID)
+                pid = int(entry.th32ProcessID)
+                if ppid in pids and pid not in pids:
+                    pids.add(pid)
+                    changed = True
+                if not kernel32.Process32NextW(snap, ctypes.byref(entry)):
+                    break
+            if not changed:
+                break
+    finally:
+        kernel32.CloseHandle(snap)
+    return pids
+
+
+def _win_activate_window(hwnd: int) -> None:
+    """Force the TV window to foreground so Chrome fullscreen actually engages.
+
+    Without this, Windows flashes the taskbar icon and shows a fullscreen hint
+    until the user clicks the app — CRM stays focused on the other monitor.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    SW_RESTORE = 9
+    SW_SHOW = 5
+    hwnd = int(hwnd)
+    user32.ShowWindow(hwnd, SW_RESTORE)
+    user32.ShowWindow(hwnd, SW_SHOW)
+    user32.BringWindowToTop(hwnd)
+
+    fg = user32.GetForegroundWindow()
+    if fg == hwnd:
+        return
+
+    fg_tid = user32.GetWindowThreadProcessId(fg, None) if fg else 0
+    target_tid = user32.GetWindowThreadProcessId(hwnd, None)
+    cur_tid = kernel32.GetCurrentThreadId()
+
+    attached_fg = False
+    attached_tg = False
+    try:
+        if fg_tid and fg_tid != cur_tid:
+            attached_fg = bool(user32.AttachThreadInput(cur_tid, fg_tid, True))
+        if target_tid and target_tid != cur_tid and target_tid != fg_tid:
+            attached_tg = bool(user32.AttachThreadInput(cur_tid, target_tid, True))
+
+        # Alt key pulse unlocks SetForegroundWindow restrictions.
+        VK_MENU = 0x12
+        KEYEVENTF_KEYUP = 0x0002
+        user32.keybd_event(VK_MENU, 0, 0, 0)
+        user32.SetForegroundWindow(hwnd)
+        user32.BringWindowToTop(hwnd)
+        user32.SetActiveWindow(hwnd)
+        user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+    finally:
+        if attached_tg:
+            user32.AttachThreadInput(cur_tid, target_tid, False)
+        if attached_fg:
+            user32.AttachThreadInput(cur_tid, fg_tid, False)
+
+    # Allow this process to set foreground for a moment (best-effort).
+    try:
+        user32.AllowSetForegroundWindow(ctypes.windll.kernel32.GetCurrentProcessId())
+    except Exception:
+        pass
+    user32.SetForegroundWindow(hwnd)
+
+
+def _win_place_tv_window(root_pid: int, left: int, top: int, width: int, height: int) -> None:
+    """Move ONLY windows that belong to the TV Chrome process tree (never CRM).
+
+    Forces a popup (no caption) HWND covering the full monitor over the taskbar.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        allowed = _win_process_descendants(root_pid)
+        hwnds: list[int] = []
+        pid_out = wintypes.DWORD()
+
+        class RECT(ctypes.Structure):
+            _fields_ = [
+                ("left", wintypes.LONG),
+                ("top", wintypes.LONG),
+                ("right", wintypes.LONG),
+                ("bottom", wintypes.LONG),
+            ]
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        def enum_proc(hwnd, _lparam):
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_out))
+            if int(pid_out.value) not in allowed:
+                return True
+            rect = RECT()
+            if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                return True
+            w = int(rect.right) - int(rect.left)
+            h = int(rect.bottom) - int(rect.top)
+            if w < 200 or h < 200:
+                return True
+            cls = ctypes.create_unicode_buffer(64)
+            user32.GetClassNameW(hwnd, cls, 64)
+            class_name = (cls.value or "").lower()
+            if "chrome" not in class_name and "chrome_widgetwin" not in class_name:
+                if class_name and "widgetwin" not in class_name:
+                    return True
+            hwnds.append(int(hwnd))
+            return True
+
+        user32.EnumWindows(enum_proc, 0)
+
+        GWL_STYLE = -16
+        GWL_EXSTYLE = -20
+        WS_POPUP = 0x80000000
+        WS_VISIBLE = 0x10000000
+        WS_CLIPSIBLINGS = 0x04000000
+        WS_CLIPCHILDREN = 0x02000000
+        WS_EX_TOPMOST = 0x00000008
+        WS_EX_TOOLWINDOW = 0x00000080
+        WS_EX_APPWINDOW = 0x00040000
+        HWND_TOPMOST = -1
+        SWP_SHOWWINDOW = 0x0040
+        SWP_FRAMECHANGED = 0x0020
+        SWP_NOCOPYBITS = 0x0100
+        SW_SHOW = 5
+
+        get_long = getattr(user32, "GetWindowLongPtrW", None) or user32.GetWindowLongW
+        set_long = getattr(user32, "SetWindowLongPtrW", None) or user32.SetWindowLongW
+
+        for hwnd in hwnds[:2]:
+            try:
+                # Replace style entirely — stripping bits alone leaves Chrome app caption.
+                popup = WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN
+                set_long(hwnd, GWL_STYLE, popup)
+                ex = int(get_long(hwnd, GWL_EXSTYLE))
+                ex |= WS_EX_TOPMOST | WS_EX_APPWINDOW
+                ex &= ~WS_EX_TOOLWINDOW
+                set_long(hwnd, GWL_EXSTYLE, ex)
+            except Exception:
+                pass
+            user32.ShowWindow(hwnd, SW_SHOW)
+            flags = SWP_SHOWWINDOW | SWP_FRAMECHANGED | SWP_NOCOPYBITS
+            user32.SetWindowPos(
+                hwnd,
+                HWND_TOPMOST,
+                int(left),
+                int(top),
+                int(width),
+                int(height),
+                flags,
+            )
+            prev_fg = user32.GetForegroundWindow()
+            _win_activate_window(hwnd)
+            # Re-apply popup + size after Chrome finishes creating its frame.
+            try:
+                set_long(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN)
+            except Exception:
+                pass
+            user32.SetWindowPos(
+                hwnd,
+                HWND_TOPMOST,
+                int(left),
+                int(top),
+                int(width),
+                int(height),
+                flags,
+            )
+            # Return focus to CRM; kiosk/TOPMOST stays covering the TV without a title bar.
+            if prev_fg and prev_fg != hwnd:
+                try:
+                    import threading
+
+                    def _restore_crm(fg=int(prev_fg)):
+                        try:
+                            user32.SetForegroundWindow(fg)
+                        except Exception:
+                            pass
+
+                    threading.Timer(0.6, _restore_crm).start()
+                except Exception:
+                    pass
+    except Exception:
+        logger.debug("Win32 TV window place skipped", exc_info=True)
+
+
+def resolve_monitor(monitor_id: str = "", index: int | None = None) -> dict[str, Any] | None:
+    monitors = list_monitors()
+    if not monitors:
+        return None
+    if monitor_id:
+        for m in monitors:
+            if m.get("id") == monitor_id:
+                return m
+    if index is not None:
+        for m in monitors:
+            if int(m.get("index", -1)) == int(index):
+                return m
+        if 0 <= int(index) < len(monitors):
+            return monitors[int(index)]
+    # Prefer non-primary (often the TV).
+    for m in monitors:
+        if not m.get("primary"):
+            return m
+    return monitors[0]
