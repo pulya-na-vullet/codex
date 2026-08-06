@@ -165,6 +165,64 @@ class AuthAndPagesTests(TestCase):
         self.assertTrue(isinstance(data["monitors"], list))
         self.assertGreaterEqual(len(data["monitors"]), 1)
 
+    def test_resolve_tv_base_url_from_request(self):
+        from django.test import RequestFactory
+
+        from workshop.tv_launcher import resolve_tv_base_url
+
+        req = RequestFactory().get("/admin-panel/")
+        self.assertEqual(resolve_tv_base_url(req), "http://testserver")
+
+    def test_tv_open_passes_request_base_url(self):
+        from unittest.mock import patch
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        monitor = {
+            "id": "SCREEN-0|1920x1080@0,0",
+            "left": 0,
+            "top": 0,
+            "width": 1920,
+            "height": 1080,
+            "index": 0,
+            "primary": True,
+            "label": "Основной",
+        }
+        with (
+            patch("workshop.tv_launcher.resolve_monitor", return_value=monitor),
+            patch(
+                "workshop.tv_launcher.open_tv_on_monitor",
+                return_value={
+                    "ok": True,
+                    "pid": 1,
+                    "url": "http://testserver/tv?fs=1",
+                    "base_url": "http://testserver",
+                },
+            ) as open_tv,
+        ):
+            r = self.http.post(
+                "/admin-panel/tv-open",
+                data='{"monitor_id":"SCREEN-0|1920x1080@0,0","index":0}',
+                content_type="application/json",
+            )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json().get("ok"))
+        self.assertEqual(open_tv.call_args.kwargs.get("base_url"), "http://testserver")
+
+    def test_assert_tv_endpoint_rejects_404(self):
+        from unittest.mock import patch
+
+        from workshop.tv_launcher import assert_tv_endpoint
+
+        with patch(
+            "workshop.tv_launcher.urllib.request.urlopen",
+            side_effect=__import__("urllib.error").error.HTTPError(
+                "http://127.0.0.1:8000/tv", 404, "Not Found", {}, None
+            ),
+        ):
+            with self.assertRaises(RuntimeError) as ctx:
+                assert_tv_endpoint("http://127.0.0.1:8000")
+        self.assertIn("не найдена", str(ctx.exception))
+
 
     def test_login_and_dashboard(self):
         r = self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})

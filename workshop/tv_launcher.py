@@ -1,6 +1,9 @@
 """OS-level TV ads launcher: enumerate monitors and start Chrome fullscreen.
 
 Does not move/close the CRM browser window. Uses a separate Chrome user-data-dir.
+
+TV URL must hit THIS CRM (workshop), not another Django app on :8000 (e.g. hub_portal).
+Prefer IT_MASTER_TV_BASE_URL, else the admin request origin, else IT_MASTER_PORT.
 """
 
 from __future__ import annotations
@@ -11,6 +14,8 @@ import platform
 import shutil
 import subprocess
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +24,66 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 _chrome_proc: subprocess.Popen | None = None
+_TV_CACHE_BUST = "atm13"
+
+
+def resolve_tv_base_url(request=None) -> str:
+    """Base origin for /tv — must be the CRM process, not HUB on a shared port."""
+    explicit = (os.environ.get("IT_MASTER_TV_BASE_URL") or "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    if request is not None:
+        scheme = "https" if request.is_secure() else "http"
+        host = (request.get_host() or "").strip()
+        # Bind address is not a client-reachable host.
+        if host.startswith("0.0.0.0"):
+            host = "127.0.0.1" + host[len("0.0.0.0") :]
+        elif host.startswith("[::]"):
+            host = "127.0.0.1" + host[len("[::]") :]
+        if host:
+            return f"{scheme}://{host}"
+    host = (os.environ.get("IT_MASTER_TV_HOST") or "127.0.0.1").strip() or "127.0.0.1"
+    port = (os.environ.get("IT_MASTER_PORT") or "8000").strip() or "8000"
+    return f"http://{host}:{port}"
+
+
+def _tv_url(base_url: str = "") -> str:
+    base = (base_url or resolve_tv_base_url()).rstrip("/")
+    # Unique marker in query + page title so Win32 never matches the CRM window.
+    return f"{base}/tv?fs=1&os=1&kiosk=ITM-TV-ADS-KIOSK&v={_TV_CACHE_BUST}"
+
+
+def assert_tv_endpoint(base_url: str) -> None:
+    """Fail fast if /tv is missing (common when :8000 is hub_portal, not CRM)."""
+    base = (base_url or "").rstrip("/")
+    probe = f"{base}/tv"
+    req = urllib.request.Request(
+        probe,
+        headers={"User-Agent": "ITM-TV-Probe", "Accept": "text/html"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            body = resp.read(12000).decode("utf-8", errors="ignore")
+    except urllib.error.HTTPError as exc:
+        if int(exc.code) == 404:
+            raise RuntimeError(
+                f"Страница /tv не найдена на {base} — это не CRM ИТ-М "
+                f"(часто на :8000 крутится HUB). Откройте админку CRM и "
+                f"задайте IT_MASTER_TV_BASE_URL на адрес CRM, например "
+                f"http://127.0.0.1:<порт_CRM>."
+            ) from exc
+        raise RuntimeError(f"Проверка /tv не удалась: HTTP {exc.code} для {probe}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Не удалось проверить {probe}: {exc}") from exc
+
+    markers = ('id="tv-root"', "id='tv-root'", "ITM-TV-ADS-KIOSK", "tv-root")
+    if not any(m in body for m in markers):
+        raise RuntimeError(
+            f"По адресу {probe} нет страницы ТВ CRM (ответ без маркера tv-root). "
+            f"Возможно, открыт другой сайт на этом порту. "
+            f"Укажите IT_MASTER_TV_BASE_URL=http://127.0.0.1:<порт_CRM>."
+        )
 
 
 def list_monitors() -> list[dict[str, Any]]:
@@ -152,13 +217,6 @@ def find_browser(chrome_path: str = "") -> str | None:
     return None
 
 
-def _tv_url() -> str:
-    port = int(os.getenv("IT_MASTER_PORT", "8000"))
-    host = os.getenv("IT_MASTER_TV_HOST", "127.0.0.1")
-    # Unique marker in query + page title so Win32 never matches the CRM window.
-    return f"http://{host}:{port}/tv?fs=1&os=1&kiosk=ITM-TV-ADS-KIOSK&v=atm12"
-
-
 def stop_tv_browser() -> None:
     global _chrome_proc
     proc = _chrome_proc
@@ -198,6 +256,7 @@ def open_tv_on_monitor(
     width: int,
     height: int,
     chrome_path: str = "",
+    base_url: str = "",
 ) -> dict[str, Any]:
     """Launch a separate Chrome/Edge window on the given OS monitor, fullscreen."""
     global _chrome_proc
@@ -206,11 +265,17 @@ def open_tv_on_monitor(
     if not browser:
         return {"ok": False, "error": "Chrome/Edge не найден. Укажите путь или установите браузер."}
 
+    base = (base_url or resolve_tv_base_url()).rstrip("/")
+    try:
+        assert_tv_endpoint(base)
+    except RuntimeError as exc:
+        return {"ok": False, "error": str(exc), "base_url": base}
+
     stop_tv_browser()
 
     profile_dir = Path(settings.BASE_DIR) / "runtime" / "tv-chrome-profile"
     profile_dir.mkdir(parents=True, exist_ok=True)
-    url = _tv_url()
+    url = _tv_url(base)
 
     # Separate profile — never attach to the CRM browser profile/window.
     # --kiosk = no title bar / no browser chrome (unlike --app, which keeps a caption).
@@ -262,6 +327,7 @@ def open_tv_on_monitor(
         "ok": True,
         "pid": root_pid or None,
         "url": url,
+        "base_url": base,
         "browser": browser,
         "bounds": {"left": left, "top": top, "width": width, "height": height},
     }

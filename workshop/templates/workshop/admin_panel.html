@@ -441,7 +441,12 @@
         if (hint) hint.textContent = data.error || 'Ошибка запуска';
         return;
       }
-      if (hint) hint.textContent = 'Открыто на ' + m.label + (data.pid ? (' · PID ' + data.pid) : '') + '. Esc — свернуть.';
+      if (hint) {
+        hint.textContent = 'Открыто на ' + m.label
+          + (data.pid ? (' · PID ' + data.pid) : '')
+          + (data.url ? (' · ' + data.url) : '')
+          + '. Esc — свернуть.';
+      }
     } catch (e) {
       log('open error', e);
       alert('Ошибка запуска: ' + (e && e.message ? e.message : e));

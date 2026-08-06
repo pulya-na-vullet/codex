@@ -2772,7 +2772,7 @@ def tv_monitors_api(request: HttpRequest):
 @require_http_methods(["POST"])
 def tv_open_api(request: HttpRequest):
     """Open ads in a new OS-level Chrome window on the chosen monitor (fullscreen)."""
-    from workshop.tv_launcher import open_tv_on_monitor, resolve_monitor, stop_tv_browser
+    from workshop.tv_launcher import open_tv_on_monitor, resolve_monitor, resolve_tv_base_url, stop_tv_browser
 
     try:
         payload = json.loads(request.body.decode("utf-8") or "{}")
@@ -2800,17 +2800,22 @@ def tv_open_api(request: HttpRequest):
             status=400,
         )
 
+    base_url = resolve_tv_base_url(request)
     result = open_tv_on_monitor(
         left=int(monitor["left"]),
         top=int(monitor["top"]),
         width=int(monitor["width"]),
         height=int(monitor["height"]),
+        base_url=base_url,
     )
     log_action(
         request,
         "tv_ads_open",
         entity_type="display",
-        details=f"ok={result.get('ok')} monitor={monitor.get('id')} pid={result.get('pid')}",
+        details=(
+            f"ok={result.get('ok')} monitor={monitor.get('id')} "
+            f"pid={result.get('pid')} url={result.get('url') or base_url}"
+        ),
     )
     status = 200 if result.get("ok") else 500
     return HttpResponse(json.dumps({**result, "monitor": monitor}), content_type="application/json", status=status)
