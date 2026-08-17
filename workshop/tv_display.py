@@ -141,6 +141,8 @@ def get_settings() -> TvDisplaySettings:
 
 
 def state_payload() -> dict:
+    from workshop.tv_cast_frames import cast_seq
+
     cfg = get_settings()
     return {
         "ok": True,
@@ -151,6 +153,7 @@ def state_payload() -> dict:
         "ads_width": ADS_CANVAS_WIDTH,
         "ads_height": ADS_CANVAS_HEIGHT,
         "ads_index": clamp_ads_index(cfg.ads_index),
+        "cast_seq": int(cast_seq() or 0),
         "rev": int(cfg.rev or 1),
         "page_v": tv_page_version(),
     }
@@ -190,6 +193,9 @@ def set_display(
             cfg.crm_path = "/"
     else:
         cfg.mode = TvDisplayMode.ADS
+        from workshop.tv_cast_frames import clear_jpeg
+
+        clear_jpeg()
     if viewport_w is not None:
         cfg.crm_width = clamp_viewport_dim(viewport_w, old_w, 640, 5120)
     if viewport_h is not None:

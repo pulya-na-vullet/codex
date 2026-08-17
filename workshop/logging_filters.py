@@ -6,8 +6,10 @@ import logging
 
 _QUIET_SNIPPETS = (
     '"GET /tv/state',
+    '"GET /tv/cast.jpg',
     '"POST /tv/progress',
     '"POST /admin-panel/tv-display',
+    '"POST /admin-panel/tv-cast-frame',
 )
 
 

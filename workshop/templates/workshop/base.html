@@ -538,9 +538,9 @@
             <a class="btn btn-sm nav-page-btn {% nav_active 'max_log' %}" href="{% url 'max_message_log' %}">Max лог</a>
             {% endif %}
             <a class="btn btn-sm nav-page-btn {% nav_active 'create_order' %}" href="{% url 'create_order' %}">Новый заказ</a>
-            <button type="button" class="btn btn-sm btn-success" id="tvCastCrmBtn" title="Показывать на телевизоре всё, что открываете в CRM">Показать на ТВ</button>
-            <button type="button" class="btn btn-sm btn-outline-light" id="tvCastAdsBtn" title="Прервать показ CRM и снова крутить рекламу">Стоп · реклама</button>
-            <span class="small text-secondary align-self-center" id="tvCastStatus"></span>
+            <button type="button" class="btn btn-sm btn-success" id="tvCastCrmBtn" data-html2canvas-ignore="true" title="Показывать на телевизоре то, что видно на экране Mac">Показать на ТВ</button>
+            <button type="button" class="btn btn-sm btn-outline-light" id="tvCastAdsBtn" data-html2canvas-ignore="true" title="Прервать показ CRM и снова крутить рекламу">Стоп · реклама</button>
+            <span class="small text-secondary align-self-center" id="tvCastStatus" data-html2canvas-ignore="true"></span>
             {% if workshop_user %}<span class="small text-secondary align-self-center">{{ workshop_user }}</span>{% endif %}
             <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}
                 <button class="btn btn-outline-warning btn-sm" type="submit">Выйти</button>
@@ -623,22 +623,20 @@
   if (!crmBtn || !adsBtn) return;
   var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
   var lastSent = '';
+  var live = false;
+  var uploading = false;
+  var dirty = true;
+  var pumpTimer = null;
+  var h2cLoading = false;
 
   function here() {
     return (location.pathname || '/') + (location.search || '');
   }
 
-  function viewport() {
-    return {
-      viewport_w: Math.round(window.innerWidth || 1440),
-      viewport_h: Math.round(window.innerHeight || 900)
-    };
-  }
-
   function setStatus(data) {
     if (!statusEl) return;
     if (data && data.mode === 'crm') {
-      statusEl.textContent = 'ТВ ведёт за вами';
+      statusEl.textContent = 'ТВ: экран Mac';
       crmBtn.classList.add('tv-cast-btn', 'is-live');
       adsBtn.classList.remove('is-live');
     } else {
@@ -648,11 +646,10 @@
   }
 
   async function send(mode, follow) {
-    var vp = viewport();
     var path = mode === 'crm' ? here() : '';
-    var key = mode + '|' + path + '|' + vp.viewport_w + 'x' + vp.viewport_h;
+    var key = mode + '|' + path;
     if (follow && key === lastSent) return;
-    var body = { mode: mode, viewport_w: vp.viewport_w, viewport_h: vp.viewport_h };
+    var body = { mode: mode };
     if (mode === 'crm') body.path = here();
     if (follow) body.follow = true;
     var r = await fetch('{% url "tv_display_api" %}', {
@@ -671,6 +668,81 @@
     return data;
   }
 
+  function loadH2C(done) {
+    if (window.html2canvas) { done(); return; }
+    if (h2cLoading) return;
+    h2cLoading = true;
+    var s = document.createElement('script');
+    s.src = '{% static "workshop/js/html2canvas.min.js" %}';
+    s.onload = function () { h2cLoading = false; done(); };
+    s.onerror = function () { h2cLoading = false; };
+    document.head.appendChild(s);
+  }
+
+  function captureOnce() {
+    if (!live || uploading || document.hidden || !window.html2canvas) return;
+    uploading = true;
+    var w = Math.max(1, window.innerWidth || 1280);
+    var h = Math.max(1, window.innerHeight || 720);
+    window.html2canvas(document.body, {
+      logging: false,
+      backgroundColor: '#0f172a',
+      useCORS: true,
+      scale: Math.min(1, 1280 / w),
+      width: w,
+      height: h,
+      x: window.pageXOffset || 0,
+      y: window.pageYOffset || 0,
+      scrollX: -(window.pageXOffset || 0),
+      scrollY: -(window.pageYOffset || 0),
+      windowWidth: w,
+      windowHeight: h,
+      ignoreElements: function (el) {
+        return !!(el && el.getAttribute && el.getAttribute('data-html2canvas-ignore'));
+      }
+    }).then(function (canvas) {
+      return new Promise(function (resolve) {
+        canvas.toBlob(resolve, 'image/jpeg', 0.55);
+      });
+    }).then(function (blob) {
+      if (!blob || !live) return;
+      return fetch('{% url "tv_cast_frame_api" %}', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'image/jpeg' },
+        body: blob
+      });
+    }).catch(function () {}).then(function () {
+      uploading = false;
+    });
+  }
+
+  function startPump() {
+    live = true;
+    dirty = true;
+    loadH2C(function () { dirty = true; captureOnce(); });
+    if (pumpTimer) return;
+    pumpTimer = setInterval(function () {
+      if (!live) return;
+      if (dirty) {
+        dirty = false;
+        captureOnce();
+      }
+    }, 450);
+    setInterval(function () { if (live) dirty = true; }, 1800);
+  }
+
+  function stopPump() {
+    live = false;
+  }
+
+  function markDirty() { if (live) dirty = true; }
+
+  ['click', 'keyup', 'scroll', 'change', 'input'].forEach(function (ev) {
+    window.addEventListener(ev, markDirty, true);
+  });
+  window.addEventListener('resize', markDirty);
+
   async function refresh() {
     try {
       var r = await fetch('{% url "tv_state_api" %}', { credentials: 'same-origin', cache: 'no-store' });
@@ -678,14 +750,21 @@
       setStatus(data);
       if (data && data.mode === 'crm') {
         await send('crm', true);
+        startPump();
+      } else {
+        stopPump();
       }
     } catch (e) {}
   }
 
-  crmBtn.addEventListener('click', function () { lastSent = ''; send('crm', false); });
-  adsBtn.addEventListener('click', function () { lastSent = ''; send('ads', false); });
-  window.addEventListener('resize', function () {
-    if (crmBtn.classList.contains('is-live')) send('crm', true);
+  crmBtn.addEventListener('click', function () {
+    lastSent = '';
+    send('crm', false).then(function () { startPump(); });
+  });
+  adsBtn.addEventListener('click', function () {
+    lastSent = '';
+    stopPump();
+    send('ads', false);
   });
   refresh();
   setInterval(refresh, 8000);

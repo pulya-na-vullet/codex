@@ -2829,6 +2829,38 @@ def tv_display_api(request: HttpRequest):
     return HttpResponse(json.dumps(state_payload()), content_type="application/json")
 
 
+@require_http_methods(["POST"])
+def tv_cast_frame_api(request: HttpRequest):
+    """Manager Mac uploads a JPEG of the visible CRM window."""
+    from workshop.tv_cast_frames import put_jpeg
+    from workshop.tv_display import state_payload
+
+    seq = put_jpeg(request.body or b"")
+    if not seq:
+        return HttpResponse(
+            json.dumps({"ok": False, "error": "not-jpeg"}),
+            content_type="application/json",
+            status=400,
+        )
+    payload = state_payload()
+    payload["cast_seq"] = seq
+    return HttpResponse(json.dumps(payload), content_type="application/json")
+
+
+@require_GET
+def tv_cast_jpeg(request: HttpRequest):
+    """Latest Mac window frame for the TV <img> (login-exempt under /tv)."""
+    from workshop.tv_cast_frames import get_jpeg
+    from workshop.tv_display import allow_tv_embed
+
+    data, seq = get_jpeg()
+    if not data:
+        return allow_tv_embed(HttpResponse(status=204))
+    response = HttpResponse(data, content_type="image/jpeg")
+    response["ETag"] = f'"{seq}"'
+    return allow_tv_embed(response)
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def tv_close_api(request: HttpRequest):

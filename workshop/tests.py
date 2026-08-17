@@ -108,7 +108,10 @@ class OrderLogicTests(TestCase):
 @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
 class AuthAndPagesTests(TestCase):
     def setUp(self):
+        from workshop.tv_cast_frames import clear_jpeg
+
         self.http = HttpClient()
+        clear_jpeg()
 
     def test_login_required(self):
         r = self.http.get("/")
@@ -159,10 +162,11 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Чиним технику")
         self.assertContains(r, "Сломалась деталь")
         self.assertContains(r, "Бот или учёт")
-        self.assertContains(r, "object-fit: cover")
-        self.assertContains(r, "tvAdsWrap")
-        self.assertContains(r, "translate(-50%, -50%) scale(")
-        self.assertContains(r, "width: 1920px")
+        self.assertContains(r, "object-fit: contain")
+        self.assertContains(r, "tvCastView")
+        self.assertContains(r, "/tv/cast.jpg")
+        self.assertNotContains(r, "width: 1920px")
+        self.assertNotContains(r, "translate(-50%, -50%) scale(")
         self.assertNotContains(r, "rgba(0, 0, 0, 0.58)")
         self.assertContains(r, "background: none")
         self.assertContains(r, "<img")
@@ -171,7 +175,7 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "bg-software-gold-hall-fhd.png")
         self.assertNotContains(r, "worldFx")
         self.assertNotContains(r, "id=\"portal\"")
-        self.assertContains(r, "tvCrmFrame")
+        self.assertContains(r, "id=\"tvCastView\"")
         self.assertContains(r, "/tv/state")
         self.assertContains(r, "page_v")
         self.assertContains(r, "location.replace")
@@ -253,6 +257,49 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(r.json()["mode"], TvDisplayMode.ADS)
         self.assertEqual(TvDisplaySettings.get_solo().ads_index, 4)
 
+    def test_tv_cast_jpeg_fits_tv_frame(self):
+        from pathlib import Path
+
+        from workshop.tv_cast_frames import get_jpeg
+
+        js = Path(__file__).resolve().parent / "static" / "workshop" / "js" / "html2canvas.min.js"
+        self.assertTrue(js.is_file())
+
+        anon = HttpClient()
+        r = anon.get("/tv/cast.jpg")
+        self.assertEqual(r.status_code, 204)
+        r = anon.post("/admin-panel/tv-cast-frame", data=b"\xff\xd8\xff\xd9", content_type="image/jpeg")
+        self.assertEqual(r.status_code, 302)
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        r = self.http.get("/")
+        self.assertContains(r, "html2canvas.min.js")
+        self.assertContains(r, "tv-cast-frame")
+
+        jpeg = b"\xff\xd8\xff\xd9"
+        r = self.http.post("/admin-panel/tv-cast-frame", data=jpeg, content_type="image/jpeg")
+        self.assertEqual(r.status_code, 200)
+        self.assertGreaterEqual(r.json()["cast_seq"], 1)
+
+        r = anon.get("/tv/cast.jpg")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "image/jpeg")
+        self.assertEqual(r.content, jpeg)
+        self.assertEqual(get_jpeg()[0], jpeg)
+
+        r = self.http.post("/admin-panel/tv-cast-frame", data=b"not-an-image", content_type="image/jpeg")
+        self.assertEqual(r.status_code, 400)
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"ads"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["mode"], "ads")
+        self.assertEqual(r.json()["cast_seq"], 0)
+        r = anon.get("/tv/cast.jpg")
+        self.assertEqual(r.status_code, 204)
+
     def test_quiet_tv_poll_log_filter(self):
         import logging
 
@@ -276,6 +323,9 @@ class AuthAndPagesTests(TestCase):
         rec.status_code = 200
         rec.msg = '"GET /orders/1 HTTP/1.1" 200 1200'
         self.assertTrue(flt.filter(rec))
+        rec.msg = '"GET /tv/cast.jpg HTTP/1.1" 200 8000'
+        rec.status_code = 200
+        self.assertFalse(flt.filter(rec))
 
     def test_tv_close_api_local(self):
         anon = HttpClient()

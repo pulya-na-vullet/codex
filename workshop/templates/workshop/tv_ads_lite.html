@@ -16,55 +16,42 @@
       color: #f7fbf8;
       font-family: Arial, Helvetica, sans-serif;
     }
-    #tvAdsWrap, #tvCrmStage {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      overflow: hidden;
-      transform-origin: center center;
-    }
-    #tvAdsWrap {
-      width: 1920px;
-      height: 1080px;
-      background: #000;
-    }
-    #tvAdsWrap.is-off { visibility: hidden; pointer-events: none; }
-    #tvCrmStage {
-      display: none;
-      z-index: 20;
-      background: #fff;
-    }
-    #tvCrmStage.is-on { display: block; }
     .stage {
       position: absolute;
-      top: 0; left: 0;
+      inset: 0;
       width: 100%;
       height: 100%;
       background: #000;
     }
+    .stage.is-off { visibility: hidden; pointer-events: none; }
     .bg {
       position: absolute;
-      top: 0; left: 0;
+      inset: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
       object-position: center center;
       opacity: 0;
       z-index: 0;
     }
     .bg.is-on { opacity: 1; z-index: 1; }
-    #tvCrmFrame {
+    #tvCastView {
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
-      border: 0;
-      display: block;
-      background: #0f172a;
+      object-fit: contain;
+      object-position: center center;
+      background: #000;
+      display: none;
+      z-index: 20;
     }
+    #tvCastView.is-on { display: block; }
     .caption {
       position: absolute;
       left: 0; right: 0; bottom: 0;
       z-index: 2;
-      padding: 18px 36px 28px;
+      padding: 2vw 4vw 3vw;
       background: none;
       text-align: center;
     }
@@ -74,49 +61,49 @@
     .slide { display: none; }
     .slide.is-active { display: block; }
     .eyebrow {
-      font-size: 18px;
+      font-size: 1.6vw;
       font-weight: 700;
       letter-spacing: 0.22em;
       text-transform: uppercase;
       color: #7ddea0;
-      margin-bottom: 8px;
+      margin-bottom: 0.6vw;
     }
     .headline {
       font-family: Georgia, "Times New Roman", serif;
-      font-size: 42px;
+      font-size: 3.4vw;
       line-height: 1.15;
-      margin: 0 auto 10px;
+      margin: 0 auto 0.8vw;
       max-width: 18em;
     }
     .support {
-      font-size: 22px;
+      font-size: 1.8vw;
       line-height: 1.35;
       color: #d9ebe0;
       max-width: 28em;
-      margin: 0 auto 8px;
+      margin: 0 auto 0.6vw;
     }
     .footer {
-      font-size: 16px;
+      font-size: 1.3vw;
       letter-spacing: 0.14em;
       text-transform: uppercase;
       color: #9fbfab;
     }
-    .phone { font-size: 28px; font-weight: 800; margin: 6px 0; }
+    .phone { font-size: 2.4vw; font-weight: 800; margin: 0.5vw 0; }
     .phone span { color: #7ddea0; }
-    .price-row { margin: 10px auto 0; max-width: 1100px; }
+    .price-row { margin: 0.8vw auto 0; max-width: 80vw; }
     .price-pill {
       display: inline-block;
-      min-width: 220px;
-      margin: 6px 8px;
-      padding: 10px 16px;
+      min-width: 16vw;
+      margin: 0.5vw 0.6vw;
+      padding: 0.8vw 1.2vw;
       border: 1px solid #7ddea0;
-      border-radius: 12px;
+      border-radius: 0.8vw;
       text-align: left;
       background: #07140c;
     }
-    .price-pill .name { font-size: 15px; color: #9fbfab; margin-bottom: 4px; }
-    .price-pill .sum { font-size: 24px; font-weight: 800; }
-    .price-pill .sum span { font-size: 14px; color: #7ddea0; margin-left: 4px; }
+    .price-pill .name { font-size: 1.2vw; color: #9fbfab; margin-bottom: 0.3vw; }
+    .price-pill .sum { font-size: 2vw; font-weight: 800; }
+    .price-pill .sum span { font-size: 1.1vw; color: #7ddea0; margin-left: 0.3vw; }
     .stage[data-scene="atelier"] .eyebrow { color: #e0c4ff; }
     .stage[data-scene="atelier"] .price-pill { border-color: #c896ff; background: #1c0a2a; }
     .stage[data-scene="atelier"] .price-pill .sum span { color: #e0c4ff; }
@@ -126,7 +113,6 @@
   </style>
 </head>
 <body>
-  <div id="tvAdsWrap">
   <div class="stage" id="tv-root" data-scene="hall">
     <img class="bg is-on" data-scene="hall" src="{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}?v={{ tv_page_version }}" alt="">
     <img class="bg" data-scene="atelier" src="{% static 'workshop/promo/tv43/bg-atelier-purple-hall-fhd.png' %}?v={{ tv_page_version }}" alt="">
@@ -233,10 +219,7 @@
       </section>
     </div>
   </div>
-  </div>
-  <div id="tvCrmStage">
-    <iframe id="tvCrmFrame" title="CRM на ТВ" src="about:blank"></iframe>
-  </div>
+  <img id="tvCastView" alt="">
   <script>
   (function () {
     var stage = document.getElementById('tv-root');
@@ -265,35 +248,10 @@
     var lastRev = -1;
     var lastMode = '';
     var lastPath = '';
+    var lastCastSeq = -1;
     var PAGE_V = '{{ tv_page_version|default:"1" }}';
-    var adsWrap = document.getElementById('tvAdsWrap');
-    var crmStage = document.getElementById('tvCrmStage');
-    var crmFrame = document.getElementById('tvCrmFrame');
-    var lastCrmSrc = '';
-    var lastLayout = '';
-    var adsW = 1920;
-    var adsH = 1080;
-    var crmW = 1440;
-    var crmH = 900;
-
-    function fitBox(el, w, h) {
-      if (!el) return;
-      w = Math.max(640, Math.min(5120, Math.round(w || 1440)));
-      h = Math.max(360, Math.min(2880, Math.round(h || 900)));
-      var sw = window.innerWidth || w;
-      var sh = window.innerHeight || h;
-      var scale = Math.min(sw / w, sh / h);
-      el.style.width = w + 'px';
-      el.style.height = h + 'px';
-      var t = 'translate(-50%, -50%) scale(' + scale + ')';
-      el.style.webkitTransform = t;
-      el.style.transform = t;
-    }
-
-    function layoutScreens() {
-      fitBox(adsWrap, adsW, adsH);
-      fitBox(crmStage, crmW, crmH);
-    }
+    var castImg = document.getElementById('tvCastView');
+    var pollTimer = null;
 
     function slidesOf(scene) {
       var out = [];
@@ -341,36 +299,38 @@
       } catch (e) {}
     }
 
-    function showCrm(rev, path) {
+    function showCast(seq) {
       paused = true;
       reportProgress(showing);
-      layoutScreens();
-      if (adsWrap) adsWrap.className = 'is-off';
-      if (crmStage) crmStage.className = 'is-on';
-      if (crmFrame) {
-        var src = '/tv/frame?v=' + encodeURIComponent(rev || '1')
-          + '&p=' + encodeURIComponent(path || '/');
-        if (src !== lastCrmSrc) {
-          lastCrmSrc = src;
-          crmFrame.src = src;
-        }
+      if (stage) stage.className = 'stage is-off';
+      if (castImg) castImg.className = 'is-on';
+      if (seq && seq !== lastCastSeq) {
+        lastCastSeq = seq;
+        var src = '/tv/cast.jpg?s=' + encodeURIComponent(seq);
+        var next = new Image();
+        next.onload = function () { castImg.src = src; };
+        next.src = src;
       }
     }
 
     function showAds(startIndex) {
       paused = false;
-      layoutScreens();
-      if (crmStage) crmStage.className = '';
-      if (adsWrap) adsWrap.className = '';
-      if (crmFrame && lastCrmSrc) {
-        lastCrmSrc = '';
-        crmFrame.src = 'about:blank';
+      lastCastSeq = -1;
+      if (castImg) {
+        castImg.className = '';
+        castImg.removeAttribute('src');
       }
+      if (stage) stage.className = 'stage';
       if (typeof startIndex === 'number') {
         idx = ((startIndex % story.length) + story.length) % story.length;
       }
       showing = idx;
       show(story[idx]);
+    }
+
+    function setPollMs(ms) {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(poll, ms);
     }
 
     function applyState(data) {
@@ -379,21 +339,24 @@
         location.replace('/tv?v=' + encodeURIComponent(data.page_v));
         return;
       }
-      if (data.ads_width) adsW = data.ads_width;
-      if (data.ads_height) adsH = data.ads_height;
-      if (data.crm_width) crmW = data.crm_width;
-      if (data.crm_height) crmH = data.crm_height;
       var mode = data.mode === 'crm' ? 'crm' : 'ads';
       var rev = data.rev;
       var path = data.crm_path || '/';
-      var layout = crmW + 'x' + crmH + '/' + adsW + 'x' + adsH;
-      if (mode === lastMode && rev === lastRev && path === lastPath && layout === lastLayout) return;
+      var seq = data.cast_seq || 0;
+      if (mode === 'crm') {
+        if (mode !== lastMode) setPollMs(500);
+        lastMode = mode;
+        lastRev = rev;
+        lastPath = path;
+        showCast(seq);
+        return;
+      }
+      if (mode === lastMode && rev === lastRev && path === lastPath) return;
       lastMode = mode;
       lastRev = rev;
       lastPath = path;
-      lastLayout = layout;
-      if (mode === 'crm') showCrm(rev, path);
-      else showAds(typeof data.ads_index === 'number' ? data.ads_index : showing);
+      setPollMs(4000);
+      showAds(typeof data.ads_index === 'number' ? data.ads_index : showing);
     }
 
     async function poll() {
@@ -403,12 +366,10 @@
       } catch (e) {}
     }
 
-    layoutScreens();
-    window.addEventListener('resize', layoutScreens);
     tick();
     timer = setInterval(tick, 8000);
     poll();
-    setInterval(poll, 4000);
+    setPollMs(4000);
   })();
   </script>
 </body>
