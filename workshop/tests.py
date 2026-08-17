@@ -160,6 +160,8 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Сломалась деталь")
         self.assertContains(r, "Бот или учёт")
         self.assertContains(r, "object-fit: contain")
+        self.assertNotContains(r, "rgba(0, 0, 0, 0.58)")
+        self.assertContains(r, "background: none")
         self.assertContains(r, "<img")
         self.assertContains(r, "bg-three-windows-fhd.png")
         self.assertContains(r, "bg-atelier-purple-hall-fhd.png")
