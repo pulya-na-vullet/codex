@@ -271,6 +271,18 @@ class Order(models.Model):
         decimal_places=2,
         default=Decimal("0"),
     )
+    parts_sum = models.DecimalField(
+        "Комплектующие (без налога)",
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+    )
+    taxable_sum = models.DecimalField(
+        "Сумма для Мой налог",
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0"),
+    )
 
     # Оплата клиентом
     payment_method = models.CharField(
@@ -376,9 +388,13 @@ class Order(models.Model):
             self.save(update_fields=["status", "closed_at", "client_called_at"])
 
     def recalculate_totals(self, save: bool = True) -> Decimal:
-        subtotal = Decimal("0")
+        service_sub = Decimal("0")
+        parts_sub = Decimal("0")
         for line in self.lines.all():
-            subtotal += line.line_total
+            if line.is_taxable:
+                service_sub += line.line_total
+            else:
+                parts_sub += line.line_total
         if self.client_id:
             client = self.client
             if client is not None:
@@ -389,17 +405,40 @@ class Order(models.Model):
                 self.discount_percent = Decimal("0")
         else:
             self.discount_percent = Decimal("0")
-        self.subtotal_sum = subtotal.quantize(Decimal("0.01"))
+        self.parts_sum = parts_sub.quantize(Decimal("0.01"))
+        self.subtotal_sum = (service_sub + parts_sub).quantize(Decimal("0.01"))
         factor = (Decimal("100") - self.discount_percent) / Decimal("100")
-        self.total_sum = (subtotal * factor).quantize(Decimal("0.01"))
+        self.taxable_sum = (service_sub * factor).quantize(Decimal("0.01"))
+        self.total_sum = (self.taxable_sum + self.parts_sum).quantize(Decimal("0.01"))
         if save:
-            self.save(update_fields=["discount_percent", "subtotal_sum", "total_sum"])
+            self.save(
+                update_fields=[
+                    "discount_percent",
+                    "subtotal_sum",
+                    "parts_sum",
+                    "taxable_sum",
+                    "total_sum",
+                ]
+            )
         return self.total_sum
 
     @property
     def discount_amount(self) -> Decimal:
         """Сумма дополнительной скидки от суммы расчёта."""
         return (self.subtotal_sum - self.total_sum).quantize(Decimal("0.01"))
+
+    @property
+    def service_subtotal(self) -> Decimal:
+        return (self.subtotal_sum - self.parts_sum).quantize(Decimal("0.01"))
+
+    @property
+    def has_nontaxable_parts(self) -> bool:
+        return (self.parts_sum or Decimal("0")) > 0
+
+
+class OrderLineKind(models.TextChoices):
+    SERVICE = "service", "Услуга"
+    PARTS = "parts", "Комплектующие"
 
 
 class OrderLine(models.Model):
@@ -417,6 +456,13 @@ class OrderLine(models.Model):
         related_name="order_lines",
         on_delete=models.SET_NULL,
     )
+    kind = models.CharField(
+        "Тип строки",
+        max_length=16,
+        choices=OrderLineKind.choices,
+        default=OrderLineKind.SERVICE,
+        db_index=True,
+    )
     service_name = models.CharField("Название (снимок)", max_length=255)
     unit_price = models.DecimalField("Цена", max_digits=12, decimal_places=2)
     quantity = models.PositiveIntegerField("Количество", default=1)
@@ -428,6 +474,10 @@ class OrderLine(models.Model):
 
     def __str__(self) -> str:
         return f"{self.service_name} x{self.quantity}"
+
+    @property
+    def is_taxable(self) -> bool:
+        return self.kind != OrderLineKind.PARTS
 
     @property
     def line_total(self) -> Decimal:

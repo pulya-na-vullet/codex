@@ -52,6 +52,8 @@ class OrderAdmin(admin.ModelAdmin):
         "client",
         "created_at",
         "total_sum",
+        "taxable_sum",
+        "parts_sum",
         "payment_method",
         "mytax_issued",
         "status",

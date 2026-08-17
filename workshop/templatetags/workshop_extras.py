@@ -14,6 +14,8 @@ _NAV_SECTIONS: dict[str, frozenset[str]] = {
             "order_detail",
             "order_update_meta",
             "order_add_service",
+            "order_add_parts",
+            "order_line_update",
             "order_line_delete",
             "order_delete",
             "order_print",

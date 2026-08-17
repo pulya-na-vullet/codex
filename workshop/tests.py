@@ -56,7 +56,57 @@ class OrderLogicTests(TestCase):
         self.assertEqual(self.client_obj.discount_percent, Decimal("10.00"))
         self.assertEqual(last.discount_percent, Decimal("10.00"))
         self.assertEqual(last.total_sum, Decimal("900.00"))
+        self.assertEqual(last.taxable_sum, Decimal("900.00"))
+        self.assertEqual(last.parts_sum, Decimal("0.00"))
         self.assertEqual(last.discount_amount, Decimal("100.00"))
+
+    def test_parts_increase_client_total_not_mytax(self):
+        from workshop.models import OrderLineKind
+
+        order = Order.objects.create(order_number="ORD-PC0001", client=self.client_obj)
+        OrderLine.objects.create(
+            order=order,
+            service=self.service,
+            kind=OrderLineKind.SERVICE,
+            service_name="Установка ОС",
+            unit_price=Decimal("2500"),
+            quantity=1,
+        )
+        OrderLine.objects.create(
+            order=order,
+            kind=OrderLineKind.SERVICE,
+            service_name="Сборка ПК",
+            unit_price=Decimal("1000"),
+            quantity=1,
+        )
+        OrderLine.objects.create(
+            order=order,
+            kind=OrderLineKind.PARTS,
+            service_name="CPU",
+            unit_price=Decimal("3500"),
+            quantity=1,
+        )
+        OrderLine.objects.create(
+            order=order,
+            kind=OrderLineKind.PARTS,
+            service_name="ОП",
+            unit_price=Decimal("9000"),
+            quantity=1,
+        )
+        OrderLine.objects.create(
+            order=order,
+            kind=OrderLineKind.PARTS,
+            service_name="видеокарта",
+            unit_price=Decimal("12500"),
+            quantity=1,
+        )
+        order.recalculate_totals()
+        self.assertEqual(order.taxable_sum, Decimal("3500.00"))
+        self.assertEqual(order.parts_sum, Decimal("25000.00"))
+        self.assertEqual(order.total_sum, Decimal("28500.00"))
+        self.assertTrue(order.has_nontaxable_parts)
+        pdf = build_order_pdf(order, list(order.lines.all()))
+        self.assertTrue(pdf.startswith(b"%PDF"))
 
     def test_manual_discount_not_overwritten(self):
         self.client_obj.set_discount_percent(5, manual=True)
@@ -675,6 +725,45 @@ class AuthAndPagesTests(TestCase):
         r = self.http.get("/services?status=all")
         self.assertContains(r, "Неактивна")
         self.assertContains(r, "Включить")
+
+    def test_order_add_parts_splits_mytax_from_client_total(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        cat = ensure_category_path(("Сборка",))
+        service = Service.objects.create(name="Сборка ПК", price=Decimal("1000"), category=cat)
+        order = Order.objects.create(order_number="ORD-HW0001")
+        OrderLine.objects.create(
+            order=order,
+            service=service,
+            service_name=service.name,
+            unit_price=service.price,
+            quantity=1,
+        )
+        order.recalculate_totals()
+        r = self.http.get(f"/orders/{order.id}")
+        self.assertContains(r, "Добавить комплектующие")
+        r = self.http.post(
+            f"/orders/{order.id}/add-parts",
+            {"parts_name": "CPU", "parts_price": "3500", "parts_quantity": "1"},
+        )
+        self.assertEqual(r.status_code, 302)
+        order.refresh_from_db()
+        self.assertEqual(order.taxable_sum, Decimal("1000.00"))
+        self.assertEqual(order.parts_sum, Decimal("3500.00"))
+        self.assertEqual(order.total_sum, Decimal("4500.00"))
+        line = order.lines.filter(kind="parts").get()
+        r = self.http.post(
+            f"/orders/{order.id}/line/{line.id}/update",
+            {"service_name": "CPU Ryzen", "unit_price": "3600", "quantity": "1"},
+        )
+        self.assertEqual(r.status_code, 302)
+        order.refresh_from_db()
+        self.assertEqual(order.parts_sum, Decimal("3600.00"))
+        self.assertEqual(order.total_sum, Decimal("4600.00"))
+        r = self.http.get(f"/orders/{order.id}/print")
+        self.assertContains(r, "Налоги уплачиваются с услуг")
+        self.assertContains(r, "CPU Ryzen")
+        r = self.http.get("/orders")
+        self.assertContains(r, "частично, услуги")
 
     def test_client_comment_edit_shows_in_list(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
