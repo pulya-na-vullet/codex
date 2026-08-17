@@ -84,7 +84,16 @@
                         {% endif %}
                     </div>
                 </div>
-                <div class="table-responsive">
+                <form method="post" action="{% url 'order_update_comment' order.id %}" class="mt-3">
+                    {% csrf_token %}
+                    <label class="form-label">Комментарий по заказу</label>
+                    <textarea class="form-control" name="comment" rows="3" placeholder="Например: ждать видеокарту до пятницы, клиент просил позвонить после 18…">{{ order.comment }}</textarea>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
+                        <div class="small-muted">Внутренняя заметка — в печать заказ-наряда не попадает.</div>
+                        <button class="btn btn-outline-light btn-sm" type="submit">Сохранить комментарий</button>
+                    </div>
+                </form>
+                <div class="table-responsive mt-3">
                     <table class="table table-sm align-middle">
                         <thead>
                         <tr>

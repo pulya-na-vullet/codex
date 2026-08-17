@@ -95,6 +95,7 @@
                 <th>Телефон</th>
                 <th>Дата</th>
                 <th class="text-end">Сумма</th>
+                <th>Комментарий</th>
                 <th>Оплата</th>
                 <th>Статус</th>
                 <th></th>
@@ -109,6 +110,7 @@
                     <td>{% if o.client %}<a href="tel:{{ o.client.phone }}">{{ o.client.phone }}</a>{% endif %}</td>
                     <td>{{ o.created_at|date:"d.m.Y H:i" }}</td>
                     <td class="text-end">{{ o.total_sum|money }}</td>
+                    <td class="comment-cell">{% if o.comment %}{{ o.comment }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
                     <td>
                         {% if o.is_paid %}
                             <span class="badge text-bg-success">{{ o.get_payment_method_display }}</span>
@@ -131,7 +133,7 @@
                     <td><a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' o.id %}">Открыть</a></td>
                 </tr>
             {% empty %}
-                <tr><td colspan="9" class="text-center text-secondary">Нет заказ-нарядов в работе</td></tr>
+                <tr><td colspan="10" class="text-center text-secondary">Нет заказ-нарядов в работе</td></tr>
             {% endfor %}
             </tbody>
         </table>

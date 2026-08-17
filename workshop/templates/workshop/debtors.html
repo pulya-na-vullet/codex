@@ -32,6 +32,7 @@
                 <th>Max</th>
                 <th>Закрыт</th>
                 <th class="text-end">Сумма</th>
+                <th>Комментарий</th>
                 <th>Мой налог</th>
                 <th></th>
             </tr>
@@ -51,6 +52,7 @@
                     </td>
                     <td>{% if o.effective_closed_at %}{{ o.effective_closed_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</td>
                     <td class="text-end">{{ o.total_sum|money }}</td>
+                    <td class="comment-cell">{% if o.comment %}{{ o.comment }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
                     <td>{% if o.mytax_issued %}выдан{% else %}нет{% endif %}</td>
                     <td class="text-end">
                         <div class="d-inline-flex gap-1">
@@ -66,7 +68,7 @@
                     </td>
                 </tr>
             {% empty %}
-                <tr><td colspan="8" class="text-center text-secondary">Должников нет</td></tr>
+                <tr><td colspan="9" class="text-center text-secondary">Должников нет</td></tr>
             {% endfor %}
             </tbody>
         </table>

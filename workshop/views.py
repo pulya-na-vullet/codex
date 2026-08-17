@@ -823,10 +823,19 @@ def service_toggle_active(request: HttpRequest, service_id: int):
 
 
 def orders_list(request: HttpRequest):
+    query = (request.GET.get("q") or "").strip()
+    qs = Order.objects.select_related("client")
+    if query:
+        qs = qs.filter(
+            Q(order_number__icontains=query)
+            | Q(comment__icontains=query)
+            | Q(client__name__icontains=query)
+            | Q(client__phone__icontains=query)
+        )
     return render(
         request,
         "workshop/orders.html",
-        {"orders": Order.objects.select_related("client")},
+        {"orders": qs, "query": query},
     )
 
 
@@ -853,6 +862,7 @@ def orders_export_excel(request: HttpRequest):
             "Комплектующие",
             "Оплата",
             "Мой налог",
+            "Комментарий",
             "Закрыт",
             "Звонок клиенту",
         ]
@@ -870,6 +880,7 @@ def orders_export_excel(request: HttpRequest):
                 float(order.parts_sum or 0),
                 order.get_payment_method_display(),
                 "да" if order.mytax_issued else "нет",
+                order.comment or "",
                 timezone.localtime(order.closed_at).strftime("%d.%m.%Y %H:%M") if order.closed_at else "",
                 timezone.localtime(order.client_called_at).strftime("%d.%m.%Y %H:%M") if order.client_called_at else "",
             ]
@@ -896,10 +907,12 @@ def order_create(request: HttpRequest):
         if client_id_raw:
             client = get_object_or_404(Client, pk=int(client_id_raw))
         discount = client.discount_percent if client else Decimal("0")
+        comment = (request.POST.get("comment", "") or "").replace("\r\n", "\n").replace("\r", "\n").strip()
         order = Order.objects.create(
             order_number=next_numbered("ORD", Order, "order_number"),
             client=client,
             discount_percent=discount,
+            comment=comment,
         )
         if client:
             client.apply_auto_regular_discount(save=True)
@@ -996,6 +1009,16 @@ def order_update_meta(request: HttpRequest, order_id: int):
     )
     log_action(request, "order_update_meta", entity_type="order", entity_id=order.id, details=order.order_number)
     messages.success(request, "Данные заказ-наряда сохранены")
+    return redirect("order_detail", order_id=order.id)
+
+
+@require_POST
+def order_update_comment(request: HttpRequest, order_id: int):
+    order = get_object_or_404(Order, pk=order_id)
+    order.comment = (request.POST.get("comment", "") or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    order.save(update_fields=["comment"])
+    log_action(request, "order_update_comment", entity_type="order", entity_id=order.id, details=order.order_number)
+    messages.success(request, "Комментарий сохранён")
     return redirect("order_detail", order_id=order.id)
 
 

@@ -23,6 +23,7 @@ _NAV_SECTIONS: dict[str, frozenset[str]] = {
             "order_print_direct",
             "order_set_payment",
             "order_set_mytax",
+            "order_update_comment",
             "order_set_status",
             "order_mark_called",
             "orders_export_excel",
