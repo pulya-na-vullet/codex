@@ -168,8 +168,53 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "bg-software-gold-hall-fhd.png")
         self.assertNotContains(r, "worldFx")
         self.assertNotContains(r, "id=\"portal\"")
+        self.assertContains(r, "tvCrmFrame")
+        self.assertContains(r, "/tv/state")
         r_kiosk = anon.get("/tv?os=1&kiosk=ITM-TV-ADS-KIOSK")
         self.assertContains(r_kiosk, "worldFx")
+
+    def test_tv_display_switch_crm_and_resume_ads(self):
+        from workshop.models import TvDisplayMode, TvDisplaySettings
+        from workshop.tv_display import sanitize_tv_crm_path
+
+        self.assertEqual(sanitize_tv_crm_path("/orders/3"), "/orders/3")
+        self.assertEqual(sanitize_tv_crm_path("/admin-panel"), "/")
+        self.assertEqual(sanitize_tv_crm_path("https://evil.test/orders/1"), "/")
+
+        anon = HttpClient()
+        r = anon.get("/tv/state")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["mode"], "ads")
+
+        r = anon.post("/tv/progress", data='{"index": 4}', content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["ads_index"], 4)
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/work-queue"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["mode"], TvDisplayMode.CRM)
+        self.assertEqual(data["crm_path"], "/work-queue")
+        self.assertEqual(data["ads_index"], 4)
+
+        r = anon.get("/tv/frame")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "tv-cast")
+        self.assertContains(r, "В работе")
+        self.assertNotContains(r, 'id="tvCastCrmBtn"')
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"ads"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["mode"], TvDisplayMode.ADS)
+        self.assertEqual(TvDisplaySettings.get_solo().ads_index, 4)
 
     def test_tv_close_api_local(self):
         anon = HttpClient()

@@ -307,6 +307,21 @@
                 </div>
                 {% endif %}
             </div>
+            <div class="mb-3">
+                <div class="form-label">Экран телевизора в зале</div>
+                <p class="small-muted mb-2">
+                    Телевизор всегда открыт на ссылке выше. С Mac в зале нажмите
+                    <strong>На ТВ</strong> в шапке CRM — клиент увидит эту страницу.
+                    <strong>Реклама</strong> вернёт ролики с того же слайда.
+                </p>
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-light" id="tvAdminAdsBtn">Реклама</button>
+                    <button type="button" class="btn btn-sm btn-success" id="tvAdminCrmBtn">Показать главную на ТВ</button>
+                </div>
+                <div class="small-muted" id="tvAdminStatus">
+                    Сейчас: {% if tv_display.mode == 'crm' %}CRM {{ tv_display.crm_path }}{% else %}реклама{% endif %}
+                </div>
+            </div>
             <div id="tvUrlPane">
                 <p class="small mb-2">
                     На телевизоре откройте Яндекс-браузер и вставьте ссылку — откроется
@@ -565,6 +580,35 @@
   var savedMode = 'url';
   try { savedMode = localStorage.getItem(MODE_KEY) || 'url'; } catch (e) {}
   applyMode(savedMode);
+})();
+(function () {
+  var adsBtn = document.getElementById('tvAdminAdsBtn');
+  var crmBtn = document.getElementById('tvAdminCrmBtn');
+  var statusEl = document.getElementById('tvAdminStatus');
+  if (!adsBtn || !crmBtn) return;
+  var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
+  async function send(mode, path) {
+    var body = { mode: mode };
+    if (path) body.path = path;
+    var r = await fetch('{% url "tv_display_api" %}', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrf,
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+    if (statusEl) {
+      statusEl.textContent = data.mode === 'crm'
+        ? ('Сейчас: CRM ' + (data.crm_path || '/'))
+        : 'Сейчас: реклама';
+    }
+  }
+  adsBtn.addEventListener('click', function () { send('ads'); });
+  crmBtn.addEventListener('click', function () { send('crm', '/'); });
 })();
 </script>
 {% endblock %}

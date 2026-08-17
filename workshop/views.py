@@ -1401,6 +1401,7 @@ def admin_panel(request: HttpRequest):
         return redirect("admin_panel")
 
     from workshop.network import listen_port_for_request, primary_tv_ads_url, tv_ads_urls_for_request
+    from workshop.tv_display import state_payload
 
     tv_port = listen_port_for_request(request)
     return render(
@@ -1419,6 +1420,7 @@ def admin_panel(request: HttpRequest):
             "tv_listen_port": tv_port,
             "tv_ads_urls": tv_ads_urls_for_request(request),
             "tv_ads_primary_url": primary_tv_ads_url(tv_port),
+            "tv_display": state_payload(),
         },
     )
 
@@ -2741,6 +2743,69 @@ def tv_ads(request: HttpRequest):
     response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response["Pragma"] = "no-cache"
     return response
+
+
+@require_GET
+def tv_state_api(request: HttpRequest):
+    from workshop.tv_display import state_payload
+
+    return HttpResponse(json.dumps(state_payload()), content_type="application/json")
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def tv_progress_api(request: HttpRequest):
+    """TV reports the currently visible ads slide so resume can pick it up."""
+    from workshop.tv_display import clamp_ads_index, set_ads_index, state_payload
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    index = clamp_ads_index(payload.get("index", request.POST.get("index")))
+    set_ads_index(index)
+    return HttpResponse(json.dumps(state_payload()), content_type="application/json")
+
+
+@require_GET
+def tv_frame(request: HttpRequest):
+    """Render the selected CRM page inside the TV ads screen (no login cookie)."""
+    from django.urls import Resolver404, resolve
+
+    from workshop.tv_display import attach_tv_cast, sanitize_tv_crm_path, get_settings
+
+    cfg = get_settings()
+    path = sanitize_tv_crm_path(cfg.crm_path)
+    try:
+        match = resolve(path)
+    except Resolver404:
+        path = "/"
+        match = resolve(path)
+    attach_tv_cast(request)
+    request.path = path
+    request.path_info = path
+    return match.func(request, *match.args, **match.kwargs)
+
+
+@require_http_methods(["POST"])
+def tv_display_api(request: HttpRequest):
+    """Manager on the Mac: send current CRM page to the TV or return to ads."""
+    from workshop.tv_display import set_display, state_payload
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    mode = (payload.get("mode") or request.POST.get("mode") or "ads").strip().lower()
+    path = payload.get("path", request.POST.get("path"))
+    cfg = set_display(mode=mode, path=path)
+    log_action(
+        request,
+        "tv_display_set",
+        entity_type="display",
+        details=f"mode={cfg.mode} path={cfg.crm_path} slide={cfg.ads_index}",
+    )
+    return HttpResponse(json.dumps(state_payload()), content_type="application/json")
 
 
 @csrf_exempt

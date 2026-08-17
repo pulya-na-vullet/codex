@@ -34,6 +34,17 @@
       z-index: 0;
     }
     .bg.is-on { opacity: 1; z-index: 1; }
+    #tvCrmFrame {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      z-index: 20;
+      background: #0f172a;
+      display: none;
+    }
+    #tvCrmFrame.is-on { display: block; }
     .caption {
       position: absolute;
       left: 0; right: 0; bottom: 0;
@@ -206,6 +217,7 @@
       </section>
     </div>
   </div>
+  <iframe id="tvCrmFrame" title="CRM на ТВ" src="about:blank"></iframe>
   <script>
   (function () {
     var stage = document.getElementById('tv-root');
@@ -228,6 +240,12 @@
       { scene: 'hall', slide: 5 }
     ];
     var idx = 0;
+    var showing = 0;
+    var paused = false;
+    var timer = null;
+    var lastRev = -1;
+    var lastMode = '';
+    var crmFrame = document.getElementById('tvCrmFrame');
 
     function slidesOf(scene) {
       var out = [];
@@ -252,12 +270,73 @@
     }
 
     function tick() {
+      if (paused) return;
+      showing = idx;
       show(story[idx]);
       idx = (idx + 1) % story.length;
+      reportProgress(showing);
+    }
+
+    function reportProgress(index) {
+      try {
+        var body = JSON.stringify({ index: index });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('/tv/progress', new Blob([body], { type: 'application/json' }));
+        } else {
+          fetch('/tv/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: body,
+            keepalive: true
+          });
+        }
+      } catch (e) {}
+    }
+
+    function showCrm(rev) {
+      paused = true;
+      reportProgress(showing);
+      if (crmFrame) {
+        crmFrame.className = 'is-on';
+        crmFrame.src = '/tv/frame?v=' + encodeURIComponent(rev || '1');
+      }
+    }
+
+    function showAds(startIndex) {
+      paused = false;
+      if (crmFrame) {
+        crmFrame.className = '';
+        crmFrame.src = 'about:blank';
+      }
+      if (typeof startIndex === 'number') {
+        idx = ((startIndex % story.length) + story.length) % story.length;
+      }
+      showing = idx;
+      show(story[idx]);
+    }
+
+    function applyState(data) {
+      if (!data || !data.ok) return;
+      var mode = data.mode === 'crm' ? 'crm' : 'ads';
+      var rev = data.rev;
+      if (mode === lastMode && rev === lastRev) return;
+      lastMode = mode;
+      lastRev = rev;
+      if (mode === 'crm') showCrm(rev);
+      else showAds(typeof data.ads_index === 'number' ? data.ads_index : showing);
+    }
+
+    async function poll() {
+      try {
+        var r = await fetch('/tv/state', { cache: 'no-store' });
+        applyState(await r.json());
+      } catch (e) {}
     }
 
     tick();
-    setInterval(tick, 8000);
+    timer = setInterval(tick, 8000);
+    poll();
+    setInterval(poll, 1500);
   })();
   </script>
 </body>

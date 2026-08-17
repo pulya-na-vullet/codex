@@ -334,7 +334,16 @@
             background: #050a07;
             overflow-x: hidden;
         }
-        body.page-login .navbar,
+        body.tv-cast .navbar { display: none !important; }
+        body.tv-cast main.container-fluid { padding: 1.2rem 1.5rem 2rem; font-size: 1.12rem; }
+        body.tv-cast form .btn,
+        body.tv-cast form button { display: none !important; }
+        .tv-cast-btn.is-live {
+            background: #059669 !important;
+            border-color: #34d399 !important;
+            color: #fff !important;
+        }
+
         body.page-login main { display: none !important; }
 
         .login-stage {
@@ -497,10 +506,11 @@
 
     </style>
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}{% if tv_cast %} tv-cast{% endif %}">
 {% load workshop_extras %}
 {% load static %}
 {% block page %}
+{% if not tv_cast %}
 <nav class="navbar navbar-expand-lg border-bottom mb-4">
     <div class="container-fluid">
         <a class="brand-lockup" href="{% url 'dashboard' %}" title="ИТ-М">
@@ -528,6 +538,9 @@
             <a class="btn btn-sm nav-page-btn {% nav_active 'max_log' %}" href="{% url 'max_message_log' %}">Max лог</a>
             {% endif %}
             <a class="btn btn-sm nav-page-btn {% nav_active 'create_order' %}" href="{% url 'create_order' %}">Новый заказ</a>
+            <button type="button" class="btn btn-sm btn-success" id="tvCastCrmBtn" title="Показать эту страницу на телевизоре в зале">На ТВ</button>
+            <button type="button" class="btn btn-sm btn-outline-light" id="tvCastAdsBtn" title="Вернуть рекламу на телевизор">Реклама</button>
+            <span class="small text-secondary align-self-center" id="tvCastStatus"></span>
             {% if workshop_user %}<span class="small text-secondary align-self-center">{{ workshop_user }}</span>{% endif %}
             <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}
                 <button class="btn btn-outline-warning btn-sm" type="submit">Выйти</button>
@@ -536,6 +549,7 @@
         {% endif %}
     </div>
 </nav>
+{% endif %}
 <main class="container-fluid pb-4">
     {% if messages %}
         <div class="mb-3">
@@ -597,6 +611,58 @@
   if (!el || !window.bootstrap) return;
   var modal = bootstrap.Modal.getOrCreateInstance(el);
   modal.show();
+})();
+</script>
+{% endif %}
+{% if request.session.workshop_authenticated and not tv_cast %}
+<script>
+(function () {
+  var crmBtn = document.getElementById('tvCastCrmBtn');
+  var adsBtn = document.getElementById('tvCastAdsBtn');
+  var statusEl = document.getElementById('tvCastStatus');
+  if (!crmBtn || !adsBtn) return;
+  var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
+
+  function setStatus(data) {
+    if (!statusEl) return;
+    if (data && data.mode === 'crm') {
+      statusEl.textContent = 'ТВ: CRM ' + (data.crm_path || '/');
+      crmBtn.classList.add('tv-cast-btn', 'is-live');
+      adsBtn.classList.remove('is-live');
+    } else {
+      statusEl.textContent = 'ТВ: реклама';
+      crmBtn.classList.remove('is-live');
+    }
+  }
+
+  async function send(mode) {
+    var body = { mode: mode };
+    if (mode === 'crm') body.path = location.pathname || '/';
+    var r = await fetch('{% url "tv_display_api" %}', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrf,
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+    setStatus(data);
+  }
+
+  async function refresh() {
+    try {
+      var r = await fetch('{% url "tv_state_api" %}', { credentials: 'same-origin', cache: 'no-store' });
+      setStatus(await r.json());
+    } catch (e) {}
+  }
+
+  crmBtn.addEventListener('click', function () { send('crm'); });
+  adsBtn.addEventListener('click', function () { send('ads'); });
+  refresh();
+  setInterval(refresh, 4000);
 })();
 </script>
 {% endif %}
