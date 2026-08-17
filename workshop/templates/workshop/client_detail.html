@@ -57,7 +57,7 @@
         <a class="btn btn-success btn-sm" href="{% url 'create_order' %}?client_id={{ client.id }}">Новый заказ</a>
     </div>
     <div class="table-responsive">
-        <table class="table table-sm"><thead><tr><th>Номер</th><th>Дата</th><th class="text-end">До скидки</th><th class="text-center">Скидка</th><th class="text-end">Итого</th><th></th></tr></thead>
+        <table class="table table-sm"><thead><tr><th>Номер</th><th>Дата</th><th class="text-end">До скидки</th><th class="text-center">Скидка</th><th class="text-end">Итого</th><th>Комментарий</th><th></th></tr></thead>
         <tbody>
         {% for o in orders %}
             <tr>
@@ -66,9 +66,10 @@
                 <td class="text-end">{{ o.subtotal_sum|money }}</td>
                 <td class="text-center">{{ o.discount_percent|floatformat:0 }}%</td>
                 <td class="text-end">{{ o.total_sum|money }}</td>
+                <td class="comment-cell">{% if o.comment %}{{ o.comment }}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
                 <td><a class="btn btn-outline-light btn-sm" href="{% url 'order_detail' o.id %}">Открыть</a></td>
             </tr>
-        {% empty %}<tr><td colspan="6" class="text-center text-secondary">Заказов нет</td></tr>{% endfor %}
+        {% empty %}<tr><td colspan="7" class="text-center text-secondary">Заказов нет</td></tr>{% endfor %}
         </tbody></table>
     </div>
 </div></div>

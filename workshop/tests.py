@@ -765,6 +765,33 @@ class AuthAndPagesTests(TestCase):
         r = self.http.get("/orders")
         self.assertContains(r, "частично, услуги")
 
+    def test_order_comment_saves_and_shows_in_list(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        r = self.http.post(
+            "/orders/new",
+            {"client_id": "", "comment": "ждать видеокарту до пятницы"},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        order = Order.objects.latest("id")
+        self.assertEqual(order.comment, "ждать видеокарту до пятницы")
+        self.assertContains(r, "Комментарий по заказу")
+        self.assertContains(r, "ждать видеокарту до пятницы")
+        r = self.http.post(
+            f"/orders/{order.id}/comment",
+            {"comment": "клиент просил позвонить после 18"},
+            follow=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.comment, "клиент просил позвонить после 18")
+        r = self.http.get("/orders")
+        self.assertContains(r, "клиент просил позвонить после 18")
+        r = self.http.get("/orders", {"q": "позвонить после 18"})
+        self.assertContains(r, order.order_number)
+        r = self.http.get(f"/orders/{order.id}/print")
+        self.assertNotContains(r, "клиент просил позвонить после 18")
+
     def test_client_comment_edit_shows_in_list(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         client = Client.objects.create(name="Коммент", phone="+79990009988", comment="")

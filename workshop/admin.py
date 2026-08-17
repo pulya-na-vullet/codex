@@ -58,7 +58,7 @@ class OrderAdmin(admin.ModelAdmin):
         "mytax_issued",
         "status",
     )
-    search_fields = ("order_number", "client__name", "client__phone")
+    search_fields = ("order_number", "comment", "client__name", "client__phone")
     list_filter = ("payment_method", "mytax_issued", "status")
     inlines = [OrderLineInline]
 

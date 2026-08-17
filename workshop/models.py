@@ -253,6 +253,12 @@ class Order(models.Model):
         default="",
     )
     technical_notes = models.TextField("Техническая информация", blank=True, default="")
+    comment = models.TextField(
+        "Комментарий",
+        blank=True,
+        default="",
+        help_text="Внутренняя заметка по заказ-наряду, в печать клиенту не попадает.",
+    )
     discount_percent = models.DecimalField(
         "Скидка %",
         max_digits=5,

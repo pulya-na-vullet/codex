@@ -21,6 +21,7 @@ urlpatterns = [
     path("orders/new", views.order_create, name="create_order"),
     path("orders/<int:order_id>", views.order_detail, name="order_detail"),
     path("orders/<int:order_id>/meta", views.order_update_meta, name="order_update_meta"),
+    path("orders/<int:order_id>/comment", views.order_update_comment, name="order_update_comment"),
     path("orders/<int:order_id>/add-service", views.order_add_service, name="order_add_service"),
     path("orders/<int:order_id>/add-parts", views.order_add_parts, name="order_add_parts"),
     path("orders/<int:order_id>/line/<int:line_id>/update", views.order_line_update, name="order_line_update"),
