@@ -159,10 +159,14 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "ITM-TV-ADS-KIOSK")
         self.assertContains(r, 'id="tv-root"')
+        self.assertContains(r, "<title>ИТ-М</title>")
+        self.assertContains(r, "requestFullscreen")
+        self.assertContains(r, "navigationUI")
+        self.assertContains(r, "/tv/manifest.webmanifest")
+        self.assertContains(r, "object-fit: cover")
         self.assertContains(r, "Чиним технику")
         self.assertContains(r, "Сломалась деталь")
         self.assertContains(r, "Бот или учёт")
-        self.assertContains(r, "object-fit: contain")
         self.assertContains(r, "tvCastView")
         self.assertContains(r, "/tv/cast.jpg")
         self.assertNotContains(r, "width: 1920px")
@@ -181,6 +185,12 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "location.replace")
         r_kiosk = anon.get("/tv?os=1&kiosk=ITM-TV-ADS-KIOSK")
         self.assertContains(r_kiosk, "worldFx")
+
+        r_man = anon.get("/tv/manifest.webmanifest")
+        self.assertEqual(r_man.status_code, 200)
+        man = r_man.json()
+        self.assertEqual(man["display"], "fullscreen")
+        self.assertEqual(man["name"], "ИТ-М")
 
     def test_tv_display_switch_crm_and_resume_ads(self):
         from workshop.models import TvDisplayMode, TvDisplaySettings

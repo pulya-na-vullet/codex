@@ -3,18 +3,28 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
-  <title>ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK</title>
+  <title>ИТ-М</title>
+  <link rel="manifest" href="/tv/manifest.webmanifest">
+  <!-- ITM-TV-ADS-KIOSK -->
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
       width: 100%;
       height: 100%;
+      min-height: 100vh;
+      min-height: 100dvh;
       overflow: hidden;
       background: #000;
       color: #f7fbf8;
       font-family: Arial, Helvetica, sans-serif;
+      cursor: none;
+      overscroll-behavior: none;
     }
     .stage {
       position: absolute;
@@ -29,7 +39,7 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      object-fit: contain;
+      object-fit: cover;
       object-position: center center;
       opacity: 0;
       z-index: 0;
@@ -370,6 +380,25 @@
     timer = setInterval(tick, 8000);
     poll();
     setPollMs(4000);
+
+    function isFs() {
+      return !!(document.fullscreenElement || document.webkitFullscreenElement);
+    }
+    function goFs() {
+      if (isFs()) return;
+      var el = document.documentElement;
+      var req = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen;
+      if (!req) return;
+      try { req.call(el, { navigationUI: 'hide' }); }
+      catch (e) {
+        try { req.call(el); } catch (e2) {}
+      }
+    }
+    goFs();
+    ['click', 'keydown', 'keyup', 'pointerdown', 'touchend'].forEach(function (ev) {
+      document.addEventListener(ev, goFs, true);
+    });
+    setInterval(goFs, 4000);
   })();
   </script>
 </body>

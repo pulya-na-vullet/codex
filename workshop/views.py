@@ -2753,6 +2753,31 @@ def tv_ads(request: HttpRequest):
 
 
 @require_GET
+def tv_manifest(request: HttpRequest):
+    """Installable fullscreen web-app so Smart TV browsers hide chrome."""
+    from workshop.tv_display import allow_tv_embed
+
+    payload = {
+        "name": "ИТ-М",
+        "short_name": "ИТ-М",
+        "description": "ITM-TV-ADS-KIOSK",
+        "display": "fullscreen",
+        "display_override": ["fullscreen", "standalone", "minimal-ui"],
+        "orientation": "landscape",
+        "background_color": "#000000",
+        "theme_color": "#000000",
+        "start_url": "/tv",
+        "scope": "/",
+        "lang": "ru",
+    }
+    response = HttpResponse(
+        json.dumps(payload, ensure_ascii=False),
+        content_type="application/manifest+json",
+    )
+    return allow_tv_embed(response)
+
+
+@require_GET
 def tv_state_api(request: HttpRequest):
     from workshop.tv_display import allow_tv_embed, state_payload
 
