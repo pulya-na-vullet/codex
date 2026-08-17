@@ -121,6 +121,15 @@ class Client(models.Model):
             self.save(update_fields=["discount_percent"])
         return True
 
+    def apply_discount_to_open_orders(self) -> int:
+        """Пересчитать открытые заказ-наряды под скидку с карточки клиента."""
+        updated = 0
+        open_orders = self.orders.filter(status__in=[OrderStatus.ACTIVE, OrderStatus.READY_CALL])
+        for order in open_orders:
+            order.recalculate_totals()
+            updated += 1
+        return updated
+
 
 class ServiceCategory(models.Model):
     name = models.CharField("Название", max_length=120)
@@ -426,6 +435,16 @@ class Order(models.Model):
                     "total_sum",
                 ]
             )
+        return self.total_sum
+
+    @property
+    def is_open_for_pricing(self) -> bool:
+        return self.status in {OrderStatus.ACTIVE, OrderStatus.READY_CALL}
+
+    def apply_live_client_discount(self, *, save: bool = True) -> Decimal:
+        """Подтянуть скидку с карточки клиента в ещё не закрытый заказ-наряд."""
+        if self.is_open_for_pricing:
+            return self.recalculate_totals(save=save)
         return self.total_sum
 
     @property

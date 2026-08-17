@@ -21,7 +21,14 @@
                         {% if client and client.is_regular %}
                             <div class="mt-1">
                                 <span class="badge text-bg-success">Постоянный клиент</span>
-                                <span class="small-muted ms-1">скидка {{ order.discount_percent|floatformat:0 }}%</span>
+                                {% if order.discount_percent %}
+                                    <span class="small-muted ms-1">скидка {{ order.discount_percent|floatformat:0 }}% на услуги</span>
+                                {% endif %}
+                            </div>
+                        {% elif order.discount_percent %}
+                            <div class="mt-1">
+                                <span class="badge text-bg-info">Скидка {{ order.discount_percent|floatformat:0 }}% на услуги</span>
+                                <span class="small-muted ms-1">с карточки клиента, комплектующие без скидки</span>
                             </div>
                         {% endif %}
                         <div class="mt-2 d-flex flex-wrap gap-2">
@@ -148,7 +155,7 @@
                         </tr>
                         {% if order.discount_percent %}
                         <tr>
-                            <th colspan="4" class="text-end">Доп. скидка на услуги ({{ order.discount_percent|floatformat:0 }}%)</th>
+                            <th colspan="4" class="text-end">Скидка {{ order.discount_percent|floatformat:0 }}% только на услуги</th>
                             <th class="text-end">−{{ order.discount_amount|money }}</th>
                             <th></th>
                         </tr>

@@ -117,23 +117,27 @@ def build_order_pdf(order, lines) -> bytes:
     c.line(40, y, width - 40, y)
     y -= 20
     c.setFont(font, 12)
+    service_sub = float(getattr(order, "service_subtotal", order.subtotal_sum) or 0)
+    c.drawRightString(width - 40, y, f"Услуги: {service_sub:.2f}")
+    y -= 16
     if float(order.discount_percent or 0) > 0:
         discount_amount = float(order.subtotal_sum) - float(order.total_sum)
-        service_sub = float(getattr(order, "service_subtotal", order.subtotal_sum) or 0)
-        c.drawRightString(width - 40, y, f"Услуги: {service_sub:.2f}")
-        y -= 16
         c.drawRightString(
             width - 40,
             y,
-            f"Дополнительная скидка на услуги: {float(order.discount_percent):.0f}% (−{discount_amount:.2f})",
+            f"Скидка {float(order.discount_percent):.0f}% только на услуги (−{discount_amount:.2f})",
         )
         y -= 16
+        c.setFont(font, 10)
+        c.drawRightString(width - 40, y, "На комплектующие скидка не действует")
+        y -= 16
+        c.setFont(font, 12)
     taxable = float(getattr(order, "taxable_sum", order.total_sum) or 0)
     parts = float(getattr(order, "parts_sum", 0) or 0)
     c.drawRightString(width - 40, y, f"Услуги для «Мой налог»: {taxable:.2f}")
     y -= 16
     if parts > 0:
-        c.drawRightString(width - 40, y, f"Комплектующие (без налога): {parts:.2f}")
+        c.drawRightString(width - 40, y, f"Комплектующие (без скидки и без налога): {parts:.2f}")
         y -= 16
     c.drawRightString(width - 40, y, f"ИТОГО к оплате: {float(order.total_sum):.2f}")
     y -= 20

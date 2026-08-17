@@ -575,6 +575,7 @@ def client_detail(request: HttpRequest, client_id: int):
         client.allow_marketing_sms = allow_marketing
         client.set_discount_percent(discount_value, manual=True, save=False)
         client.save(update_fields=["comment", "max_user_id", "allow_marketing_sms", "discount_percent", "discount_manual"])
+        applied = client.apply_discount_to_open_orders()
         log_action(
             request,
             "client_update",
@@ -582,10 +583,17 @@ def client_detail(request: HttpRequest, client_id: int):
             entity_id=client.id,
             details=(
                 f"{client.name}: max={max_user_id or '-'} marketing={allow_marketing} "
-                f"discount={client.discount_percent}%"
+                f"discount={client.discount_percent}% orders={applied}"
             ),
         )
-        messages.success(request, "Данные клиента сохранены")
+        if applied:
+            messages.success(
+                request,
+                f"Данные клиента сохранены. Скидка {client.discount_percent:.0f}% применена "
+                f"к услугам в {applied} открытых заказ-нарядах (комплектующие без скидки).",
+            )
+        else:
+            messages.success(request, "Данные клиента сохранены")
         return redirect("client_detail", client_id=client.id)
 
     client.apply_auto_regular_discount(save=True)
@@ -953,6 +961,7 @@ def order_create(request: HttpRequest):
 
 def order_detail(request: HttpRequest, order_id: int):
     order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
+    order.apply_live_client_discount()
     client_ctx = None
     if order.client:
         c = order.client
@@ -1834,6 +1843,7 @@ def audit_log_export(request: HttpRequest):
 
 def order_print(request: HttpRequest, order_id: int):
     order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
+    order.apply_live_client_discount()
     log_action(
         request,
         "order_print_view",
@@ -1857,6 +1867,7 @@ def order_print(request: HttpRequest, order_id: int):
 
 def order_pdf(request: HttpRequest, order_id: int):
     order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
+    order.apply_live_client_discount()
     pdf_bytes = build_order_pdf(order, list(order.lines.all()))
     log_action(
         request,
@@ -1873,6 +1884,7 @@ def order_pdf(request: HttpRequest, order_id: int):
 @require_POST
 def order_print_direct(request: HttpRequest, order_id: int):
     order = get_object_or_404(Order.objects.select_related("client"), pk=order_id)
+    order.apply_live_client_discount()
     pdf_bytes = build_order_pdf(order, list(order.lines.all()))
     username = str(request.session.get("workshop_username") or "")
     jobs = enqueue_pdf_print(

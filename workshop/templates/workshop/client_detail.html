@@ -27,6 +27,7 @@
             <input class="form-control" type="number" name="discount_percent" min="0" max="15" step="1"
                    value="{{ client.discount_percent|floatformat:0 }}">
             <div class="small-muted mt-1">
+                Скидка действует только на услуги в открытых заказ-нарядах, комплектующие без скидки.
                 С 3-го заказ-наряда клиент становится постоянным и автоматически получает 10%
                 (можно изменить вручную).
             </div>
