@@ -170,6 +170,8 @@ class AuthAndPagesTests(TestCase):
         self.assertNotContains(r, "id=\"portal\"")
         self.assertContains(r, "tvCrmFrame")
         self.assertContains(r, "/tv/state")
+        self.assertContains(r, "page_v")
+        self.assertContains(r, "location.replace")
         r_kiosk = anon.get("/tv?os=1&kiosk=ITM-TV-ADS-KIOSK")
         self.assertContains(r_kiosk, "worldFx")
 
@@ -178,6 +180,7 @@ class AuthAndPagesTests(TestCase):
         from workshop.tv_display import sanitize_tv_crm_path
 
         self.assertEqual(sanitize_tv_crm_path("/orders/3"), "/orders/3")
+        self.assertEqual(sanitize_tv_crm_path("/orders/new"), "/orders/new")
         self.assertEqual(sanitize_tv_crm_path("/admin-panel"), "/")
         self.assertEqual(sanitize_tv_crm_path("https://evil.test/orders/1"), "/")
 
@@ -185,6 +188,7 @@ class AuthAndPagesTests(TestCase):
         r = anon.get("/tv/state")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["mode"], "ads")
+        self.assertTrue(r.json().get("page_v"))
 
         r = anon.post("/tv/progress", data='{"index": 4}', content_type="application/json")
         self.assertEqual(r.status_code, 200)
@@ -204,9 +208,18 @@ class AuthAndPagesTests(TestCase):
 
         r = anon.get("/tv/frame")
         self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["X-Frame-Options"], "SAMEORIGIN")
+        self.assertIn("frame-ancestors", r.get("Content-Security-Policy", ""))
         self.assertContains(r, "tv-cast")
         self.assertContains(r, "В работе")
         self.assertNotContains(r, 'id="tvCastCrmBtn"')
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/orders/new","follow":true}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["crm_path"], "/orders/new")
 
         r = self.http.post(
             "/admin-panel/tv-display",

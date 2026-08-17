@@ -112,9 +112,9 @@
 </head>
 <body>
   <div class="stage" id="tv-root" data-scene="hall">
-    <img class="bg is-on" data-scene="hall" src="{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}" alt="">
-    <img class="bg" data-scene="atelier" src="{% static 'workshop/promo/tv43/bg-atelier-purple-hall-fhd.png' %}" alt="">
-    <img class="bg" data-scene="software" src="{% static 'workshop/promo/tv43/bg-software-gold-hall-fhd.png' %}" alt="">
+    <img class="bg is-on" data-scene="hall" src="{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}?v={{ tv_page_version }}" alt="">
+    <img class="bg" data-scene="atelier" src="{% static 'workshop/promo/tv43/bg-atelier-purple-hall-fhd.png' %}?v={{ tv_page_version }}" alt="">
+    <img class="bg" data-scene="software" src="{% static 'workshop/promo/tv43/bg-software-gold-hall-fhd.png' %}?v={{ tv_page_version }}" alt="">
 
     <div class="caption">
       <section class="slide is-active" data-scene="hall">
@@ -245,6 +245,8 @@
     var timer = null;
     var lastRev = -1;
     var lastMode = '';
+    var lastPath = '';
+    var PAGE_V = '{{ tv_page_version|default:"1" }}';
     var crmFrame = document.getElementById('tvCrmFrame');
 
     function slidesOf(scene) {
@@ -293,12 +295,13 @@
       } catch (e) {}
     }
 
-    function showCrm(rev) {
+    function showCrm(rev, path) {
       paused = true;
       reportProgress(showing);
       if (crmFrame) {
         crmFrame.className = 'is-on';
-        crmFrame.src = '/tv/frame?v=' + encodeURIComponent(rev || '1');
+        crmFrame.src = '/tv/frame?v=' + encodeURIComponent(rev || '1')
+          + '&p=' + encodeURIComponent(path || '/');
       }
     }
 
@@ -317,12 +320,18 @@
 
     function applyState(data) {
       if (!data || !data.ok) return;
+      if (data.page_v && String(data.page_v) !== String(PAGE_V)) {
+        location.replace('/tv?v=' + encodeURIComponent(data.page_v));
+        return;
+      }
       var mode = data.mode === 'crm' ? 'crm' : 'ads';
       var rev = data.rev;
-      if (mode === lastMode && rev === lastRev) return;
+      var path = data.crm_path || '/';
+      if (mode === lastMode && rev === lastRev && path === lastPath) return;
       lastMode = mode;
       lastRev = rev;
-      if (mode === 'crm') showCrm(rev);
+      lastPath = path;
+      if (mode === 'crm') showCrm(rev, path);
       else showAds(typeof data.ads_index === 'number' ? data.ads_index : showing);
     }
 

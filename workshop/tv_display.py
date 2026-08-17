@@ -3,33 +3,29 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from urllib.parse import urlparse
+
+from django.http import QueryDict
 
 from workshop.authz import SESSION_ROLE, SESSION_STAFF_ID
 from workshop.models import StaffRole, StaffUser, TvDisplayMode, TvDisplaySettings
 
-_ALLOWED_PATHS = (
-    re.compile(r"^/$"),
-    re.compile(r"^/orders$"),
-    re.compile(r"^/orders/\d+$"),
-    re.compile(r"^/orders/\d+/print$"),
-    re.compile(r"^/work-queue$"),
-    re.compile(r"^/services$"),
-    re.compile(r"^/services/print$"),
-    re.compile(r"^/clients$"),
-    re.compile(r"^/clients/\d+$"),
-    re.compile(r"^/statistics$"),
-    re.compile(r"^/software$"),
-    re.compile(r"^/software/\d+$"),
-    re.compile(r"^/modeling$"),
-    re.compile(r"^/modeling/\d+$"),
-    re.compile(r"^/acceptance$"),
-    re.compile(r"^/acceptance/\d+$"),
-    re.compile(r"^/acceptance/\d+/print$"),
-    re.compile(r"^/debtors$"),
+_BLOCK = (
+    "delete",
+    "export",
+    "import",
+    "print-direct",
+    "admin-panel",
+    "login",
+    "logout",
+    "/tv",
+    "webhook",
+    "password",
 )
 
-_BLOCK = ("delete", "export", "import", "print-direct", "admin-panel", "login", "/tv", "webhook")
+_PATH_OK = re.compile(r"^/[-a-zA-Z0-9_./]*$")
+_QUERY_OK = re.compile(r"^[A-Za-z0-9_.=&%\-]*$")
 
 
 class TvCastSession(dict):
@@ -61,23 +57,38 @@ class TvCastSession(dict):
         return True
 
 
-def sanitize_tv_crm_path(raw: str | None) -> str:
+def _split_path(raw: str | None) -> tuple[str, str]:
     value = (raw or "").strip() or "/"
     parsed = urlparse(value)
     if parsed.scheme or parsed.netloc:
-        return "/"
+        return "/", ""
     path = parsed.path or "/"
     if not path.startswith("/"):
         path = "/" + path
     path = path.split("?")[0].split("#")[0]
     if len(path) > 1:
-        path = path.rstrip("/")
+        path = path.rstrip("/") or "/"
+    query = parsed.query or ""
+    return path, query
+
+
+def is_allowed_tv_path(raw: str | None) -> bool:
+    path, query = _split_path(raw)
     low = path.lower()
     if any(b in low for b in _BLOCK):
-        return "/"
-    for rule in _ALLOWED_PATHS:
-        if rule.match(path):
-            return path
+        return False
+    if not _PATH_OK.match(path):
+        return False
+    if query and not _QUERY_OK.match(query):
+        return False
+    return True
+
+
+def sanitize_tv_crm_path(raw: str | None) -> str:
+    path, query = _split_path(raw)
+    combined = path + (("?" + query) if query else "")
+    if is_allowed_tv_path(combined):
+        return combined
     return "/"
 
 
@@ -96,6 +107,21 @@ def clamp_ads_index(value: int | None) -> int:
     return idx % n
 
 
+def tv_page_version() -> str:
+    """Changes when lite ads templates/code change so the TV can auto-reload."""
+    root = Path(__file__).resolve().parent
+    latest = 0
+    for rel in (
+        "templates/workshop/tv_ads_lite.html",
+        "tv_display.py",
+        "views.py",
+    ):
+        path = root / rel
+        if path.is_file():
+            latest = max(latest, int(path.stat().st_mtime))
+    return str(latest or 1)
+
+
 def get_settings() -> TvDisplaySettings:
     return TvDisplaySettings.get_solo()
 
@@ -108,6 +134,7 @@ def state_payload() -> dict:
         "crm_path": sanitize_tv_crm_path(cfg.crm_path),
         "ads_index": clamp_ads_index(cfg.ads_index),
         "rev": int(cfg.rev or 1),
+        "page_v": tv_page_version(),
     }
 
 
@@ -118,19 +145,51 @@ def set_ads_index(index: int) -> TvDisplaySettings:
     return cfg
 
 
-def set_display(*, mode: str, path: str | None = None) -> TvDisplaySettings:
+def set_display(*, mode: str, path: str | None = None, follow: bool = False) -> TvDisplaySettings:
     cfg = get_settings()
+    old_mode = cfg.mode
+    old_path = cfg.crm_path or "/"
     if mode == TvDisplayMode.CRM:
         cfg.mode = TvDisplayMode.CRM
         if path is not None:
-            cfg.crm_path = sanitize_tv_crm_path(path)
+            if is_allowed_tv_path(path):
+                cfg.crm_path = sanitize_tv_crm_path(path)
+            elif not follow:
+                cfg.crm_path = "/"
         elif not cfg.crm_path:
             cfg.crm_path = "/"
     else:
         cfg.mode = TvDisplayMode.ADS
-    cfg.rev = int(cfg.rev or 1) + 1
-    cfg.save()
+    changed = cfg.mode != old_mode or (cfg.crm_path or "/") != old_path
+    if changed:
+        cfg.rev = int(cfg.rev or 1) + 1
+        cfg.save()
+    elif not follow:
+        cfg.save(update_fields=["updated_at"])
     return cfg
+
+
+def allow_tv_embed(response):
+    response["X-Frame-Options"] = "SAMEORIGIN"
+    response["Content-Security-Policy"] = "frame-ancestors 'self'"
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
+    return response
+
+
+def apply_tv_frame_path(request, raw_path: str) -> str:
+    """Point this request at the CRM path so the existing view can render it."""
+    combined = sanitize_tv_crm_path(raw_path)
+    parsed = urlparse(combined)
+    path = parsed.path or "/"
+    query = parsed.query or ""
+    request.path = path
+    request.path_info = path
+    request.META["PATH_INFO"] = path
+    request.META["QUERY_STRING"] = query
+    request.GET = QueryDict(query)
+    return path
 
 
 def attach_tv_cast(request) -> None:

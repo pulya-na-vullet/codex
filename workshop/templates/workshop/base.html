@@ -538,8 +538,8 @@
             <a class="btn btn-sm nav-page-btn {% nav_active 'max_log' %}" href="{% url 'max_message_log' %}">Max лог</a>
             {% endif %}
             <a class="btn btn-sm nav-page-btn {% nav_active 'create_order' %}" href="{% url 'create_order' %}">Новый заказ</a>
-            <button type="button" class="btn btn-sm btn-success" id="tvCastCrmBtn" title="Показать эту страницу на телевизоре в зале">На ТВ</button>
-            <button type="button" class="btn btn-sm btn-outline-light" id="tvCastAdsBtn" title="Вернуть рекламу на телевизор">Реклама</button>
+            <button type="button" class="btn btn-sm btn-success" id="tvCastCrmBtn" title="Показывать на телевизоре всё, что открываете в CRM">Показать на ТВ</button>
+            <button type="button" class="btn btn-sm btn-outline-light" id="tvCastAdsBtn" title="Прервать показ CRM и снова крутить рекламу">Стоп · реклама</button>
             <span class="small text-secondary align-self-center" id="tvCastStatus"></span>
             {% if workshop_user %}<span class="small text-secondary align-self-center">{{ workshop_user }}</span>{% endif %}
             <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}
@@ -623,10 +623,14 @@
   if (!crmBtn || !adsBtn) return;
   var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
 
+  function here() {
+    return (location.pathname || '/') + (location.search || '');
+  }
+
   function setStatus(data) {
     if (!statusEl) return;
     if (data && data.mode === 'crm') {
-      statusEl.textContent = 'ТВ: CRM ' + (data.crm_path || '/');
+      statusEl.textContent = 'ТВ ведёт за вами';
       crmBtn.classList.add('tv-cast-btn', 'is-live');
       adsBtn.classList.remove('is-live');
     } else {
@@ -635,9 +639,10 @@
     }
   }
 
-  async function send(mode) {
+  async function send(mode, follow) {
     var body = { mode: mode };
-    if (mode === 'crm') body.path = location.pathname || '/';
+    if (mode === 'crm') body.path = here();
+    if (follow) body.follow = true;
     var r = await fetch('{% url "tv_display_api" %}', {
       method: 'POST',
       credentials: 'same-origin',
@@ -650,19 +655,24 @@
     });
     var data = await r.json();
     setStatus(data);
+    return data;
   }
 
   async function refresh() {
     try {
       var r = await fetch('{% url "tv_state_api" %}', { credentials: 'same-origin', cache: 'no-store' });
-      setStatus(await r.json());
+      var data = await r.json();
+      setStatus(data);
+      if (data && data.mode === 'crm') {
+        await send('crm', true);
+      }
     } catch (e) {}
   }
 
-  crmBtn.addEventListener('click', function () { send('crm'); });
-  adsBtn.addEventListener('click', function () { send('ads'); });
+  crmBtn.addEventListener('click', function () { send('crm', false); });
+  adsBtn.addEventListener('click', function () { send('ads', false); });
   refresh();
-  setInterval(refresh, 4000);
+  setInterval(refresh, 2500);
 })();
 </script>
 {% endif %}

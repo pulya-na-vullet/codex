@@ -2739,17 +2739,24 @@ def tv_ads(request: HttpRequest):
     """Client-zone ads: lite page for /tv (Android/Smart TV), cinematic for HDMI kiosk."""
     # Title marker must stay unique so OS placement never confuses this with CRM.
     template = "workshop/tv_ads_lite.html" if tv_ads_use_lite(request) else "workshop/tv_ads.html"
-    response = render(request, template, {"title": "ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK"})
-    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    response["Pragma"] = "no-cache"
-    return response
+    from workshop.tv_display import allow_tv_embed, tv_page_version
+
+    response = render(
+        request,
+        template,
+        {
+            "title": "ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK",
+            "tv_page_version": tv_page_version(),
+        },
+    )
+    return allow_tv_embed(response)
 
 
 @require_GET
 def tv_state_api(request: HttpRequest):
-    from workshop.tv_display import state_payload
+    from workshop.tv_display import allow_tv_embed, state_payload
 
-    return HttpResponse(json.dumps(state_payload()), content_type="application/json")
+    return allow_tv_embed(HttpResponse(json.dumps(state_payload()), content_type="application/json"))
 
 
 @csrf_exempt
@@ -2772,24 +2779,28 @@ def tv_frame(request: HttpRequest):
     """Render the selected CRM page inside the TV ads screen (no login cookie)."""
     from django.urls import Resolver404, resolve
 
-    from workshop.tv_display import attach_tv_cast, sanitize_tv_crm_path, get_settings
+    from workshop.tv_display import (
+        allow_tv_embed,
+        apply_tv_frame_path,
+        attach_tv_cast,
+        get_settings,
+    )
 
     cfg = get_settings()
-    path = sanitize_tv_crm_path(cfg.crm_path)
+    path = apply_tv_frame_path(request, cfg.crm_path)
     try:
         match = resolve(path)
     except Resolver404:
-        path = "/"
+        path = apply_tv_frame_path(request, "/")
         match = resolve(path)
     attach_tv_cast(request)
-    request.path = path
-    request.path_info = path
-    return match.func(request, *match.args, **match.kwargs)
+    response = match.func(request, *match.args, **match.kwargs)
+    return allow_tv_embed(response)
 
 
 @require_http_methods(["POST"])
 def tv_display_api(request: HttpRequest):
-    """Manager on the Mac: send current CRM page to the TV or return to ads."""
+    """Manager on the Mac: follow CRM pages on the TV, or return to ads."""
     from workshop.tv_display import set_display, state_payload
 
     try:
@@ -2798,13 +2809,15 @@ def tv_display_api(request: HttpRequest):
         payload = {}
     mode = (payload.get("mode") or request.POST.get("mode") or "ads").strip().lower()
     path = payload.get("path", request.POST.get("path"))
-    cfg = set_display(mode=mode, path=path)
-    log_action(
-        request,
-        "tv_display_set",
-        entity_type="display",
-        details=f"mode={cfg.mode} path={cfg.crm_path} slide={cfg.ads_index}",
-    )
+    follow = bool(payload.get("follow"))
+    cfg = set_display(mode=mode, path=path, follow=follow)
+    if not follow:
+        log_action(
+            request,
+            "tv_display_set",
+            entity_type="display",
+            details=f"mode={cfg.mode} path={cfg.crm_path} slide={cfg.ads_index}",
+        )
     return HttpResponse(json.dumps(state_payload()), content_type="application/json")
 
 
