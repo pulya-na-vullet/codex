@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from threading import Lock
 
-MAX_JPEG_BYTES = 1_800_000
+MAX_JPEG_BYTES = 2_400_000
 
 _lock = Lock()
 _jpeg = b""

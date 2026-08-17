@@ -240,7 +240,7 @@ class AuthAndPagesTests(TestCase):
         self.assertIn("frame-ancestors", r.get("Content-Security-Policy", ""))
         self.assertContains(r, "tv-cast")
         self.assertContains(r, "В работе")
-        self.assertNotContains(r, 'id="tvCastCrmBtn"')
+        self.assertNotContains(r, 'id="tvCastToggle"')
 
         r = self.http.post(
             "/admin-panel/tv-display",
@@ -275,6 +275,10 @@ class AuthAndPagesTests(TestCase):
         r = self.http.get("/")
         self.assertContains(r, "html2canvas.min.js")
         self.assertContains(r, "tv-cast-frame")
+        self.assertContains(r, "показать клиенту на ТВ")
+        self.assertContains(r, "показать рекламу на ТВ")
+        self.assertContains(r, 'id="tvCastToggle"')
+        self.assertNotContains(r, "Показать на ТВ")
 
         jpeg = b"\xff\xd8\xff\xd9"
         r = self.http.post("/admin-panel/tv-cast-frame", data=jpeg, content_type="image/jpeg")
@@ -644,6 +648,10 @@ class AuthAndPagesTests(TestCase):
         order = Order.objects.create(order_number="ORD-HIDE001")
         r = self.http.get(f"/orders/{order.id}")
         self.assertContains(r, "Скрываемая услуга")
+        self.assertContains(r, "tree-category")
+        self.assertContains(r, "tree-branch-body")
+        self.assertNotContains(r, "<details>")
+        self.assertNotContains(r, "<summary")
         r = self.http.post(f"/services/{service.id}/toggle-active", follow=True)
         self.assertEqual(r.status_code, 200)
         service.refresh_from_db()

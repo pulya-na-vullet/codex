@@ -309,11 +309,35 @@
             const anyService = node.querySelector('.tree-service:not(.is-hidden)');
             node.classList.toggle('is-hidden', Boolean(q) && !anyService);
             if (q && anyService) {
-                const details = node.querySelector(':scope > details');
-                if (details) details.open = true;
+                let n = node;
+                while (n && n.classList.contains('tree-node')) {
+                    n.classList.add('is-open');
+                    const cat = n.querySelector(':scope > .tree-category');
+                    if (cat) cat.setAttribute('aria-expanded', 'true');
+                    n = n.parentElement ? n.parentElement.closest('.tree-node') : null;
+                }
             }
         });
     };
+    const toggleNode = (cat) => {
+        const node = cat.closest('.tree-node');
+        if (!node) return;
+        const open = !node.classList.contains('is-open');
+        node.classList.toggle('is-open', open);
+        cat.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    tree.addEventListener('click', (e) => {
+        const cat = e.target.closest('.tree-category');
+        if (!cat || !tree.contains(cat)) return;
+        toggleNode(cat);
+    });
+    tree.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const cat = e.target.closest('.tree-category');
+        if (!cat || !tree.contains(cat)) return;
+        e.preventDefault();
+        toggleNode(cat);
+    });
     search.addEventListener('input', filterTree);
 })();
 </script>
