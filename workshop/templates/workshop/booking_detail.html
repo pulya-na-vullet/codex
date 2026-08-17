@@ -1,0 +1,64 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+        <h4 class="mb-1">Запись {{ booking.booking_number }}</h4>
+        <div class="small-muted">{{ booking.created_at|date:"d.m.Y H:i" }}</div>
+    </div>
+    <a class="btn btn-outline-light btn-sm" href="{% url 'bookings' %}">К списку</a>
+</div>
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card mb-3"><div class="card-body">
+            <div><strong>Роль:</strong> {{ booking.role.name }}</div>
+            <div class="small-muted mb-2">
+                {% if booking.role.photos_required %}Фото обязательны при записи{% else %}Фото для этой роли не обязательны{% endif %}
+            </div>
+            <div><strong>Клиент:</strong>
+                {% if booking.client %}
+                    <a href="{% url 'client_detail' booking.client.id %}">{{ booking.client.name }}</a>
+                    {{ booking.client.phone }}
+                {% else %}
+                    Без клиента
+                {% endif %}
+            </div>
+            {% if booking.comment %}
+            <div class="mt-2" style="white-space:pre-wrap">{{ booking.comment }}</div>
+            {% endif %}
+        </div></div>
+        <div class="card"><div class="card-body">
+            <h6 class="mb-3">Фото</h6>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                {% for p in booking.photos.all %}
+                    <a href="{{ p.image.url }}" target="_blank">
+                        <img src="{{ p.image.url }}" alt="" style="max-width:160px;max-height:160px;object-fit:cover;border-radius:8px;">
+                    </a>
+                {% empty %}
+                    <div class="text-secondary">Фото пока нет</div>
+                {% endfor %}
+            </div>
+            <form method="post" enctype="multipart/form-data" class="vstack gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_photos">
+                <input class="form-control" type="file" name="photos" accept="image/*" multiple>
+                <button class="btn btn-outline-light btn-sm align-self-start" type="submit">Добавить фото</button>
+            </form>
+        </div></div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card"><div class="card-body">
+            <h6 class="mb-3">Статус</h6>
+            <form method="post" class="d-flex gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="set_status">
+                <select class="form-select" name="status">
+                    {% for value, label in statuses %}
+                        <option value="{{ value }}" {% if booking.status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-outline-light" type="submit">OK</button>
+            </form>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

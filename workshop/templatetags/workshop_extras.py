@@ -87,6 +87,7 @@ _NAV_SECTIONS: dict[str, frozenset[str]] = {
     "statistics": frozenset({"statistics"}),
     "audit": frozenset({"audit_log", "audit_log_export"}),
     "admin": frozenset({"admin_panel", "max_webhook", "api_docs"}),
+    "bookings": frozenset({"bookings", "booking_create", "booking_detail"}),
     "max_log": frozenset({"max_message_log"}),
     "create_order": frozenset({"create_order"}),
 }

@@ -1445,3 +1445,94 @@ class TvDisplaySettings(models.Model):
         if obj:
             return obj
         return cls.objects.create()
+
+
+class PerformerRole(models.Model):
+    """Тип исполнителя: у каждой роли свой чекбокс, нужны ли фото при записи."""
+
+    name = models.CharField("Название роли", max_length=120)
+    photos_required = models.BooleanField(
+        "Фото обязательны при записи",
+        default=True,
+        help_text="Если включено — без фотографий записаться нельзя. Для мастера по ноготочкам можно выключить, для электрика оставить.",
+    )
+    is_active = models.BooleanField("Активна", default=True, db_index=True)
+    sort_order = models.PositiveSmallIntegerField("Порядок", default=0)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["sort_order", "name", "id"]
+        verbose_name = "Роль исполнителя"
+        verbose_name_plural = "Роли исполнителей"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class PerformerBookingStatus(models.TextChoices):
+    NEW = "new", "Новая"
+    DONE = "done", "Выполнена"
+    CANCELLED = "cancelled", "Отменена"
+
+
+class PerformerBooking(models.Model):
+    booking_number = models.CharField("Номер", max_length=32, unique=True)
+    role = models.ForeignKey(
+        PerformerRole,
+        on_delete=models.PROTECT,
+        related_name="bookings",
+        verbose_name="Роль исполнителя",
+    )
+    client = models.ForeignKey(
+        Client,
+        on_delete=models.SET_NULL,
+        related_name="performer_bookings",
+        verbose_name="Клиент",
+        null=True,
+        blank=True,
+    )
+    comment = models.TextField("Комментарий", blank=True, default="")
+    status = models.CharField(
+        "Статус",
+        max_length=20,
+        choices=PerformerBookingStatus.choices,
+        default=PerformerBookingStatus.NEW,
+        db_index=True,
+    )
+    created_by = models.ForeignKey(
+        StaffUser,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_performer_bookings",
+        verbose_name="Создал",
+    )
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-id"]
+        verbose_name = "Запись к исполнителю"
+        verbose_name_plural = "Записи к исполнителям"
+
+    def __str__(self) -> str:
+        return self.booking_number
+
+    @property
+    def photos_required(self) -> bool:
+        return bool(self.role_id and self.role.photos_required)
+
+
+class PerformerBookingPhoto(models.Model):
+    booking = models.ForeignKey(
+        PerformerBooking,
+        on_delete=models.CASCADE,
+        related_name="photos",
+        verbose_name="Запись",
+    )
+    image = models.ImageField("Фото", upload_to="bookings/photos/%Y/%m/")
+    uploaded_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Фото к записи"
+        verbose_name_plural = "Фото к записям"

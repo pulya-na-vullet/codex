@@ -792,6 +792,60 @@ class AuthAndPagesTests(TestCase):
         r = self.http.get(f"/orders/{order.id}/print")
         self.assertNotContains(r, "клиент просил позвонить после 18")
 
+    def test_performer_role_photos_required_is_per_role(self):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        from workshop.models import PerformerBooking, PerformerRole
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        r = self.http.get("/admin-panel")
+        self.assertContains(r, "Роли исполнителей")
+        self.assertContains(r, "Фото обязательны при записи")
+        r = self.http.post(
+            "/admin-panel",
+            {"section": "performer_role_create", "name": "Электрик", "photos_required": "1", "sort_order": "1"},
+        )
+        self.assertEqual(r.status_code, 302)
+        r = self.http.post(
+            "/admin-panel",
+            {"section": "performer_role_create", "name": "Мастер по ноготочкам", "sort_order": "2"},
+        )
+        self.assertEqual(r.status_code, 302)
+        electrician = PerformerRole.objects.get(name="Электрик")
+        nails = PerformerRole.objects.get(name="Мастер по ноготочкам")
+        self.assertTrue(electrician.photos_required)
+        self.assertFalse(nails.photos_required)
+        r = self.http.post("/admin-panel", {"section": "performer_role_update", "role_id": str(nails.id), "name": "Мастер по ноготочкам", "is_active": "1"})
+        nails.refresh_from_db()
+        self.assertFalse(nails.photos_required)
+
+        r = self.http.get("/bookings/new")
+        self.assertContains(r, "Электрик")
+        self.assertContains(r, "Мастер по ноготочкам")
+        r = self.http.post("/bookings/new", {"role_id": str(electrician.id), "comment": "розетка искрит"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(PerformerBooking.objects.count(), 0)
+        r = self.http.post("/bookings/new", {"role_id": str(nails.id), "comment": "френч"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(PerformerBooking.objects.count(), 1)
+        booking = PerformerBooking.objects.get()
+        self.assertEqual(booking.role_id, nails.id)
+
+        buf = BytesIO()
+        Image.new("RGB", (4, 4), "red").save(buf, format="JPEG")
+        photo = SimpleUploadedFile("socket.jpg", buf.getvalue(), content_type="image/jpeg")
+        r = self.http.post("/bookings/new", {"role_id": str(electrician.id), "comment": "щиток", "photos": photo})
+        self.assertEqual(r.status_code, 302)
+        e_booking = PerformerBooking.objects.exclude(pk=booking.pk).get()
+        self.assertEqual(e_booking.role_id, electrician.id)
+        self.assertEqual(e_booking.photos.count(), 1)
+        r = self.http.get("/bookings")
+        self.assertContains(r, "фото обязательны")
+        self.assertContains(r, "фото не нужны")
+
     def test_client_comment_edit_shows_in_list(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         client = Client.objects.create(name="Коммент", phone="+79990009988", comment="")

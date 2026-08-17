@@ -1377,6 +1377,64 @@ def admin_panel(request: HttpRequest):
             messages.success(request, f"Сотрудник {user.username} обновлён")
             return redirect("admin_panel")
 
+        if section == "performer_role_create":
+            from workshop.models import PerformerRole
+
+            name = (request.POST.get("name") or "").strip()
+            if not name:
+                messages.warning(request, "Укажите название роли исполнителя")
+                return redirect("admin_panel")
+            try:
+                sort_order = int(request.POST.get("sort_order") or 0)
+            except ValueError:
+                sort_order = 0
+            role = PerformerRole.objects.create(
+                name=name,
+                photos_required=request.POST.get("photos_required") == "1",
+                is_active=True,
+                sort_order=max(0, sort_order),
+            )
+            log_action(request, "performer_role_create", entity_type="performer_role", entity_id=role.id, details=name)
+            messages.success(request, f"Роль «{role.name}» добавлена")
+            return redirect("admin_panel")
+
+        if section == "performer_role_update":
+            from workshop.models import PerformerRole
+
+            role = PerformerRole.objects.filter(pk=request.POST.get("role_id")).first()
+            if not role:
+                messages.warning(request, "Роль не найдена")
+                return redirect("admin_panel")
+            name = (request.POST.get("name") or "").strip()
+            if name:
+                role.name = name
+            try:
+                role.sort_order = max(0, int(request.POST.get("sort_order") or 0))
+            except ValueError:
+                pass
+            role.photos_required = request.POST.get("photos_required") == "1"
+            role.is_active = request.POST.get("is_active") == "1"
+            role.save(update_fields=["name", "sort_order", "photos_required", "is_active"])
+            log_action(request, "performer_role_update", entity_type="performer_role", entity_id=role.id, details=role.name)
+            messages.success(request, f"Роль «{role.name}» сохранена")
+            return redirect("admin_panel")
+
+        if section == "performer_role_delete":
+            from workshop.models import PerformerRole
+
+            role = PerformerRole.objects.filter(pk=request.POST.get("role_id")).first()
+            if not role:
+                messages.warning(request, "Роль не найдена")
+                return redirect("admin_panel")
+            if role.bookings.exists():
+                messages.warning(request, f"Роль «{role.name}» нельзя удалить — по ней уже есть записи")
+                return redirect("admin_panel")
+            name = role.name
+            role.delete()
+            log_action(request, "performer_role_delete", entity_type="performer_role", details=name)
+            messages.success(request, f"Роль «{name}» удалена")
+            return redirect("admin_panel")
+
         if section == "ai_report_now":
             result = run_daily_ai_report(force=True)
             log_action(
@@ -1504,6 +1562,7 @@ def admin_panel(request: HttpRequest):
         messages.success(request, "Настройки Max сохранены")
         return redirect("admin_panel")
 
+    from workshop.models import PerformerRole
     from workshop.network import listen_port_for_request, primary_tv_ads_url, tv_ads_urls_for_request
     from workshop.tv_display import state_payload
 
@@ -1517,6 +1576,7 @@ def admin_panel(request: HttpRequest):
             "hub_cfg": hub_cfg,
             "staff_users": staff_users,
             "staff_roles": StaffRole.choices,
+            "performer_roles": list(PerformerRole.objects.all()),
             "report_time_msk": f"{int(ai_cfg.report_hour_msk or 0):02d}:{int(ai_cfg.report_minute_msk or 0):02d}",
             "ai_scheduler": scheduler_status(),
             "providers": SmsProvider.choices,
@@ -1526,6 +1586,96 @@ def admin_panel(request: HttpRequest):
             "tv_ads_primary_url": primary_tv_ads_url(tv_port),
             "tv_display": state_payload(),
         },
+    )
+
+
+def bookings_list(request: HttpRequest):
+    from workshop.models import PerformerBooking
+
+    bookings = PerformerBooking.objects.select_related("role", "client").prefetch_related("photos")
+    return render(request, "workshop/bookings.html", {"bookings": bookings})
+
+
+@require_http_methods(["GET", "POST"])
+def booking_create(request: HttpRequest):
+    from workshop.authz import current_staff
+    from workshop.models import PerformerBooking, PerformerBookingPhoto, PerformerRole
+
+    roles = list(PerformerRole.objects.filter(is_active=True))
+    clients = list(Client.objects.order_by("name")[:500])
+    role_photo_flags = {str(role.id): bool(role.photos_required) for role in roles}
+    if request.method == "POST":
+        role = PerformerRole.objects.filter(pk=request.POST.get("role_id"), is_active=True).first()
+        if not role:
+            messages.warning(request, "Выберите роль исполнителя")
+            return redirect("booking_create")
+        photos = [f for f in request.FILES.getlist("photos") if f]
+        if role.photos_required and not photos:
+            messages.warning(request, f"Для роли «{role.name}» нужно приложить фотографии")
+            return redirect("booking_create")
+        client = None
+        client_id = (request.POST.get("client_id") or "").strip()
+        if client_id:
+            client = Client.objects.filter(pk=client_id).first()
+        booking = PerformerBooking.objects.create(
+            booking_number=next_numbered("BK", PerformerBooking, "booking_number"),
+            role=role,
+            client=client,
+            comment=(request.POST.get("comment") or "").replace("\r\n", "\n").replace("\r", "\n").strip(),
+            created_by=current_staff(request),
+        )
+        for img in photos:
+            PerformerBookingPhoto.objects.create(booking=booking, image=img)
+        log_action(
+            request,
+            "booking_create",
+            entity_type="booking",
+            entity_id=booking.id,
+            details=f"{booking.booking_number} {role.name}",
+        )
+        messages.success(request, f"Запись {booking.booking_number} создана")
+        return redirect("booking_detail", booking_id=booking.id)
+    return render(
+        request,
+        "workshop/booking_form.html",
+        {
+            "roles": roles,
+            "clients": clients,
+            "role_photo_flags": role_photo_flags,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def booking_detail(request: HttpRequest, booking_id: int):
+    from workshop.models import PerformerBooking, PerformerBookingPhoto, PerformerBookingStatus
+
+    booking = get_object_or_404(
+        PerformerBooking.objects.select_related("role", "client").prefetch_related("photos"),
+        pk=booking_id,
+    )
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "set_status":
+            status = (request.POST.get("status") or "").strip()
+            if status in dict(PerformerBookingStatus.choices):
+                booking.status = status
+                booking.save(update_fields=["status"])
+                messages.success(request, "Статус записи сохранён")
+            return redirect("booking_detail", booking_id=booking.id)
+        if action == "add_photos":
+            photos = [f for f in request.FILES.getlist("photos") if f]
+            if not photos:
+                messages.warning(request, "Выберите фотографии")
+                return redirect("booking_detail", booking_id=booking.id)
+            for img in photos:
+                PerformerBookingPhoto.objects.create(booking=booking, image=img)
+            messages.success(request, "Фото добавлены")
+            return redirect("booking_detail", booking_id=booking.id)
+    return render(
+        request,
+        "workshop/booking_detail.html",
+        {"booking": booking, "statuses": PerformerBookingStatus.choices},
     )
 
 

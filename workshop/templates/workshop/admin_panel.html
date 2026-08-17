@@ -186,6 +186,80 @@
         </div></div>
 
         <div class="card mt-3"><div class="card-body">
+            <h5 class="mb-2">Роли исполнителей</h5>
+            <p class="small-muted mb-3">Для каждой роли отдельно: нужны ли фото, чтобы записаться. Электрику — да, мастеру по ноготочкам — нет.</p>
+            <form method="post" class="row g-2 align-items-end mb-4">{% csrf_token %}
+                <input type="hidden" name="section" value="performer_role_create">
+                <div class="col-md-4">
+                    <label class="form-label">Название роли</label>
+                    <input class="form-control" name="name" placeholder="Электрик / Мастер по ноготочкам" required>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Порядок</label>
+                    <input class="form-control" name="sort_order" type="number" min="0" value="0">
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check mt-4">
+                        <input class="form-check-input" type="checkbox" name="photos_required" value="1" id="new-role-photos" checked>
+                        <label class="form-check-label" for="new-role-photos">Фото обязательны при записи</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-success w-100" type="submit">Добавить роль</button>
+                </div>
+            </form>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead>
+                    <tr>
+                        <th>Роль</th>
+                        <th>Порядок</th>
+                        <th>Фото при записи</th>
+                        <th>Активна</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for role in performer_roles %}
+                        <tr>
+                            <td colspan="5" class="p-0 border-0">
+                                <form method="post" class="row g-2 align-items-center px-2 py-2 border-bottom">{% csrf_token %}
+                                    <input type="hidden" name="section" value="performer_role_update">
+                                    <input type="hidden" name="role_id" value="{{ role.id }}">
+                                    <div class="col-md-3">
+                                        <input class="form-control form-control-sm" name="name" value="{{ role.name }}" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input class="form-control form-control-sm" name="sort_order" type="number" min="0" value="{{ role.sort_order }}">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="photos_required" value="1" id="role-photos-{{ role.id }}" {% if role.photos_required %}checked{% endif %}>
+                                            <label class="form-check-label" for="role-photos-{{ role.id }}">Фото обязательны</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-1">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="is_active" value="1" id="role-active-{{ role.id }}" {% if role.is_active %}checked{% endif %}>
+                                            <label class="form-check-label" for="role-active-{{ role.id }}">вкл</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 d-flex gap-1">
+                                        <button class="btn btn-outline-light btn-sm" type="submit">OK</button>
+                                        <button class="btn btn-outline-danger btn-sm" type="submit" name="section" value="performer_role_delete" onclick="return confirm('Удалить роль {{ role.name }}?');">Удалить</button>
+                                    </div>
+                                </form>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="5" class="text-secondary">Ролей пока нет — добавьте электрика, мастера по ноготочкам и остальные</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div></div>
+
+        <div class="card mt-3"><div class="card-body">
             <h5 class="mb-3">Яндекс ИИ — ежедневный отчёт</h5>
             <div class="small-muted mb-3">
                 Планировщик каждый день в указанное время (МСК) анализирует журнал и присылает отчёт администратору в Max.

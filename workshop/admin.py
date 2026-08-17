@@ -17,6 +17,9 @@ from workshop.models import (
     SoftwareDevPhoto,
     SoftwareDevVersion,
     YandexAiSettings,
+    PerformerRole,
+    PerformerBooking,
+    PerformerBookingPhoto,
 )
 
 
@@ -159,4 +162,24 @@ class SoftwareDevVersionAdmin(admin.ModelAdmin):
     list_display = ("contract", "version", "amount", "price_agreed", "username", "created_at")
     list_filter = ("price_agreed",)
     search_fields = ("contract__contract_number", "note", "username")
+
+
+@admin.register(PerformerRole)
+class PerformerRoleAdmin(admin.ModelAdmin):
+    list_display = ("name", "photos_required", "is_active", "sort_order")
+    list_filter = ("photos_required", "is_active")
+    search_fields = ("name",)
+
+
+class PerformerBookingPhotoInline(admin.TabularInline):
+    model = PerformerBookingPhoto
+    extra = 0
+
+
+@admin.register(PerformerBooking)
+class PerformerBookingAdmin(admin.ModelAdmin):
+    list_display = ("booking_number", "role", "client", "status", "created_at")
+    list_filter = ("status", "role")
+    search_fields = ("booking_number", "comment", "client__name", "role__name")
+    inlines = [PerformerBookingPhotoInline]
 

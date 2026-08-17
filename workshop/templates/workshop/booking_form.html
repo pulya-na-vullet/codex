@@ -1,0 +1,66 @@
+{% extends "workshop/base.html" %}
+{% block content %}
+<div class="mb-3">
+    <h4 class="mb-0">Новая запись</h4>
+    <div class="small-muted">Фото обязательны только у тех ролей, где в админке включён чекбокс</div>
+</div>
+<div class="card mx-auto" style="max-width: 760px;"><div class="card-body">
+    <form method="post" enctype="multipart/form-data" class="vstack gap-3" id="booking-form">
+        {% csrf_token %}
+        {{ role_photo_flags|json_script:"role-photo-flags" }}
+        <div>
+            <label class="form-label">Роль исполнителя</label>
+            <select class="form-select" name="role_id" id="booking-role" required>
+                <option value="">— выберите —</option>
+                {% for role in roles %}
+                    <option value="{{ role.id }}">{{ role.name }}{% if role.photos_required %} · нужны фото{% else %} · без фото{% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label">Клиент</label>
+            <select class="form-select" name="client_id">
+                <option value="">Без клиента</option>
+                {% for c in clients %}
+                    <option value="{{ c.id }}">{{ c.name }} · {{ c.phone }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label">Комментарий</label>
+            <textarea class="form-control" name="comment" rows="3" placeholder="Что сделать, адрес, пожелания…"></textarea>
+        </div>
+        <div id="booking-photos-block">
+            <label class="form-label">Фотографии <span id="photos-required-mark" class="text-warning d-none">обязательны</span></label>
+            <input class="form-control" type="file" name="photos" id="booking-photos" accept="image/*" multiple>
+            <div class="small-muted mt-1" id="photos-hint">Для этой роли фото можно не прикладывать.</div>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-success" type="submit">Записаться</button>
+            <a class="btn btn-outline-light" href="{% url 'bookings' %}">Отмена</a>
+        </div>
+    </form>
+</div></div>
+<script>
+(() => {
+    const flagsEl = document.getElementById('role-photo-flags');
+    const select = document.getElementById('booking-role');
+    const input = document.getElementById('booking-photos');
+    const mark = document.getElementById('photos-required-mark');
+    const hint = document.getElementById('photos-hint');
+    if (!flagsEl || !select || !input) return;
+    let flags = {};
+    try { flags = JSON.parse(flagsEl.textContent || '{}'); } catch (e) { flags = {}; }
+    const sync = () => {
+        const need = Boolean(flags[select.value]);
+        input.required = need;
+        mark.classList.toggle('d-none', !need);
+        hint.textContent = need
+            ? 'Для этой роли без фотографий записаться нельзя.'
+            : 'Для этой роли фото можно не прикладывать.';
+    };
+    select.addEventListener('change', sync);
+    sync();
+})();
+</script>
+{% endblock %}
