@@ -90,10 +90,11 @@ def build_order_pdf(order, lines) -> bytes:
         y -= 16
 
     c.setFont(font, 10)
-    c.drawString(40, y, "Услуга")
-    c.drawString(350, y, "Цена")
-    c.drawString(430, y, "Кол-во")
-    c.drawString(500, y, "Сумма")
+    c.drawString(40, y, "Позиция")
+    c.drawString(300, y, "Тип")
+    c.drawString(390, y, "Цена")
+    c.drawString(460, y, "Кол-во")
+    c.drawString(520, y, "Сумма")
     y -= 10
     c.line(40, y, width - 40, y)
     y -= 14
@@ -104,9 +105,11 @@ def build_order_pdf(order, lines) -> bytes:
             c.setFont(font, 10)
             y = height - 50
         line_total = float(line.unit_price) * int(line.quantity)
-        c.drawString(40, y, str(line.service_name)[:52])
-        c.drawRightString(400, y, f"{float(line.unit_price):.2f}")
-        c.drawRightString(470, y, f"{int(line.quantity)}")
+        kind_label = "Комплект." if getattr(line, "kind", "service") == "parts" else "Услуга"
+        c.drawString(40, y, str(line.service_name)[:42])
+        c.drawString(300, y, kind_label)
+        c.drawRightString(440, y, f"{float(line.unit_price):.2f}")
+        c.drawRightString(500, y, f"{int(line.quantity)}")
         c.drawRightString(555, y, f"{line_total:.2f}")
         y -= 14
 
@@ -116,16 +119,31 @@ def build_order_pdf(order, lines) -> bytes:
     c.setFont(font, 12)
     if float(order.discount_percent or 0) > 0:
         discount_amount = float(order.subtotal_sum) - float(order.total_sum)
-        c.drawRightString(width - 40, y, f"Сумма расчёта: {float(order.subtotal_sum):.2f}")
+        service_sub = float(getattr(order, "service_subtotal", order.subtotal_sum) or 0)
+        c.drawRightString(width - 40, y, f"Услуги: {service_sub:.2f}")
         y -= 16
         c.drawRightString(
             width - 40,
             y,
-            f"Дополнительная скидка: {float(order.discount_percent):.0f}% (−{discount_amount:.2f})",
+            f"Дополнительная скидка на услуги: {float(order.discount_percent):.0f}% (−{discount_amount:.2f})",
         )
         y -= 16
-    c.drawRightString(width - 40, y, f"ИТОГО: {float(order.total_sum):.2f}")
-    y -= 28
+    taxable = float(getattr(order, "taxable_sum", order.total_sum) or 0)
+    parts = float(getattr(order, "parts_sum", 0) or 0)
+    c.drawRightString(width - 40, y, f"Услуги для «Мой налог»: {taxable:.2f}")
+    y -= 16
+    if parts > 0:
+        c.drawRightString(width - 40, y, f"Комплектующие (без налога): {parts:.2f}")
+        y -= 16
+    c.drawRightString(width - 40, y, f"ИТОГО к оплате: {float(order.total_sum):.2f}")
+    y -= 20
+    c.setFont(font, 10)
+    tax_note = f"Налоги уплачиваются с услуг. В чек «Мой налог» входит {taxable:.2f}"
+    if parts > 0:
+        tax_note += f"; комплектующие {parts:.2f} в налог не входят"
+    tax_note += "."
+    y = _draw_wrapped(c, font, 10, tax_note, 40, y, 95, 80, height)
+    y -= 8
 
     warranty = (
         "Гарантия: На выполненные работы и установленные новые детали предоставляется гарантия 3 месяца. "

@@ -4,8 +4,10 @@
 body{font-family:Arial,sans-serif;margin:20px;color:#111}
 table{width:100%;border-collapse:collapse;margin-top:14px}
 th,td{border:1px solid #bbb;padding:8px} th{background:#f1f5f9;text-align:left}
-.num{text-align:right}.total{margin-top:12px;text-align:right;font-size:18px;font-weight:bold}
+.num{text-align:right}.total{margin-top:12px;text-align:right;font-size:16px}
+.total .grand{font-size:18px;font-weight:bold;margin-top:6px}
 .notes{white-space:pre-wrap}
+.tax-note{margin-top:10px;font-size:13px}
 @media print{.actions{display:none}}
 </style></head><body>
 <div class="actions"><p>Предпросмотр. Для печати без заголовков браузера используйте кнопку «Печать» в заказе.</p>
@@ -22,15 +24,30 @@ th,td{border:1px solid #bbb;padding:8px} th{background:#f1f5f9;text-align:left}
 {% else %}
 <div>Доп. периферия: {{ order.extra_periphery|default:"-" }}</div>
 {% endif %}
-<table><thead><tr><th>Услуга</th><th class="num">Цена</th><th class="num">Кол-во</th><th class="num">Сумма</th></tr></thead>
-<tbody>{% for s in lines %}<tr><td>{{ s.service_name }}</td><td class="num">{{ s.unit_price }}</td><td class="num">{{ s.quantity }}</td><td class="num">{{ s.line_total }}</td></tr>{% endfor %}</tbody></table>
+<table><thead><tr><th>Позиция</th><th>Тип</th><th class="num">Цена</th><th class="num">Кол-во</th><th class="num">Сумма</th></tr></thead>
+<tbody>
+{% for s in lines %}
+<tr>
+  <td>{{ s.service_name }}</td>
+  <td>{% if s.kind == 'parts' %}Комплектующие{% else %}Услуга{% endif %}</td>
+  <td class="num">{{ s.unit_price }}</td>
+  <td class="num">{{ s.quantity }}</td>
+  <td class="num">{{ s.line_total }}</td>
+</tr>
+{% endfor %}
+</tbody></table>
 <div class="total">
 {% if order.discount_percent %}
-<div>Сумма расчёта: {{ order.subtotal_sum }}</div>
-<div>Дополнительная скидка: {{ order.discount_percent|floatformat:0 }}% (−{{ order.discount_amount }})</div>
+<div>Услуги: {{ order.service_subtotal }}</div>
+<div>Дополнительная скидка на услуги: {{ order.discount_percent|floatformat:0 }}% (−{{ order.discount_amount }})</div>
 {% endif %}
-ИТОГО: {{ order.total_sum }}
+<div>Услуги для «Мой налог»: {{ order.taxable_sum }}</div>
+{% if order.has_nontaxable_parts %}
+<div>Комплектующие (без налога): {{ order.parts_sum }}</div>
+{% endif %}
+<div class="grand">ИТОГО к оплате: {{ order.total_sum }}</div>
 </div>
+<p class="tax-note"><strong>Налоги уплачиваются с услуг.</strong> В чек «Мой налог» входит {{ order.taxable_sum }}{% if order.has_nontaxable_parts %}; комплектующие {{ order.parts_sum }} в налог не входят{% endif %}.</p>
 <p><strong>Гарантия:</strong> 3 месяца на работы и новые детали.</p>
 <p class="notes"><strong>Техническая информация:</strong> {{ order.technical_notes|default:"-" }}</p>
 <p>Исполнитель: _________________ / Григорьев Д.В</p>

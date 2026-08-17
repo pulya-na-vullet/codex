@@ -25,6 +25,7 @@ from workshop.models import (
     AdditiveServiceType,
     Order,
     OrderLine,
+    OrderLineKind,
     OrderStatus,
     PaymentMethod,
     Service,
@@ -848,6 +849,8 @@ def orders_export_excel(request: HttpRequest):
             "Дата",
             "Статус",
             "Сумма",
+            "Мой налог сумма",
+            "Комплектующие",
             "Оплата",
             "Мой налог",
             "Закрыт",
@@ -863,6 +866,8 @@ def orders_export_excel(request: HttpRequest):
                 timezone.localtime(order.created_at).strftime("%d.%m.%Y %H:%M") if order.created_at else "",
                 order.get_status_display(),
                 float(order.total_sum or 0),
+                float(order.taxable_sum or 0),
+                float(order.parts_sum or 0),
                 order.get_payment_method_display(),
                 "да" if order.mytax_issued else "нет",
                 timezone.localtime(order.closed_at).strftime("%d.%m.%Y %H:%M") if order.closed_at else "",
@@ -1009,6 +1014,7 @@ def order_add_service(request: HttpRequest, order_id: int):
     OrderLine.objects.create(
         order=order,
         service=service,
+        kind=OrderLineKind.SERVICE,
         service_name=service.name,
         unit_price=service.price,
         quantity=qty,
@@ -1022,6 +1028,81 @@ def order_add_service(request: HttpRequest, order_id: int):
         details=f"{order.order_number}: {service.name} x{qty}",
     )
     messages.success(request, "Услуга добавлена в заказ")
+    return redirect("order_detail", order_id=order.id)
+
+
+def _parse_order_money(raw) -> Decimal | None:
+    text = str(raw or "").replace("\xa0", " ").replace(" ", "").replace(",", ".").strip()
+    if not text:
+        return None
+    try:
+        value = Decimal(text)
+    except (InvalidOperation, ValueError):
+        return None
+    if value < 0:
+        return None
+    return value.quantize(Decimal("0.01"))
+
+
+@require_POST
+def order_add_parts(request: HttpRequest, order_id: int):
+    """Free-form hardware / parts: billed to the client, excluded from Мой налог."""
+    order = get_object_or_404(Order, pk=order_id)
+    name = (request.POST.get("parts_name") or "").strip()
+    price = _parse_order_money(request.POST.get("parts_price"))
+    try:
+        qty = max(1, int(request.POST.get("parts_quantity", "1")))
+    except ValueError:
+        qty = 1
+    if not name or price is None:
+        messages.warning(request, "Укажите название и цену комплектующих")
+        return redirect("order_detail", order_id=order.id)
+    OrderLine.objects.create(
+        order=order,
+        service=None,
+        kind=OrderLineKind.PARTS,
+        service_name=name[:255],
+        unit_price=price,
+        quantity=qty,
+    )
+    order.recalculate_totals()
+    log_action(
+        request,
+        "order_add_parts",
+        entity_type="order",
+        entity_id=order.id,
+        details=f"{order.order_number}: {name} x{qty} = {price}",
+    )
+    messages.success(request, "Комплектующие добавлены в заказ")
+    return redirect("order_detail", order_id=order.id)
+
+
+@require_POST
+def order_line_update(request: HttpRequest, order_id: int, line_id: int):
+    order = get_object_or_404(Order, pk=order_id)
+    line = get_object_or_404(OrderLine, pk=line_id, order=order)
+    name = (request.POST.get("service_name") or "").strip()
+    price = _parse_order_money(request.POST.get("unit_price"))
+    try:
+        qty = max(1, int(request.POST.get("quantity", str(line.quantity))))
+    except ValueError:
+        qty = line.quantity
+    if not name or price is None:
+        messages.warning(request, "Название и цена обязательны")
+        return redirect("order_detail", order_id=order.id)
+    line.service_name = name[:255]
+    line.unit_price = price
+    line.quantity = qty
+    line.save(update_fields=["service_name", "unit_price", "quantity"])
+    order.recalculate_totals()
+    log_action(
+        request,
+        "order_line_update",
+        entity_type="order",
+        entity_id=order.id,
+        details=f"{order.order_number}: {line.service_name} x{line.quantity}",
+    )
+    messages.success(request, "Строка обновлена")
     return redirect("order_detail", order_id=order.id)
 
 

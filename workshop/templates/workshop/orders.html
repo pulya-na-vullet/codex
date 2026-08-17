@@ -43,6 +43,12 @@
                         {% endif %}
                     </td>
                     <td>
+                        {% if row.has_nontaxable_parts %}
+                            <div>{{ row.taxable_sum|money }}</div>
+                            <div class="small-muted">частично, услуги</div>
+                        {% else %}
+                            <div>{{ row.taxable_sum|money }}</div>
+                        {% endif %}
                         {% if row.mytax_issued %}
                             <span class="badge text-bg-primary">Чек выдан</span>
                         {% else %}
