@@ -223,6 +223,58 @@ class AuthAndPagesTests(TestCase):
                 assert_tv_endpoint("http://127.0.0.1:8000")
         self.assertIn("не найдена", str(ctx.exception))
 
+    def test_tv_ads_urls_include_localhost_and_lan(self):
+        from unittest.mock import patch
+
+        from workshop.network import primary_tv_ads_url, tv_ads_urls
+
+        with patch("workshop.network.get_lan_ipv4_addresses", return_value=["192.168.1.10", "127.0.0.1"]):
+            urls = tv_ads_urls(8000)
+        self.assertEqual(urls[0], "http://192.168.1.10:8000/tv")
+        self.assertIn("http://127.0.0.1:8000/tv", urls)
+        with patch("workshop.network.get_lan_ipv4_addresses", return_value=["192.168.1.10"]):
+            self.assertEqual(primary_tv_ads_url(8000), "http://192.168.1.10:8000/tv")
+
+    def test_print_access_urls_prints_tv_ads_link(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from unittest.mock import patch
+
+        from workshop.network import print_access_urls
+
+        buf = StringIO()
+        with patch("workshop.network.get_lan_ipv4_addresses", return_value=["192.168.0.42"]):
+            with redirect_stdout(buf):
+                print_access_urls("0.0.0.0", 8000)
+        text = buf.getvalue()
+        self.assertIn("ТВ-реклама", text)
+        self.assertIn("http://192.168.0.42:8000/tv", text)
+        self.assertIn("http://127.0.0.1:8000/tv", text)
+        self.assertIn("HDMI", text)
+        self.assertIn("Smart TV", text)
+
+    def test_admin_panel_shows_tv_url_and_hdmi_choice(self):
+        from unittest.mock import patch
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        with patch("workshop.network.get_lan_ipv4_addresses", return_value=["10.0.0.8"]):
+            r = self.http.get("/admin-panel")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "По URL — браузер Smart TV, без HDMI")
+        self.assertContains(r, "По HDMI-кабелю — монитор этого ПК")
+        self.assertContains(r, "http://10.0.0.8:8000/tv")
+        self.assertContains(r, 'id="tvAdsPrimaryUrl"')
+        self.assertContains(r, 'id="tvModeUrl"')
+        self.assertContains(r, 'id="tvModeHdmi"')
+        self.assertContains(r, 'id="tvHdmiPane"')
+        self.assertContains(r, "/admin-panel/tv-qr.png")
+
+    def test_tv_ads_qr_png(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        r = self.http.get("/admin-panel/tv-qr.png")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "image/png")
+        self.assertGreater(len(r.content), 80)
 
     def test_login_and_dashboard(self):
         r = self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})

@@ -1400,6 +1400,9 @@ def admin_panel(request: HttpRequest):
         messages.success(request, "Настройки Max сохранены")
         return redirect("admin_panel")
 
+    from workshop.network import listen_port_for_request, primary_tv_ads_url, tv_ads_urls_for_request
+
+    tv_port = listen_port_for_request(request)
     return render(
         request,
         "workshop/admin_panel.html",
@@ -1413,6 +1416,9 @@ def admin_panel(request: HttpRequest):
             "ai_scheduler": scheduler_status(),
             "providers": SmsProvider.choices,
             "recent_messages": SmsLog.objects.select_related("client", "order").order_by("-created_at")[:50],
+            "tv_listen_port": tv_port,
+            "tv_ads_urls": tv_ads_urls_for_request(request),
+            "tv_ads_primary_url": primary_tv_ads_url(tv_port),
         },
     )
 
@@ -2745,6 +2751,34 @@ def tv_close_api(request: HttpRequest):
             )
     stop_tv_browser()
     return HttpResponse(json.dumps({"ok": True, "stopped": True}), content_type="application/json")
+
+
+@require_GET
+@require_admin
+def tv_ads_qr(request: HttpRequest):
+    """PNG QR with the LAN ads URL for a Smart TV browser."""
+    from workshop.network import listen_port_for_request, primary_tv_ads_url
+
+    try:
+        import qrcode
+    except ImportError:
+        return HttpResponse("Установите qrcode: pip install qrcode", status=500, content_type="text/plain")
+
+    url = primary_tv_ads_url(listen_port_for_request(request))
+    try:
+        box_size = int(request.GET.get("size", "6") or 6)
+    except ValueError:
+        box_size = 6
+    box_size = max(4, min(16, box_size))
+    qr = qrcode.QRCode(version=None, box_size=box_size, border=2)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    response = HttpResponse(buf.getvalue(), content_type="image/png")
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @require_GET

@@ -42,6 +42,7 @@ urlpatterns = [
     path("tv/close", views.tv_close_api, name="tv_close_api"),
     path("admin-panel/tv-monitors", views.tv_monitors_api, name="tv_monitors_api"),
     path("admin-panel/tv-open", views.tv_open_api, name="tv_open_api"),
+    path("admin-panel/tv-qr.png", views.tv_ads_qr, name="tv_ads_qr"),
     path("admin-panel/max-log", views.max_message_log, name="max_message_log"),
     path("docs", views.api_docs, name="api_docs"),
     path("max/webhook", views.max_webhook, name="max_webhook"),
