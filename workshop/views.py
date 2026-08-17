@@ -1400,6 +1400,10 @@ def admin_panel(request: HttpRequest):
         messages.success(request, "Настройки Max сохранены")
         return redirect("admin_panel")
 
+    from workshop.network import listen_port_for_request, primary_tv_ads_url, tv_ads_urls_for_request
+    from workshop.tv_display import state_payload
+
+    tv_port = listen_port_for_request(request)
     return render(
         request,
         "workshop/admin_panel.html",
@@ -1413,6 +1417,10 @@ def admin_panel(request: HttpRequest):
             "ai_scheduler": scheduler_status(),
             "providers": SmsProvider.choices,
             "recent_messages": SmsLog.objects.select_related("client", "order").order_by("-created_at")[:50],
+            "tv_listen_port": tv_port,
+            "tv_ads_urls": tv_ads_urls_for_request(request),
+            "tv_ads_primary_url": primary_tv_ads_url(tv_port),
+            "tv_display": state_payload(),
         },
     )
 
@@ -2712,14 +2720,170 @@ def software_pdf(request: HttpRequest, contract_id: int):
     return response
 
 
+def tv_ads_use_lite(request: HttpRequest) -> bool:
+    """Default /tv is a simple Smart-TV page. HDMI kiosk keeps the cinematic version."""
+    q = request.GET
+    full = (q.get("full") or "").strip().lower()
+    lite = (q.get("lite") or "").strip().lower()
+    if full in ("1", "true", "yes") or lite in ("0", "off", "no"):
+        return False
+    if (q.get("os") or "").strip() == "1":
+        return False
+    if (q.get("kiosk") or "").strip():
+        return False
+    return True
+
+
 @require_GET
 def tv_ads(request: HttpRequest):
-    """Client-zone fullscreen ads carousel (opened from admin onto a chosen monitor)."""
+    """Client-zone ads: lite page for /tv (Android/Smart TV), cinematic for HDMI kiosk."""
     # Title marker must stay unique so OS placement never confuses this with CRM.
-    response = render(request, "workshop/tv_ads.html", {"title": "ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK"})
-    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    response["Pragma"] = "no-cache"
-    return response
+    template = "workshop/tv_ads_lite.html" if tv_ads_use_lite(request) else "workshop/tv_ads.html"
+    from workshop.tv_display import allow_tv_embed, tv_page_version
+
+    response = render(
+        request,
+        template,
+        {
+            "title": "ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK",
+            "tv_page_version": tv_page_version(),
+        },
+    )
+    return allow_tv_embed(response)
+
+
+@require_GET
+def tv_manifest(request: HttpRequest):
+    """Installable fullscreen web-app so Smart TV browsers hide chrome."""
+    from workshop.tv_display import allow_tv_embed
+
+    payload = {
+        "name": "ИТ-М",
+        "short_name": "ИТ-М",
+        "description": "ITM-TV-ADS-KIOSK",
+        "display": "fullscreen",
+        "display_override": ["fullscreen", "standalone", "minimal-ui"],
+        "orientation": "landscape",
+        "background_color": "#000000",
+        "theme_color": "#000000",
+        "start_url": "/tv",
+        "scope": "/",
+        "lang": "ru",
+    }
+    response = HttpResponse(
+        json.dumps(payload, ensure_ascii=False),
+        content_type="application/manifest+json",
+    )
+    return allow_tv_embed(response)
+
+
+@require_GET
+def tv_state_api(request: HttpRequest):
+    from workshop.tv_display import allow_tv_embed, state_payload
+
+    return allow_tv_embed(HttpResponse(json.dumps(state_payload()), content_type="application/json"))
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def tv_progress_api(request: HttpRequest):
+    """TV reports the currently visible ads slide so resume can pick it up."""
+    from workshop.tv_display import clamp_ads_index, set_ads_index, state_payload
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    index = clamp_ads_index(payload.get("index", request.POST.get("index")))
+    set_ads_index(index)
+    return HttpResponse(json.dumps(state_payload()), content_type="application/json")
+
+
+@require_GET
+def tv_frame(request: HttpRequest):
+    """Render the selected CRM page inside the TV ads screen (no login cookie)."""
+    from django.urls import Resolver404, resolve
+
+    from workshop.tv_display import (
+        allow_tv_embed,
+        apply_tv_frame_path,
+        attach_tv_cast,
+        get_settings,
+    )
+
+    cfg = get_settings()
+    path = apply_tv_frame_path(request, cfg.crm_path)
+    try:
+        match = resolve(path)
+    except Resolver404:
+        path = apply_tv_frame_path(request, "/")
+        match = resolve(path)
+    attach_tv_cast(request)
+    response = match.func(request, *match.args, **match.kwargs)
+    return allow_tv_embed(response)
+
+
+@require_http_methods(["POST"])
+def tv_display_api(request: HttpRequest):
+    """Manager on the Mac: follow CRM pages on the TV, or return to ads."""
+    from workshop.tv_display import set_display, state_payload
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    mode = (payload.get("mode") or request.POST.get("mode") or "ads").strip().lower()
+    path = payload.get("path", request.POST.get("path"))
+    follow = bool(payload.get("follow"))
+    viewport_w = payload.get("viewport_w", request.POST.get("viewport_w"))
+    viewport_h = payload.get("viewport_h", request.POST.get("viewport_h"))
+    cfg = set_display(
+        mode=mode,
+        path=path,
+        follow=follow,
+        viewport_w=viewport_w,
+        viewport_h=viewport_h,
+    )
+    if not follow:
+        log_action(
+            request,
+            "tv_display_set",
+            entity_type="display",
+            details=f"mode={cfg.mode} path={cfg.crm_path} slide={cfg.ads_index}",
+        )
+    return HttpResponse(json.dumps(state_payload()), content_type="application/json")
+
+
+@require_http_methods(["POST"])
+def tv_cast_frame_api(request: HttpRequest):
+    """Manager Mac uploads a JPEG of the visible CRM window."""
+    from workshop.tv_cast_frames import put_jpeg
+    from workshop.tv_display import state_payload
+
+    seq = put_jpeg(request.body or b"")
+    if not seq:
+        return HttpResponse(
+            json.dumps({"ok": False, "error": "not-jpeg"}),
+            content_type="application/json",
+            status=400,
+        )
+    payload = state_payload()
+    payload["cast_seq"] = seq
+    return HttpResponse(json.dumps(payload), content_type="application/json")
+
+
+@require_GET
+def tv_cast_jpeg(request: HttpRequest):
+    """Latest Mac window frame for the TV <img> (login-exempt under /tv)."""
+    from workshop.tv_cast_frames import get_jpeg
+    from workshop.tv_display import allow_tv_embed
+
+    data, seq = get_jpeg()
+    if not data:
+        return allow_tv_embed(HttpResponse(status=204))
+    response = HttpResponse(data, content_type="image/jpeg")
+    response["ETag"] = f'"{seq}"'
+    return allow_tv_embed(response)
 
 
 @csrf_exempt
@@ -2745,6 +2909,34 @@ def tv_close_api(request: HttpRequest):
             )
     stop_tv_browser()
     return HttpResponse(json.dumps({"ok": True, "stopped": True}), content_type="application/json")
+
+
+@require_GET
+@require_admin
+def tv_ads_qr(request: HttpRequest):
+    """PNG QR with the LAN ads URL for a Smart TV browser."""
+    from workshop.network import listen_port_for_request, primary_tv_ads_url
+
+    try:
+        import qrcode
+    except ImportError:
+        return HttpResponse("Установите qrcode: pip install qrcode", status=500, content_type="text/plain")
+
+    url = primary_tv_ads_url(listen_port_for_request(request))
+    try:
+        box_size = int(request.GET.get("size", "6") or 6)
+    except ValueError:
+        box_size = 6
+    box_size = max(4, min(16, box_size))
+    qr = qrcode.QRCode(version=None, box_size=box_size, border=2)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    response = HttpResponse(buf.getvalue(), content_type="image/png")
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @require_GET

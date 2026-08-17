@@ -14,7 +14,10 @@ SESSION_ROLE = "workshop_role"
 
 
 def current_staff(request: HttpRequest) -> StaffUser | None:
-    staff_id = request.session.get(SESSION_STAFF_ID)
+    tv_staff = getattr(request, "tv_cast_staff", None)
+    if tv_staff is not None:
+        return tv_staff
+    staff_id = request.session.get(SESSION_STAFF_ID) if getattr(request, "session", None) else None
     if not staff_id:
         return None
     return StaffUser.objects.filter(pk=staff_id, is_active=True).first()

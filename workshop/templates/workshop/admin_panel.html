@@ -278,21 +278,77 @@
         <div class="card mb-3"><div class="card-body">
             <h5 class="mb-2">ТВ-реклама (клиентская зона)</h5>
             <p class="small-muted mb-3">
-                Мониторы читаются через ОС. Открывается <strong>новое окно Chrome/Edge</strong>
-                на выбранном экране сразу в полноэкранном режиме.
-                CRM-окно не трогается. <strong>Esc</strong> — свернуть, <strong>Alt+F4</strong> — закрыть.
+                Можно показать рекламу на Smart TV по ссылке (HDMI не нужен)
+                или на мониторе, подключённом к этому ПК кабелем HDMI.
             </p>
-            <div class="mb-2">
-                <label class="form-label" for="tvMonitorSelect">Монитор</label>
-                <select class="form-select" id="tvMonitorSelect">
-                    <option value="">Нажмите «Найти мониторы»</option>
-                </select>
-                <div class="small-muted mt-1" id="tvMonitorHint"></div>
+            <div class="mb-3">
+                <div class="form-label">Способ запуска</div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="tvLaunchMode" id="tvModeUrl" value="url" checked>
+                    <label class="form-check-label" for="tvModeUrl">По URL — браузер Smart TV, без HDMI</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="tvLaunchMode" id="tvModeHdmi" value="hdmi">
+                    <label class="form-check-label" for="tvModeHdmi">По HDMI-кабелю — монитор этого ПК</label>
+                </div>
             </div>
-            <div class="d-flex flex-wrap gap-2">
-                <button type="button" class="btn btn-outline-light btn-sm" id="tvRescanMonitorsBtn">Найти мониторы</button>
-                <button type="button" class="btn btn-primary btn-sm" id="tvOpenFullscreenBtn">Открыть на весь экран</button>
-                <button type="button" class="btn btn-outline-warning btn-sm" id="tvStopBtn">Закрыть ТВ-окно</button>
+            <div class="mb-3">
+                <label class="form-label" for="tvAdsPrimaryUrl">Ссылка на рекламу</label>
+                <div class="input-group input-group-sm">
+                    <input class="form-control" id="tvAdsPrimaryUrl" type="text" readonly value="{{ tv_ads_primary_url }}">
+                    <button type="button" class="btn btn-outline-light" id="tvCopyUrlBtn">Копировать</button>
+                    <a class="btn btn-outline-light" id="tvOpenUrlBtn" href="{{ tv_ads_primary_url }}" target="_blank" rel="noopener">Открыть</a>
+                </div>
+                {% if tv_ads_urls %}
+                <div class="small-muted mt-2" id="tvAdsOtherUrls">
+                    {% for u in tv_ads_urls %}
+                        {% if u != tv_ads_primary_url %}<div><code>{{ u }}</code></div>{% endif %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="mb-3">
+                <div class="form-label">Экран телевизора в зале</div>
+                <p class="small-muted mb-2">
+                    Телевизор всегда открыт на ссылке выше. На Mac переключатель
+                    <strong>показать клиенту на ТВ</strong> / <strong>показать рекламу на ТВ</strong>:
+                    влево — зал видит экран CRM, вправо — снова ролики.
+                </p>
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-light" id="tvAdminAdsBtn">Реклама</button>
+                    <button type="button" class="btn btn-sm btn-success" id="tvAdminCrmBtn">Показать главную на ТВ</button>
+                </div>
+                <div class="small-muted" id="tvAdminStatus">
+                    Сейчас: {% if tv_display.mode == 'crm' %}CRM {{ tv_display.crm_path }}{% else %}реклама{% endif %}
+                </div>
+            </div>
+            <div id="tvUrlPane">
+                <p class="small mb-2">
+                    На телевизоре откройте Яндекс-браузер и вставьте ссылку — откроется
+                    <strong>упрощённая</strong> страница (картинка целиком, без «снежинок»).
+                    ПК и ТВ должны быть в одной Wi‑Fi сети.
+                    Разрешите порт {{ tv_listen_port }} в брандмауэре.
+                </p>
+                <img src="{% url 'tv_ads_qr' %}" alt="QR-код ссылки на ТВ-рекламу" width="148" height="148" class="rounded bg-white p-1">
+            </div>
+            <div id="tvHdmiPane" hidden>
+                <p class="small-muted mb-3">
+                    Мониторы читаются через ОС. Открывается <strong>новое окно Chrome/Edge</strong>
+                    на выбранном экране сразу в полноэкранном режиме.
+                    CRM-окно не трогается. <strong>Esc</strong> — свернуть, <strong>Alt+F4</strong> — закрыть.
+                </p>
+                <div class="mb-2">
+                    <label class="form-label" for="tvMonitorSelect">Монитор</label>
+                    <select class="form-select" id="tvMonitorSelect">
+                        <option value="">Нажмите «Найти мониторы»</option>
+                    </select>
+                    <div class="small-muted mt-1" id="tvMonitorHint"></div>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-light btn-sm" id="tvRescanMonitorsBtn">Найти мониторы</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="tvOpenFullscreenBtn">Открыть на весь экран</button>
+                    <button type="button" class="btn btn-outline-warning btn-sm" id="tvStopBtn">Закрыть ТВ-окно</button>
+                </div>
             </div>
         </div></div>
         <div class="card mb-3"><div class="card-body">
@@ -349,11 +405,19 @@
   var openBtn = document.getElementById('tvOpenFullscreenBtn');
   var rescanBtn = document.getElementById('tvRescanMonitorsBtn');
   var stopBtn = document.getElementById('tvStopBtn');
+  var urlPane = document.getElementById('tvUrlPane');
+  var hdmiPane = document.getElementById('tvHdmiPane');
+  var modeUrl = document.getElementById('tvModeUrl');
+  var modeHdmi = document.getElementById('tvModeHdmi');
+  var copyBtn = document.getElementById('tvCopyUrlBtn');
+  var urlInput = document.getElementById('tvAdsPrimaryUrl');
   if (!select || !openBtn) return;
 
   var monitors = [];
   var STORAGE_KEY = 'itm_tv_monitor_id';
+  var MODE_KEY = 'itm_tv_launch_mode';
   var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
+  var hdmiScanned = false;
 
   function log() {
     try { console.log.apply(console, ['[TV-OS]'].concat([].slice.call(arguments))); } catch (e) {}
@@ -473,10 +537,78 @@
     }
   }
 
+  function applyMode(mode) {
+    if (mode !== 'hdmi') mode = 'url';
+    if (urlPane) urlPane.hidden = mode !== 'url';
+    if (hdmiPane) hdmiPane.hidden = mode !== 'hdmi';
+    if (modeUrl) modeUrl.checked = mode === 'url';
+    if (modeHdmi) modeHdmi.checked = mode === 'hdmi';
+    try { localStorage.setItem(MODE_KEY, mode); } catch (e) {}
+    if (mode === 'hdmi' && !hdmiScanned) {
+      hdmiScanned = true;
+      scanMonitors();
+    }
+  }
+
+  function copyTvUrl() {
+    var url = (urlInput && urlInput.value) ? urlInput.value : '';
+    if (!url) return;
+    function ok() {
+      if (copyBtn) {
+        var prev = copyBtn.textContent;
+        copyBtn.textContent = 'Скопировано';
+        setTimeout(function () { copyBtn.textContent = prev; }, 1500);
+      }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(ok).catch(function () {
+        if (urlInput) { urlInput.select(); document.execCommand('copy'); ok(); }
+      });
+    } else if (urlInput) {
+      urlInput.select();
+      document.execCommand('copy');
+      ok();
+    }
+  }
+
   openBtn.addEventListener('click', openSelected);
   if (rescanBtn) rescanBtn.addEventListener('click', scanMonitors);
   if (stopBtn) stopBtn.addEventListener('click', stopTv);
-  scanMonitors();
+  if (copyBtn) copyBtn.addEventListener('click', copyTvUrl);
+  if (modeUrl) modeUrl.addEventListener('change', function () { applyMode('url'); });
+  if (modeHdmi) modeHdmi.addEventListener('change', function () { applyMode('hdmi'); });
+  var savedMode = 'url';
+  try { savedMode = localStorage.getItem(MODE_KEY) || 'url'; } catch (e) {}
+  applyMode(savedMode);
+})();
+(function () {
+  var adsBtn = document.getElementById('tvAdminAdsBtn');
+  var crmBtn = document.getElementById('tvAdminCrmBtn');
+  var statusEl = document.getElementById('tvAdminStatus');
+  if (!adsBtn || !crmBtn) return;
+  var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
+  async function send(mode, path) {
+    var body = { mode: mode };
+    if (path) body.path = path;
+    var r = await fetch('{% url "tv_display_api" %}', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrf,
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+    if (statusEl) {
+      statusEl.textContent = data.mode === 'crm'
+        ? ('Сейчас: CRM ' + (data.crm_path || '/'))
+        : 'Сейчас: реклама';
+    }
+  }
+  adsBtn.addEventListener('click', function () { send('ads'); });
+  crmBtn.addEventListener('click', function () { send('crm', '/'); });
 })();
 </script>
 {% endblock %}

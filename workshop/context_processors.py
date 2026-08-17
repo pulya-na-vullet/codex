@@ -12,8 +12,13 @@ def workshop_settings(request):
 
     port = int(os.getenv("IT_MASTER_PORT", "8000"))
     lan_urls = [f"http://{ip}:{port}" for ip in get_lan_ipv4_addresses() if ip != "127.0.0.1"]
+    tv_cast = bool(getattr(request, "tv_cast_staff", None))
     pending_rating = None
-    if getattr(request, "session", None) and request.session.get("workshop_authenticated"):
+    if (
+        not tv_cast
+        and getattr(request, "session", None)
+        and request.session.get("workshop_authenticated")
+    ):
         skipped = set(request.session.get("rating_skip_ids") or [])
         try:
             from workshop.models import ModelingBrief
@@ -42,4 +47,5 @@ def workshop_settings(request):
         "is_workshop_admin": is_admin(request) if getattr(request, "session", None) else False,
         "can_workshop_delete": can_delete(request) if getattr(request, "session", None) else False,
         "pending_rating_brief": pending_rating,
+        "tv_cast": tv_cast,
     }

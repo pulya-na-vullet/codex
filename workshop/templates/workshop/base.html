@@ -272,7 +272,28 @@
             border-radius: .5rem; padding: .5rem .65rem; background: #0b1220;
         }
         .tree-list, .tree-services { list-style: none; margin: 0; padding-left: .85rem; }
-        .tree-category { cursor: pointer; color: #bfdbfe; font-weight: 600; }
+        .service-tree > .tree-list { padding-left: 0; }
+        .tree-branch-body { display: none; }
+        .tree-node.is-open > .tree-branch-body { display: block; }
+        .tree-category {
+            display: block;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            color: #bfdbfe;
+            font-weight: 600;
+            background: none;
+            border: 0;
+            padding: .2rem 0;
+            line-height: 1.35;
+        }
+        .tree-category::before {
+            content: "▸";
+            display: inline-block;
+            width: 1.15em;
+            color: #64748b;
+        }
+        .tree-node.is-open > .tree-category::before { content: "▾"; }
         .service-option { display: flex; gap: .5rem; align-items: flex-start; margin: .25rem 0; cursor: pointer; }
         .tree-service.is-hidden, .tree-node.is-hidden { display: none; }
         .comment-cell {
@@ -334,7 +355,78 @@
             background: #050a07;
             overflow-x: hidden;
         }
-        body.page-login .navbar,
+        body.tv-cast .navbar { display: none !important; }
+        body.tv-cast main.container-fluid { padding: 1.2rem 1.5rem 2rem; font-size: 1.12rem; }
+        body.tv-cast form .btn,
+        body.tv-cast form button { display: none !important; }
+        .tv-cast-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: .55rem;
+            margin: 0 .15rem;
+            color: #94a3b8;
+            font-size: .72rem;
+            line-height: 1.2;
+            user-select: none;
+        }
+        .tv-cast-switch-text {
+            max-width: 7.6rem;
+            opacity: .55;
+            cursor: pointer;
+        }
+        .tv-cast-switch.is-crm .tv-cast-switch-text-crm,
+        .tv-cast-switch.is-ads .tv-cast-switch-text-ads {
+            opacity: 1;
+            color: #f8fafc;
+        }
+        .tv-cast-toggle {
+            position: relative;
+            flex: 0 0 auto;
+            width: 52px;
+            height: 28px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            cursor: pointer;
+        }
+        .tv-cast-toggle-track {
+            position: relative;
+            display: block;
+            width: 52px;
+            height: 28px;
+            border-radius: 999px;
+            box-shadow: inset 0 2px 5px rgba(0, 0, 0, .45), inset 0 -1px 1px rgba(255, 255, 255, .12);
+            transition: background .2s ease;
+        }
+        .tv-cast-switch.is-ads .tv-cast-toggle-track { background: #22c55e; }
+        .tv-cast-switch.is-crm .tv-cast-toggle-track { background: #e57373; }
+        .tv-cast-toggle-icon {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1;
+            pointer-events: none;
+            transition: opacity .15s ease;
+        }
+        .tv-cast-toggle-check { left: 8px; color: #14532d; }
+        .tv-cast-toggle-x { right: 8px; color: #7f1d1d; }
+        .tv-cast-switch.is-ads .tv-cast-toggle-x,
+        .tv-cast-switch.is-crm .tv-cast-toggle-check { opacity: 0; }
+        .tv-cast-toggle-knob {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+            transition: left .2s ease;
+        }
+        .tv-cast-switch.is-ads .tv-cast-toggle-knob { left: 27px; }
+
         body.page-login main { display: none !important; }
 
         .login-stage {
@@ -497,10 +589,11 @@
 
     </style>
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}{% if tv_cast %} tv-cast{% endif %}">
 {% load workshop_extras %}
 {% load static %}
 {% block page %}
+{% if not tv_cast %}
 <nav class="navbar navbar-expand-lg border-bottom mb-4">
     <div class="container-fluid">
         <a class="brand-lockup" href="{% url 'dashboard' %}" title="ИТ-М">
@@ -528,6 +621,17 @@
             <a class="btn btn-sm nav-page-btn {% nav_active 'max_log' %}" href="{% url 'max_message_log' %}">Max лог</a>
             {% endif %}
             <a class="btn btn-sm nav-page-btn {% nav_active 'create_order' %}" href="{% url 'create_order' %}">Новый заказ</a>
+            <div class="tv-cast-switch is-ads" id="tvCastSwitch" data-html2canvas-ignore="true">
+                <span class="tv-cast-switch-text tv-cast-switch-text-crm" id="tvCastCrmLabel">показать клиенту на ТВ</span>
+                <button type="button" class="tv-cast-toggle" id="tvCastToggle" role="switch" aria-checked="true" title="Переключить экран в клиентской зоне">
+                    <span class="tv-cast-toggle-track">
+                        <span class="tv-cast-toggle-icon tv-cast-toggle-check">✓</span>
+                        <span class="tv-cast-toggle-icon tv-cast-toggle-x">✕</span>
+                        <span class="tv-cast-toggle-knob"></span>
+                    </span>
+                </button>
+                <span class="tv-cast-switch-text tv-cast-switch-text-ads" id="tvCastAdsLabel">показать рекламу на ТВ</span>
+            </div>
             {% if workshop_user %}<span class="small text-secondary align-self-center">{{ workshop_user }}</span>{% endif %}
             <form method="post" action="{% url 'logout' %}" class="d-inline">{% csrf_token %}
                 <button class="btn btn-outline-warning btn-sm" type="submit">Выйти</button>
@@ -536,6 +640,7 @@
         {% endif %}
     </div>
 </nav>
+{% endif %}
 <main class="container-fluid pb-4">
     {% if messages %}
         <div class="mb-3">
@@ -597,6 +702,197 @@
   if (!el || !window.bootstrap) return;
   var modal = bootstrap.Modal.getOrCreateInstance(el);
   modal.show();
+})();
+</script>
+{% endif %}
+{% if request.session.workshop_authenticated and not tv_cast %}
+<script>
+(function () {
+  var wrap = document.getElementById('tvCastSwitch');
+  var toggle = document.getElementById('tvCastToggle');
+  var crmLabel = document.getElementById('tvCastCrmLabel');
+  var adsLabel = document.getElementById('tvCastAdsLabel');
+  if (!wrap || !toggle) return;
+  var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
+  var lastSent = '';
+  var live = false;
+  var uploading = false;
+  var dirty = true;
+  var pumpTimer = null;
+  var h2cLoading = false;
+  var modeNow = 'ads';
+
+  function here() {
+    return (location.pathname || '/') + (location.search || '');
+  }
+
+  function setStatus(data) {
+    var ads = !(data && data.mode === 'crm');
+    modeNow = ads ? 'ads' : 'crm';
+    wrap.classList.toggle('is-ads', ads);
+    wrap.classList.toggle('is-crm', !ads);
+    toggle.setAttribute('aria-checked', ads ? 'true' : 'false');
+  }
+
+  async function send(mode, follow) {
+    var path = mode === 'crm' ? here() : '';
+    var key = mode + '|' + path;
+    if (follow && key === lastSent) return;
+    var body = { mode: mode };
+    if (mode === 'crm') body.path = here();
+    if (follow) body.follow = true;
+    var r = await fetch('{% url "tv_display_api" %}', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrf,
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+    lastSent = key;
+    setStatus(data);
+    return data;
+  }
+
+  function applyMode(mode) {
+    lastSent = '';
+    if (mode === 'crm') {
+      send('crm', false).then(function () { startPump(); });
+    } else {
+      stopPump();
+      send('ads', false);
+    }
+  }
+
+  function loadH2C(done) {
+    if (window.html2canvas) { done(); return; }
+    if (h2cLoading) return;
+    h2cLoading = true;
+    var s = document.createElement('script');
+    s.src = '{% static "workshop/js/html2canvas.min.js" %}';
+    s.onload = function () { h2cLoading = false; done(); };
+    s.onerror = function () { h2cLoading = false; };
+    document.head.appendChild(s);
+  }
+
+  function prepClone(doc) {
+    var nodes = doc.querySelectorAll('.service-tree, .panel-scroll');
+    Array.prototype.forEach.call(nodes, function (el) {
+      el.style.overflow = 'visible';
+      el.style.maxHeight = 'none';
+    });
+    Array.prototype.forEach.call(doc.querySelectorAll('details'), function (d) {
+      var wrapEl = doc.createElement('div');
+      wrapEl.className = d.className || '';
+      while (d.firstChild) wrapEl.appendChild(d.firstChild);
+      if (!d.open) {
+        Array.prototype.forEach.call(wrapEl.children, function (ch) {
+          if (String(ch.tagName || '').toLowerCase() !== 'summary') ch.style.display = 'none';
+        });
+      }
+      Array.prototype.forEach.call(wrapEl.querySelectorAll('summary'), function (s) {
+        var div = doc.createElement('div');
+        div.className = s.className || '';
+        div.textContent = s.textContent || '';
+        s.parentNode.replaceChild(div, s);
+      });
+      d.parentNode.replaceChild(wrapEl, d);
+    });
+  }
+
+  function captureOnce() {
+    if (!live || uploading || document.hidden || !window.html2canvas) return;
+    uploading = true;
+    var w = Math.max(1, window.innerWidth || 1280);
+    var h = Math.max(1, window.innerHeight || 720);
+    var dpr = window.devicePixelRatio || 1;
+    var scale = Math.min(dpr, 2, 1920 / w);
+    if (scale < 1) scale = Math.min(1, 1920 / w);
+    window.html2canvas(document.body, {
+      logging: false,
+      backgroundColor: '#0f172a',
+      useCORS: true,
+      foreignObjectRendering: false,
+      scale: scale,
+      width: w,
+      height: h,
+      x: window.pageXOffset || 0,
+      y: window.pageYOffset || 0,
+      scrollX: -(window.pageXOffset || 0),
+      scrollY: -(window.pageYOffset || 0),
+      windowWidth: w,
+      windowHeight: h,
+      ignoreElements: function (el) {
+        return !!(el && el.getAttribute && el.getAttribute('data-html2canvas-ignore'));
+      },
+      onclone: prepClone
+    }).then(function (canvas) {
+      return new Promise(function (resolve) {
+        canvas.toBlob(resolve, 'image/jpeg', 0.88);
+      });
+    }).then(function (blob) {
+      if (!blob || !live) return;
+      return fetch('{% url "tv_cast_frame_api" %}', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'image/jpeg' },
+        body: blob
+      });
+    }).catch(function () {}).then(function () {
+      uploading = false;
+    });
+  }
+
+  function startPump() {
+    live = true;
+    dirty = true;
+    loadH2C(function () { dirty = true; captureOnce(); });
+    if (pumpTimer) return;
+    pumpTimer = setInterval(function () {
+      if (!live) return;
+      if (dirty) {
+        dirty = false;
+        captureOnce();
+      }
+    }, 450);
+    setInterval(function () { if (live) dirty = true; }, 1800);
+  }
+
+  function stopPump() {
+    live = false;
+  }
+
+  function markDirty() { if (live) dirty = true; }
+
+  ['click', 'keyup', 'scroll', 'change', 'input'].forEach(function (ev) {
+    window.addEventListener(ev, markDirty, true);
+  });
+  window.addEventListener('resize', markDirty);
+
+  async function refresh() {
+    try {
+      var r = await fetch('{% url "tv_state_api" %}', { credentials: 'same-origin', cache: 'no-store' });
+      var data = await r.json();
+      setStatus(data);
+      if (data && data.mode === 'crm') {
+        await send('crm', true);
+        startPump();
+      } else {
+        stopPump();
+      }
+    } catch (e) {}
+  }
+
+  toggle.addEventListener('click', function () {
+    applyMode(modeNow === 'ads' ? 'crm' : 'ads');
+  });
+  if (crmLabel) crmLabel.addEventListener('click', function () { applyMode('crm'); });
+  if (adsLabel) adsLabel.addEventListener('click', function () { applyMode('ads'); });
+  refresh();
+  setInterval(refresh, 8000);
 })();
 </script>
 {% endif %}

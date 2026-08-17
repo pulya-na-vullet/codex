@@ -1,0 +1,405 @@
+{% load static %}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>ИТ-М</title>
+  <link rel="manifest" href="/tv/manifest.webmanifest">
+  <!-- ITM-TV-ADS-KIOSK -->
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow: hidden;
+      background: #000;
+      color: #f7fbf8;
+      font-family: Arial, Helvetica, sans-serif;
+      cursor: none;
+      overscroll-behavior: none;
+    }
+    .stage {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+    .stage.is-off { visibility: hidden; pointer-events: none; }
+    .bg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center center;
+      opacity: 0;
+      z-index: 0;
+    }
+    .bg.is-on { opacity: 1; z-index: 1; }
+    #tvCastView {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center center;
+      background: #000;
+      display: none;
+      z-index: 20;
+    }
+    #tvCastView.is-on { display: block; }
+    .caption {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      z-index: 2;
+      padding: 2vw 4vw 3vw;
+      background: none;
+      text-align: center;
+    }
+    .headline, .support, .footer, .phone, .price-pill {
+      text-shadow: 0 2px 10px #000, 0 0 18px #000;
+    }
+    .slide { display: none; }
+    .slide.is-active { display: block; }
+    .eyebrow {
+      font-size: 1.6vw;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: #7ddea0;
+      margin-bottom: 0.6vw;
+    }
+    .headline {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 3.4vw;
+      line-height: 1.15;
+      margin: 0 auto 0.8vw;
+      max-width: 18em;
+    }
+    .support {
+      font-size: 1.8vw;
+      line-height: 1.35;
+      color: #d9ebe0;
+      max-width: 28em;
+      margin: 0 auto 0.6vw;
+    }
+    .footer {
+      font-size: 1.3vw;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #9fbfab;
+    }
+    .phone { font-size: 2.4vw; font-weight: 800; margin: 0.5vw 0; }
+    .phone span { color: #7ddea0; }
+    .price-row { margin: 0.8vw auto 0; max-width: 80vw; }
+    .price-pill {
+      display: inline-block;
+      min-width: 16vw;
+      margin: 0.5vw 0.6vw;
+      padding: 0.8vw 1.2vw;
+      border: 1px solid #7ddea0;
+      border-radius: 0.8vw;
+      text-align: left;
+      background: #07140c;
+    }
+    .price-pill .name { font-size: 1.2vw; color: #9fbfab; margin-bottom: 0.3vw; }
+    .price-pill .sum { font-size: 2vw; font-weight: 800; }
+    .price-pill .sum span { font-size: 1.1vw; color: #7ddea0; margin-left: 0.3vw; }
+    .stage[data-scene="atelier"] .eyebrow { color: #e0c4ff; }
+    .stage[data-scene="atelier"] .price-pill { border-color: #c896ff; background: #1c0a2a; }
+    .stage[data-scene="atelier"] .price-pill .sum span { color: #e0c4ff; }
+    .stage[data-scene="software"] .eyebrow, .stage[data-scene="software"] .phone span { color: #f0d48a; }
+    .stage[data-scene="software"] .price-pill { border-color: #d4a84b; background: #0c0e16; }
+    .stage[data-scene="software"] .price-pill .sum span { color: #f0d48a; }
+  </style>
+</head>
+<body>
+  <div class="stage" id="tv-root" data-scene="hall">
+    <img class="bg is-on" data-scene="hall" src="{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}?v={{ tv_page_version }}" alt="">
+    <img class="bg" data-scene="atelier" src="{% static 'workshop/promo/tv43/bg-atelier-purple-hall-fhd.png' %}?v={{ tv_page_version }}" alt="">
+    <img class="bg" data-scene="software" src="{% static 'workshop/promo/tv43/bg-software-gold-hall-fhd.png' %}?v={{ tv_page_version }}" alt="">
+
+    <div class="caption">
+      <section class="slide is-active" data-scene="hall">
+        <div class="eyebrow">мастерская ИТ-М</div>
+        <h1 class="headline">Чиним технику · рядом · по делу</h1>
+        <p class="support">Компьютер, телефон, ноутбук или ТВ — починим и скажем честную цену</p>
+        <p class="footer">в Куюках · без обмана</p>
+      </section>
+      <section class="slide" data-scene="hall">
+        <div class="eyebrow">удобно</div>
+        <h1 class="headline">Пишем в Max, когда готово</h1>
+        <p class="support">Не надо звонить и спрашивать — придёт сообщение: заказ готов или нужна ваша реакция</p>
+        <p class="footer">подключить можно за минуту</p>
+      </section>
+      <section class="slide" data-scene="hall">
+        <div class="eyebrow">ремонт</div>
+        <h1 class="headline">ПК · Ноутбуки · Телефоны · ТВ</h1>
+        <p class="support">Гарантия 3 месяца. Сначала диагностика — если чините у нас, её стоимость вычитаем из ремонта</p>
+        <p class="footer">понятно до старта работ</p>
+      </section>
+      <section class="slide" data-scene="hall">
+        <div class="eyebrow">цены</div>
+        <h1 class="headline">Сколько стоит — видно сразу</h1>
+        <div class="price-row">
+          <div class="price-pill"><div class="name">Посмотреть, в чём поломка</div><div class="sum">500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Почистить ноутбук (не греется)</div><div class="sum">2 500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Поставить Windows «как новый»</div><div class="sum">2 500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Собрать компьютер под задачи</div><div class="sum">3 000<span>₽</span></div></div>
+        </div>
+      </section>
+      <section class="slide" data-scene="hall">
+        <div class="eyebrow">выезд</div>
+        <h1 class="headline">Не везти технику — мастер приедет</h1>
+        <p class="support">Выезд и осмотр от 1 500 ₽. Разберёмся на месте: починить или забрать в мастерскую</p>
+        <p class="footer">удобно для дома и хозяйства</p>
+      </section>
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">3D-печать</div>
+        <h1 class="headline">Сломалась деталь — напечатаем новую</h1>
+        <p class="support">Ручка, крепёж, крышка, запчасть к технике или инструменту — сделаем пластмассовую деталь под ваш размер</p>
+        <p class="footer">дешевле и быстрее, чем ждать заказ с завода</p>
+      </section>
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">зачем это вам</div>
+        <h1 class="headline">Не искать «такую же» по магазинам</h1>
+        <p class="support">Принесите обломок, фото или скажите задачу — подберём форму и напечатаем. Подойдёт для дома, гаража, дачи</p>
+        <p class="footer">одна деталь или несколько штук</p>
+      </section>
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">сколько стоит</div>
+        <h1 class="headline">Простые цены</h1>
+        <div class="price-row">
+          <div class="price-pill"><div class="name">Напечатать деталь — от</div><div class="sum">500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Снять размер с образца</div><div class="sum">1 500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Сделать модель «с нуля»</div><div class="sum">от 2 000<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Починить готовый файл</div><div class="sum">от 800<span>₽</span></div></div>
+        </div>
+      </section>
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">как заказать</div>
+        <h1 class="headline">Пришлите фото или принесите кусок</h1>
+        <p class="support">Посчитаем цену и срок. Обычно готово от 1 дня. Подскажем, какой пластик крепче для вашей задачи</p>
+        <p class="footer">консультация бесплатно</p>
+      </section>
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">программы под вас</div>
+        <h1 class="headline">Бот или учёт — чтобы не терять клиентов</h1>
+        <p class="support">Нужно принимать заявки в Max, вести заказы или напоминать клиентам? Сделаем простую программу под ваш бизнес</p>
+        <p class="footer">без «сложного IT» — по вашим правилам</p>
+      </section>
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">польза</div>
+        <h1 class="headline">Меньше звонков · больше порядка</h1>
+        <p class="support">Клиент пишет боту — заявка сама попадает в список. Статусы, напоминания, прайс — всё в одном месте</p>
+        <p class="footer">подходит мастерским, магазинам, услугам</p>
+      </section>
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">как идёт работа</div>
+        <h1 class="headline">Сначала договоримся о цене</h1>
+        <div class="price-row">
+          <div class="price-pill"><div class="name">Разберём задачу</div><div class="sum">1–2<span>дня</span></div></div>
+          <div class="price-pill"><div class="name">Договор и понятное ТЗ</div><div class="sum">фикс<span>цена</span></div></div>
+          <div class="price-pill"><div class="name">Делаем и показываем</div><div class="sum">по шагам</div></div>
+          <div class="price-pill"><div class="name">Запуск и помощь</div><div class="sum">на связи</div></div>
+        </div>
+      </section>
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">начать</div>
+        <h1 class="headline">Расскажите, что хотите упростить</h1>
+        <p class="phone">+7 (918) <span>802-87-67</span></p>
+        <p class="support">По телефону или в мастерской — скажем срок и стоимость без сложных слов</p>
+        <p class="footer">можно с примером «как у соседа / как сейчас вручную»</p>
+      </section>
+      <section class="slide" data-scene="hall">
+        <div class="eyebrow">ИТ-М · Куюки</div>
+        <h1 class="headline">Приезжайте — разберёмся вместе</h1>
+        <p class="phone">+7 (918) <span>802-87-67</span></p>
+        <p class="support">р. Татарстан, д. Куюки, ул. 24 квартал, дом 1</p>
+        <p class="footer">со 3-го заказа — скидка 10%</p>
+      </section>
+    </div>
+  </div>
+  <img id="tvCastView" alt="">
+  <script>
+  (function () {
+    var stage = document.getElementById('tv-root');
+    var bgs = stage.getElementsByTagName('img');
+    var slides = stage.getElementsByTagName('section');
+    var story = [
+      { scene: 'hall', slide: 0 },
+      { scene: 'hall', slide: 1 },
+      { scene: 'hall', slide: 2 },
+      { scene: 'hall', slide: 3 },
+      { scene: 'hall', slide: 4 },
+      { scene: 'atelier', slide: 0 },
+      { scene: 'atelier', slide: 1 },
+      { scene: 'atelier', slide: 2 },
+      { scene: 'atelier', slide: 3 },
+      { scene: 'software', slide: 0 },
+      { scene: 'software', slide: 1 },
+      { scene: 'software', slide: 2 },
+      { scene: 'software', slide: 3 },
+      { scene: 'hall', slide: 5 }
+    ];
+    var idx = 0;
+    var showing = 0;
+    var paused = false;
+    var timer = null;
+    var lastRev = -1;
+    var lastMode = '';
+    var lastPath = '';
+    var lastCastSeq = -1;
+    var PAGE_V = '{{ tv_page_version|default:"1" }}';
+    var castImg = document.getElementById('tvCastView');
+    var pollTimer = null;
+
+    function slidesOf(scene) {
+      var out = [];
+      var i;
+      for (i = 0; i < slides.length; i++) {
+        if (slides[i].getAttribute('data-scene') === scene) out.push(slides[i]);
+      }
+      return out;
+    }
+
+    function show(step) {
+      var i, list, el;
+      stage.setAttribute('data-scene', step.scene);
+      for (i = 0; i < bgs.length; i++) {
+        if (bgs[i].getAttribute('data-scene') === step.scene) bgs[i].className = 'bg is-on';
+        else bgs[i].className = 'bg';
+      }
+      for (i = 0; i < slides.length; i++) slides[i].className = 'slide';
+      list = slidesOf(step.scene);
+      el = list[step.slide];
+      if (el) el.className = 'slide is-active';
+    }
+
+    function tick() {
+      if (paused) return;
+      showing = idx;
+      show(story[idx]);
+      idx = (idx + 1) % story.length;
+      reportProgress(showing);
+    }
+
+    function reportProgress(index) {
+      try {
+        var body = JSON.stringify({ index: index });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('/tv/progress', new Blob([body], { type: 'application/json' }));
+        } else {
+          fetch('/tv/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: body,
+            keepalive: true
+          });
+        }
+      } catch (e) {}
+    }
+
+    function showCast(seq) {
+      paused = true;
+      reportProgress(showing);
+      if (stage) stage.className = 'stage is-off';
+      if (castImg) castImg.className = 'is-on';
+      if (seq && seq !== lastCastSeq) {
+        lastCastSeq = seq;
+        var src = '/tv/cast.jpg?s=' + encodeURIComponent(seq);
+        var next = new Image();
+        next.onload = function () { castImg.src = src; };
+        next.src = src;
+      }
+    }
+
+    function showAds(startIndex) {
+      paused = false;
+      lastCastSeq = -1;
+      if (castImg) {
+        castImg.className = '';
+        castImg.removeAttribute('src');
+      }
+      if (stage) stage.className = 'stage';
+      if (typeof startIndex === 'number') {
+        idx = ((startIndex % story.length) + story.length) % story.length;
+      }
+      showing = idx;
+      show(story[idx]);
+    }
+
+    function setPollMs(ms) {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(poll, ms);
+    }
+
+    function applyState(data) {
+      if (!data || !data.ok) return;
+      if (data.page_v && String(data.page_v) !== String(PAGE_V)) {
+        location.replace('/tv?v=' + encodeURIComponent(data.page_v));
+        return;
+      }
+      var mode = data.mode === 'crm' ? 'crm' : 'ads';
+      var rev = data.rev;
+      var path = data.crm_path || '/';
+      var seq = data.cast_seq || 0;
+      if (mode === 'crm') {
+        if (mode !== lastMode) setPollMs(500);
+        lastMode = mode;
+        lastRev = rev;
+        lastPath = path;
+        showCast(seq);
+        return;
+      }
+      if (mode === lastMode && rev === lastRev && path === lastPath) return;
+      lastMode = mode;
+      lastRev = rev;
+      lastPath = path;
+      setPollMs(4000);
+      showAds(typeof data.ads_index === 'number' ? data.ads_index : showing);
+    }
+
+    async function poll() {
+      try {
+        var r = await fetch('/tv/state', { cache: 'no-store' });
+        applyState(await r.json());
+      } catch (e) {}
+    }
+
+    tick();
+    timer = setInterval(tick, 8000);
+    poll();
+    setPollMs(4000);
+
+    function isFs() {
+      return !!(document.fullscreenElement || document.webkitFullscreenElement);
+    }
+    function goFs() {
+      if (isFs()) return;
+      var el = document.documentElement;
+      var req = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen;
+      if (!req) return;
+      try { req.call(el, { navigationUI: 'hide' }); }
+      catch (e) {
+        try { req.call(el); } catch (e2) {}
+      }
+    }
+    goFs();
+    ['click', 'keydown', 'keyup', 'pointerdown', 'touchend'].forEach(function (ev) {
+      document.addEventListener(ev, goFs, true);
+    });
+    setInterval(goFs, 4000);
+  })();
+  </script>
+</body>
+</html>

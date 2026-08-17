@@ -108,7 +108,10 @@ class OrderLogicTests(TestCase):
 @override_settings(WORKSHOP_USERNAME="ITM", WORKSHOP_PASSWORD="pass", PRINT_WORKER_ENABLED=False)
 class AuthAndPagesTests(TestCase):
     def setUp(self):
+        from workshop.tv_cast_frames import clear_jpeg
+
         self.http = HttpClient()
+        clear_jpeg()
 
     def test_login_required(self):
         r = self.http.get("/")
@@ -135,7 +138,7 @@ class AuthAndPagesTests(TestCase):
 
     def test_tv_ads_page(self):
         anon = HttpClient()
-        r = anon.get("/tv?fs=1")
+        r = anon.get("/tv?full=1")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Чиним технику")
         self.assertContains(r, "Esc")
@@ -149,6 +152,194 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "bg-software-gold-hall-fhd.png")
         self.assertContains(r, "Бот или учёт")
         self.assertContains(r, "worldSoftware")
+
+    def test_tv_ads_lite_page_is_default(self):
+        anon = HttpClient()
+        r = anon.get("/tv")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "ITM-TV-ADS-KIOSK")
+        self.assertContains(r, 'id="tv-root"')
+        self.assertContains(r, "<title>ИТ-М</title>")
+        self.assertContains(r, "requestFullscreen")
+        self.assertContains(r, "navigationUI")
+        self.assertContains(r, "/tv/manifest.webmanifest")
+        self.assertContains(r, "object-fit: cover")
+        self.assertContains(r, "Чиним технику")
+        self.assertContains(r, "Сломалась деталь")
+        self.assertContains(r, "Бот или учёт")
+        self.assertContains(r, "tvCastView")
+        self.assertContains(r, "/tv/cast.jpg")
+        self.assertNotContains(r, "width: 1920px")
+        self.assertNotContains(r, "translate(-50%, -50%) scale(")
+        self.assertNotContains(r, "rgba(0, 0, 0, 0.58)")
+        self.assertContains(r, "background: none")
+        self.assertContains(r, "<img")
+        self.assertContains(r, "bg-three-windows-fhd.png")
+        self.assertContains(r, "bg-atelier-purple-hall-fhd.png")
+        self.assertContains(r, "bg-software-gold-hall-fhd.png")
+        self.assertNotContains(r, "worldFx")
+        self.assertNotContains(r, "id=\"portal\"")
+        self.assertContains(r, "id=\"tvCastView\"")
+        self.assertContains(r, "/tv/state")
+        self.assertContains(r, "page_v")
+        self.assertContains(r, "location.replace")
+        r_kiosk = anon.get("/tv?os=1&kiosk=ITM-TV-ADS-KIOSK")
+        self.assertContains(r_kiosk, "worldFx")
+
+        r_man = anon.get("/tv/manifest.webmanifest")
+        self.assertEqual(r_man.status_code, 200)
+        man = r_man.json()
+        self.assertEqual(man["display"], "fullscreen")
+        self.assertEqual(man["name"], "ИТ-М")
+
+    def test_tv_display_switch_crm_and_resume_ads(self):
+        from workshop.models import TvDisplayMode, TvDisplaySettings
+        from workshop.tv_display import sanitize_tv_crm_path
+
+        self.assertEqual(sanitize_tv_crm_path("/orders/3"), "/orders/3")
+        self.assertEqual(sanitize_tv_crm_path("/orders/new"), "/orders/new")
+        self.assertEqual(sanitize_tv_crm_path("/admin-panel"), "/")
+        self.assertEqual(sanitize_tv_crm_path("https://evil.test/orders/1"), "/")
+
+        anon = HttpClient()
+        r = anon.get("/tv/state")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["mode"], "ads")
+        self.assertTrue(r.json().get("page_v"))
+
+        r = anon.post("/tv/progress", data='{"index": 4}', content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["ads_index"], 4)
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/work-queue"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["mode"], TvDisplayMode.CRM)
+        self.assertEqual(data["crm_path"], "/work-queue")
+        self.assertEqual(data["ads_index"], 4)
+        self.assertEqual(data["crm_width"], 1440)
+        self.assertEqual(data["crm_height"], 900)
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/work-queue","follow":true,"viewport_w":1512,"viewport_h":982}',
+            content_type="application/json",
+        )
+        data = r.json()
+        self.assertEqual(data["crm_path"], "/work-queue")
+        self.assertEqual(data["crm_width"], 1512)
+        self.assertEqual(data["crm_height"], 982)
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/work-queue","follow":true,"viewport_w":99999,"viewport_h":10}',
+            content_type="application/json",
+        )
+        data = r.json()
+        self.assertEqual(data["crm_width"], 5120)
+        self.assertEqual(data["crm_height"], 360)
+
+        r = anon.get("/tv/frame")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["X-Frame-Options"], "SAMEORIGIN")
+        self.assertIn("frame-ancestors", r.get("Content-Security-Policy", ""))
+        self.assertContains(r, "tv-cast")
+        self.assertContains(r, "В работе")
+        self.assertNotContains(r, 'id="tvCastToggle"')
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/orders/new","follow":true}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["crm_path"], "/orders/new")
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"ads"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["mode"], TvDisplayMode.ADS)
+        self.assertEqual(TvDisplaySettings.get_solo().ads_index, 4)
+
+    def test_tv_cast_jpeg_fits_tv_frame(self):
+        from pathlib import Path
+
+        from workshop.tv_cast_frames import get_jpeg
+
+        js = Path(__file__).resolve().parent / "static" / "workshop" / "js" / "html2canvas.min.js"
+        self.assertTrue(js.is_file())
+
+        anon = HttpClient()
+        r = anon.get("/tv/cast.jpg")
+        self.assertEqual(r.status_code, 204)
+        r = anon.post("/admin-panel/tv-cast-frame", data=b"\xff\xd8\xff\xd9", content_type="image/jpeg")
+        self.assertEqual(r.status_code, 302)
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        r = self.http.get("/")
+        self.assertContains(r, "html2canvas.min.js")
+        self.assertContains(r, "tv-cast-frame")
+        self.assertContains(r, "показать клиенту на ТВ")
+        self.assertContains(r, "показать рекламу на ТВ")
+        self.assertContains(r, 'id="tvCastToggle"')
+        self.assertNotContains(r, "Показать на ТВ")
+
+        jpeg = b"\xff\xd8\xff\xd9"
+        r = self.http.post("/admin-panel/tv-cast-frame", data=jpeg, content_type="image/jpeg")
+        self.assertEqual(r.status_code, 200)
+        self.assertGreaterEqual(r.json()["cast_seq"], 1)
+
+        r = anon.get("/tv/cast.jpg")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "image/jpeg")
+        self.assertEqual(r.content, jpeg)
+        self.assertEqual(get_jpeg()[0], jpeg)
+
+        r = self.http.post("/admin-panel/tv-cast-frame", data=b"not-an-image", content_type="image/jpeg")
+        self.assertEqual(r.status_code, 400)
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"ads"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["mode"], "ads")
+        self.assertEqual(r.json()["cast_seq"], 0)
+        r = anon.get("/tv/cast.jpg")
+        self.assertEqual(r.status_code, 204)
+
+    def test_quiet_tv_poll_log_filter(self):
+        import logging
+
+        from workshop.logging_filters import QuietTvPollFilter
+
+        flt = QuietTvPollFilter()
+        rec = logging.LogRecord(
+            "django.server",
+            logging.INFO,
+            "",
+            0,
+            '"GET /tv/state HTTP/1.1" 200 180',
+            None,
+            None,
+        )
+        rec.status_code = 200
+        self.assertFalse(flt.filter(rec))
+        rec.status_code = 500
+        rec.msg = '"GET /tv/state HTTP/1.1" 500 32'
+        self.assertTrue(flt.filter(rec))
+        rec.status_code = 200
+        rec.msg = '"GET /orders/1 HTTP/1.1" 200 1200'
+        self.assertTrue(flt.filter(rec))
+        rec.msg = '"GET /tv/cast.jpg HTTP/1.1" 200 8000'
+        rec.status_code = 200
+        self.assertFalse(flt.filter(rec))
 
     def test_tv_close_api_local(self):
         anon = HttpClient()
@@ -223,6 +414,58 @@ class AuthAndPagesTests(TestCase):
                 assert_tv_endpoint("http://127.0.0.1:8000")
         self.assertIn("не найдена", str(ctx.exception))
 
+    def test_tv_ads_urls_include_localhost_and_lan(self):
+        from unittest.mock import patch
+
+        from workshop.network import primary_tv_ads_url, tv_ads_urls
+
+        with patch("workshop.network.get_lan_ipv4_addresses", return_value=["192.168.1.10", "127.0.0.1"]):
+            urls = tv_ads_urls(8000)
+        self.assertEqual(urls[0], "http://192.168.1.10:8000/tv")
+        self.assertIn("http://127.0.0.1:8000/tv", urls)
+        with patch("workshop.network.get_lan_ipv4_addresses", return_value=["192.168.1.10"]):
+            self.assertEqual(primary_tv_ads_url(8000), "http://192.168.1.10:8000/tv")
+
+    def test_print_access_urls_prints_tv_ads_link(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from unittest.mock import patch
+
+        from workshop.network import print_access_urls
+
+        buf = StringIO()
+        with patch("workshop.network.get_lan_ipv4_addresses", return_value=["192.168.0.42"]):
+            with redirect_stdout(buf):
+                print_access_urls("0.0.0.0", 8000)
+        text = buf.getvalue()
+        self.assertIn("ТВ-реклама", text)
+        self.assertIn("http://192.168.0.42:8000/tv", text)
+        self.assertIn("http://127.0.0.1:8000/tv", text)
+        self.assertIn("HDMI", text)
+        self.assertIn("Smart TV", text)
+
+    def test_admin_panel_shows_tv_url_and_hdmi_choice(self):
+        from unittest.mock import patch
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        with patch("workshop.network.get_lan_ipv4_addresses", return_value=["10.0.0.8"]):
+            r = self.http.get("/admin-panel")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "По URL — браузер Smart TV, без HDMI")
+        self.assertContains(r, "По HDMI-кабелю — монитор этого ПК")
+        self.assertContains(r, "http://10.0.0.8:8000/tv")
+        self.assertContains(r, 'id="tvAdsPrimaryUrl"')
+        self.assertContains(r, 'id="tvModeUrl"')
+        self.assertContains(r, 'id="tvModeHdmi"')
+        self.assertContains(r, 'id="tvHdmiPane"')
+        self.assertContains(r, "/admin-panel/tv-qr.png")
+
+    def test_tv_ads_qr_png(self):
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        r = self.http.get("/admin-panel/tv-qr.png")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "image/png")
+        self.assertGreater(len(r.content), 80)
 
     def test_login_and_dashboard(self):
         r = self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
@@ -415,6 +658,10 @@ class AuthAndPagesTests(TestCase):
         order = Order.objects.create(order_number="ORD-HIDE001")
         r = self.http.get(f"/orders/{order.id}")
         self.assertContains(r, "Скрываемая услуга")
+        self.assertContains(r, "tree-category")
+        self.assertContains(r, "tree-branch-body")
+        self.assertNotContains(r, "<details>")
+        self.assertNotContains(r, "<summary")
         r = self.http.post(f"/services/{service.id}/toggle-active", follow=True)
         self.assertEqual(r.status_code, 200)
         service.refresh_from_db()

@@ -1352,3 +1352,40 @@ class SoftwareDevPhoto(models.Model):
         ordering = ["id"]
         verbose_name = "Фото к ТЗ"
         verbose_name_plural = "Фото к ТЗ"
+
+
+class TvDisplayMode(models.TextChoices):
+    ADS = "ads", "Реклама"
+    CRM = "crm", "Страница CRM"
+
+
+class TvDisplaySettings(models.Model):
+    """What the client-zone TV should show: ads carousel or a CRM page."""
+
+    mode = models.CharField(
+        "Режим ТВ",
+        max_length=16,
+        choices=TvDisplayMode.choices,
+        default=TvDisplayMode.ADS,
+        db_index=True,
+    )
+    crm_path = models.CharField("Путь CRM на ТВ", max_length=255, blank=True, default="/")
+    crm_width = models.PositiveIntegerField("Ширина окна CRM на Mac", default=1440)
+    crm_height = models.PositiveIntegerField("Высота окна CRM на Mac", default=900)
+    ads_index = models.PositiveIntegerField("Слайд рекламы", default=0)
+    rev = models.PositiveIntegerField("Версия состояния", default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Экран ТВ в клиентской зоне"
+        verbose_name_plural = "Экран ТВ в клиентской зоне"
+
+    def __str__(self) -> str:
+        return f"TV {self.mode} {self.crm_path}"
+
+    @classmethod
+    def get_solo(cls) -> "TvDisplaySettings":
+        obj = cls.objects.first()
+        if obj:
+            return obj
+        return cls.objects.create()
