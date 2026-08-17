@@ -2718,11 +2718,26 @@ def software_pdf(request: HttpRequest, contract_id: int):
     return response
 
 
+def tv_ads_use_lite(request: HttpRequest) -> bool:
+    """Default /tv is a simple Smart-TV page. HDMI kiosk keeps the cinematic version."""
+    q = request.GET
+    full = (q.get("full") or "").strip().lower()
+    lite = (q.get("lite") or "").strip().lower()
+    if full in ("1", "true", "yes") or lite in ("0", "off", "no"):
+        return False
+    if (q.get("os") or "").strip() == "1":
+        return False
+    if (q.get("kiosk") or "").strip():
+        return False
+    return True
+
+
 @require_GET
 def tv_ads(request: HttpRequest):
-    """Client-zone fullscreen ads carousel (opened from admin onto a chosen monitor)."""
+    """Client-zone ads: lite page for /tv (Android/Smart TV), cinematic for HDMI kiosk."""
     # Title marker must stay unique so OS placement never confuses this with CRM.
-    response = render(request, "workshop/tv_ads.html", {"title": "ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK"})
+    template = "workshop/tv_ads_lite.html" if tv_ads_use_lite(request) else "workshop/tv_ads.html"
+    response = render(request, template, {"title": "ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK"})
     response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response["Pragma"] = "no-cache"
     return response

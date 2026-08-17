@@ -135,7 +135,7 @@ class AuthAndPagesTests(TestCase):
 
     def test_tv_ads_page(self):
         anon = HttpClient()
-        r = anon.get("/tv?fs=1")
+        r = anon.get("/tv?full=1")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Чиним технику")
         self.assertContains(r, "Esc")
@@ -149,6 +149,25 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "bg-software-gold-hall-fhd.png")
         self.assertContains(r, "Бот или учёт")
         self.assertContains(r, "worldSoftware")
+
+    def test_tv_ads_lite_page_is_default(self):
+        anon = HttpClient()
+        r = anon.get("/tv")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "ITM-TV-ADS-KIOSK")
+        self.assertContains(r, 'id="tv-root"')
+        self.assertContains(r, "Чиним технику")
+        self.assertContains(r, "Сломалась деталь")
+        self.assertContains(r, "Бот или учёт")
+        self.assertContains(r, "object-fit: contain")
+        self.assertContains(r, "<img")
+        self.assertContains(r, "bg-three-windows-fhd.png")
+        self.assertContains(r, "bg-atelier-purple-hall-fhd.png")
+        self.assertContains(r, "bg-software-gold-hall-fhd.png")
+        self.assertNotContains(r, "worldFx")
+        self.assertNotContains(r, "id=\"portal\"")
+        r_kiosk = anon.get("/tv?os=1&kiosk=ITM-TV-ADS-KIOSK")
+        self.assertContains(r_kiosk, "worldFx")
 
     def test_tv_close_api_local(self):
         anon = HttpClient()

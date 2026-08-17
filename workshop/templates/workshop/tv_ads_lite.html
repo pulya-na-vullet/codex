@@ -1,0 +1,262 @@
+{% load static %}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <title>ИТ-М · ТВ-реклама · ITM-TV-ADS-KIOSK</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: #f7fbf8;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .stage {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+    .bg {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center center;
+      opacity: 0;
+      z-index: 0;
+    }
+    .bg.is-on { opacity: 1; z-index: 1; }
+    .caption {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      z-index: 2;
+      padding: 18px 36px 28px;
+      background: #000;
+      background: rgba(0, 0, 0, 0.58);
+      text-align: center;
+    }
+    .slide { display: none; }
+    .slide.is-active { display: block; }
+    .eyebrow {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: #7ddea0;
+      margin-bottom: 8px;
+    }
+    .headline {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 42px;
+      line-height: 1.15;
+      margin: 0 auto 10px;
+      max-width: 18em;
+    }
+    .support {
+      font-size: 22px;
+      line-height: 1.35;
+      color: #d9ebe0;
+      max-width: 28em;
+      margin: 0 auto 8px;
+    }
+    .footer {
+      font-size: 16px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #9fbfab;
+    }
+    .phone { font-size: 28px; font-weight: 800; margin: 6px 0; }
+    .phone span { color: #7ddea0; }
+    .price-row { margin: 10px auto 0; max-width: 1100px; }
+    .price-pill {
+      display: inline-block;
+      min-width: 220px;
+      margin: 6px 8px;
+      padding: 10px 16px;
+      border: 1px solid #7ddea0;
+      border-radius: 12px;
+      text-align: left;
+      background: #07140c;
+    }
+    .price-pill .name { font-size: 15px; color: #9fbfab; margin-bottom: 4px; }
+    .price-pill .sum { font-size: 24px; font-weight: 800; }
+    .price-pill .sum span { font-size: 14px; color: #7ddea0; margin-left: 4px; }
+    .stage[data-scene="atelier"] .eyebrow { color: #e0c4ff; }
+    .stage[data-scene="atelier"] .price-pill { border-color: #c896ff; background: #1c0a2a; }
+    .stage[data-scene="atelier"] .price-pill .sum span { color: #e0c4ff; }
+    .stage[data-scene="software"] .eyebrow, .stage[data-scene="software"] .phone span { color: #f0d48a; }
+    .stage[data-scene="software"] .price-pill { border-color: #d4a84b; background: #0c0e16; }
+    .stage[data-scene="software"] .price-pill .sum span { color: #f0d48a; }
+  </style>
+</head>
+<body>
+  <div class="stage" id="tv-root" data-scene="hall">
+    <img class="bg is-on" data-scene="hall" src="{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}" alt="">
+    <img class="bg" data-scene="atelier" src="{% static 'workshop/promo/tv43/bg-atelier-purple-hall-fhd.png' %}" alt="">
+    <img class="bg" data-scene="software" src="{% static 'workshop/promo/tv43/bg-software-gold-hall-fhd.png' %}" alt="">
+
+    <div class="caption">
+      <section class="slide is-active" data-scene="hall">
+        <div class="eyebrow">мастерская ИТ-М</div>
+        <h1 class="headline">Чиним технику · рядом · по делу</h1>
+        <p class="support">Компьютер, телефон, ноутбук или ТВ — починим и скажем честную цену</p>
+        <p class="footer">в Куюках · без обмана</p>
+      </section>
+      <section class="slide" data-scene="hall">
+        <div class="eyebrow">удобно</div>
+        <h1 class="headline">Пишем в Max, когда готово</h1>
+        <p class="support">Не надо звонить и спрашивать — придёт сообщение: заказ готов или нужна ваша реакция</p>
+        <p class="footer">подключить можно за минуту</p>
+      </section>
+      <section class="slide" data-scene="hall">
+        <div class="eyebrow">ремонт</div>
+        <h1 class="headline">ПК · Ноутбуки · Телефоны · ТВ</h1>
+        <p class="support">Гарантия 3 месяца. Сначала диагностика — если чините у нас, её стоимость вычитаем из ремонта</p>
+        <p class="footer">понятно до старта работ</p>
+      </section>
+      <section class="slide" data-scene="hall">
+        <div class="eyebrow">цены</div>
+        <h1 class="headline">Сколько стоит — видно сразу</h1>
+        <div class="price-row">
+          <div class="price-pill"><div class="name">Посмотреть, в чём поломка</div><div class="sum">500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Почистить ноутбук (не греется)</div><div class="sum">2 500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Поставить Windows «как новый»</div><div class="sum">2 500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Собрать компьютер под задачи</div><div class="sum">3 000<span>₽</span></div></div>
+        </div>
+      </section>
+      <section class="slide" data-scene="hall">
+        <div class="eyebrow">выезд</div>
+        <h1 class="headline">Не везти технику — мастер приедет</h1>
+        <p class="support">Выезд и осмотр от 1 500 ₽. Разберёмся на месте: починить или забрать в мастерскую</p>
+        <p class="footer">удобно для дома и хозяйства</p>
+      </section>
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">3D-печать</div>
+        <h1 class="headline">Сломалась деталь — напечатаем новую</h1>
+        <p class="support">Ручка, крепёж, крышка, запчасть к технике или инструменту — сделаем пластмассовую деталь под ваш размер</p>
+        <p class="footer">дешевле и быстрее, чем ждать заказ с завода</p>
+      </section>
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">зачем это вам</div>
+        <h1 class="headline">Не искать «такую же» по магазинам</h1>
+        <p class="support">Принесите обломок, фото или скажите задачу — подберём форму и напечатаем. Подойдёт для дома, гаража, дачи</p>
+        <p class="footer">одна деталь или несколько штук</p>
+      </section>
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">сколько стоит</div>
+        <h1 class="headline">Простые цены</h1>
+        <div class="price-row">
+          <div class="price-pill"><div class="name">Напечатать деталь — от</div><div class="sum">500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Снять размер с образца</div><div class="sum">1 500<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Сделать модель «с нуля»</div><div class="sum">от 2 000<span>₽</span></div></div>
+          <div class="price-pill"><div class="name">Починить готовый файл</div><div class="sum">от 800<span>₽</span></div></div>
+        </div>
+      </section>
+      <section class="slide" data-scene="atelier">
+        <div class="eyebrow">как заказать</div>
+        <h1 class="headline">Пришлите фото или принесите кусок</h1>
+        <p class="support">Посчитаем цену и срок. Обычно готово от 1 дня. Подскажем, какой пластик крепче для вашей задачи</p>
+        <p class="footer">консультация бесплатно</p>
+      </section>
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">программы под вас</div>
+        <h1 class="headline">Бот или учёт — чтобы не терять клиентов</h1>
+        <p class="support">Нужно принимать заявки в Max, вести заказы или напоминать клиентам? Сделаем простую программу под ваш бизнес</p>
+        <p class="footer">без «сложного IT» — по вашим правилам</p>
+      </section>
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">польза</div>
+        <h1 class="headline">Меньше звонков · больше порядка</h1>
+        <p class="support">Клиент пишет боту — заявка сама попадает в список. Статусы, напоминания, прайс — всё в одном месте</p>
+        <p class="footer">подходит мастерским, магазинам, услугам</p>
+      </section>
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">как идёт работа</div>
+        <h1 class="headline">Сначала договоримся о цене</h1>
+        <div class="price-row">
+          <div class="price-pill"><div class="name">Разберём задачу</div><div class="sum">1–2<span>дня</span></div></div>
+          <div class="price-pill"><div class="name">Договор и понятное ТЗ</div><div class="sum">фикс<span>цена</span></div></div>
+          <div class="price-pill"><div class="name">Делаем и показываем</div><div class="sum">по шагам</div></div>
+          <div class="price-pill"><div class="name">Запуск и помощь</div><div class="sum">на связи</div></div>
+        </div>
+      </section>
+      <section class="slide" data-scene="software">
+        <div class="eyebrow">начать</div>
+        <h1 class="headline">Расскажите, что хотите упростить</h1>
+        <p class="phone">+7 (918) <span>802-87-67</span></p>
+        <p class="support">По телефону или в мастерской — скажем срок и стоимость без сложных слов</p>
+        <p class="footer">можно с примером «как у соседа / как сейчас вручную»</p>
+      </section>
+      <section class="slide" data-scene="hall">
+        <div class="eyebrow">ИТ-М · Куюки</div>
+        <h1 class="headline">Приезжайте — разберёмся вместе</h1>
+        <p class="phone">+7 (918) <span>802-87-67</span></p>
+        <p class="support">р. Татарстан, д. Куюки, ул. 24 квартал, дом 1</p>
+        <p class="footer">со 3-го заказа — скидка 10%</p>
+      </section>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var stage = document.getElementById('tv-root');
+    var bgs = stage.getElementsByTagName('img');
+    var slides = stage.getElementsByTagName('section');
+    var story = [
+      { scene: 'hall', slide: 0 },
+      { scene: 'hall', slide: 1 },
+      { scene: 'hall', slide: 2 },
+      { scene: 'hall', slide: 3 },
+      { scene: 'hall', slide: 4 },
+      { scene: 'atelier', slide: 0 },
+      { scene: 'atelier', slide: 1 },
+      { scene: 'atelier', slide: 2 },
+      { scene: 'atelier', slide: 3 },
+      { scene: 'software', slide: 0 },
+      { scene: 'software', slide: 1 },
+      { scene: 'software', slide: 2 },
+      { scene: 'software', slide: 3 },
+      { scene: 'hall', slide: 5 }
+    ];
+    var idx = 0;
+
+    function slidesOf(scene) {
+      var out = [];
+      var i;
+      for (i = 0; i < slides.length; i++) {
+        if (slides[i].getAttribute('data-scene') === scene) out.push(slides[i]);
+      }
+      return out;
+    }
+
+    function show(step) {
+      var i, list, el;
+      stage.setAttribute('data-scene', step.scene);
+      for (i = 0; i < bgs.length; i++) {
+        if (bgs[i].getAttribute('data-scene') === step.scene) bgs[i].className = 'bg is-on';
+        else bgs[i].className = 'bg';
+      }
+      for (i = 0; i < slides.length; i++) slides[i].className = 'slide';
+      list = slidesOf(step.scene);
+      el = list[step.slide];
+      if (el) el.className = 'slide is-active';
+    }
+
+    function tick() {
+      show(story[idx]);
+      idx = (idx + 1) % story.length;
+    }
+
+    tick();
+    setInterval(tick, 8000);
+  })();
+  </script>
+</body>
+</html>
