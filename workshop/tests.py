@@ -159,7 +159,10 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "Чиним технику")
         self.assertContains(r, "Сломалась деталь")
         self.assertContains(r, "Бот или учёт")
-        self.assertContains(r, "object-fit: contain")
+        self.assertContains(r, "object-fit: cover")
+        self.assertContains(r, "tvAdsWrap")
+        self.assertContains(r, "translate(-50%, -50%) scale(")
+        self.assertContains(r, "width: 1920px")
         self.assertNotContains(r, "rgba(0, 0, 0, 0.58)")
         self.assertContains(r, "background: none")
         self.assertContains(r, "<img")
@@ -205,6 +208,27 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(data["mode"], TvDisplayMode.CRM)
         self.assertEqual(data["crm_path"], "/work-queue")
         self.assertEqual(data["ads_index"], 4)
+        self.assertEqual(data["crm_width"], 1440)
+        self.assertEqual(data["crm_height"], 900)
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/work-queue","follow":true,"viewport_w":1512,"viewport_h":982}',
+            content_type="application/json",
+        )
+        data = r.json()
+        self.assertEqual(data["crm_path"], "/work-queue")
+        self.assertEqual(data["crm_width"], 1512)
+        self.assertEqual(data["crm_height"], 982)
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/work-queue","follow":true,"viewport_w":99999,"viewport_h":10}',
+            content_type="application/json",
+        )
+        data = r.json()
+        self.assertEqual(data["crm_width"], 5120)
+        self.assertEqual(data["crm_height"], 360)
 
         r = anon.get("/tv/frame")
         self.assertEqual(r.status_code, 200)
@@ -228,6 +252,30 @@ class AuthAndPagesTests(TestCase):
         )
         self.assertEqual(r.json()["mode"], TvDisplayMode.ADS)
         self.assertEqual(TvDisplaySettings.get_solo().ads_index, 4)
+
+    def test_quiet_tv_poll_log_filter(self):
+        import logging
+
+        from workshop.logging_filters import QuietTvPollFilter
+
+        flt = QuietTvPollFilter()
+        rec = logging.LogRecord(
+            "django.server",
+            logging.INFO,
+            "",
+            0,
+            '"GET /tv/state HTTP/1.1" 200 180',
+            None,
+            None,
+        )
+        rec.status_code = 200
+        self.assertFalse(flt.filter(rec))
+        rec.status_code = 500
+        rec.msg = '"GET /tv/state HTTP/1.1" 500 32'
+        self.assertTrue(flt.filter(rec))
+        rec.status_code = 200
+        rec.msg = '"GET /orders/1 HTTP/1.1" 200 1200'
+        self.assertTrue(flt.filter(rec))
 
     def test_tv_close_api_local(self):
         anon = HttpClient()

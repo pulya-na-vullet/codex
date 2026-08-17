@@ -2810,7 +2810,15 @@ def tv_display_api(request: HttpRequest):
     mode = (payload.get("mode") or request.POST.get("mode") or "ads").strip().lower()
     path = payload.get("path", request.POST.get("path"))
     follow = bool(payload.get("follow"))
-    cfg = set_display(mode=mode, path=path, follow=follow)
+    viewport_w = payload.get("viewport_w", request.POST.get("viewport_w"))
+    viewport_h = payload.get("viewport_h", request.POST.get("viewport_h"))
+    cfg = set_display(
+        mode=mode,
+        path=path,
+        follow=follow,
+        viewport_w=viewport_w,
+        viewport_h=viewport_h,
+    )
     if not follow:
         log_action(
             request,

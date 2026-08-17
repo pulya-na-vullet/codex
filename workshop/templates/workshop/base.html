@@ -622,9 +622,17 @@
   var statusEl = document.getElementById('tvCastStatus');
   if (!crmBtn || !adsBtn) return;
   var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
+  var lastSent = '';
 
   function here() {
     return (location.pathname || '/') + (location.search || '');
+  }
+
+  function viewport() {
+    return {
+      viewport_w: Math.round(window.innerWidth || 1440),
+      viewport_h: Math.round(window.innerHeight || 900)
+    };
   }
 
   function setStatus(data) {
@@ -640,7 +648,11 @@
   }
 
   async function send(mode, follow) {
-    var body = { mode: mode };
+    var vp = viewport();
+    var path = mode === 'crm' ? here() : '';
+    var key = mode + '|' + path + '|' + vp.viewport_w + 'x' + vp.viewport_h;
+    if (follow && key === lastSent) return;
+    var body = { mode: mode, viewport_w: vp.viewport_w, viewport_h: vp.viewport_h };
     if (mode === 'crm') body.path = here();
     if (follow) body.follow = true;
     var r = await fetch('{% url "tv_display_api" %}', {
@@ -654,6 +666,7 @@
       body: JSON.stringify(body)
     });
     var data = await r.json();
+    lastSent = key;
     setStatus(data);
     return data;
   }
@@ -669,10 +682,13 @@
     } catch (e) {}
   }
 
-  crmBtn.addEventListener('click', function () { send('crm', false); });
-  adsBtn.addEventListener('click', function () { send('ads', false); });
+  crmBtn.addEventListener('click', function () { lastSent = ''; send('crm', false); });
+  adsBtn.addEventListener('click', function () { lastSent = ''; send('ads', false); });
+  window.addEventListener('resize', function () {
+    if (crmBtn.classList.contains('is-live')) send('crm', true);
+  });
   refresh();
-  setInterval(refresh, 2500);
+  setInterval(refresh, 8000);
 })();
 </script>
 {% endif %}

@@ -92,6 +92,12 @@ def sanitize_tv_crm_path(raw: str | None) -> str:
     return "/"
 
 
+ADS_CANVAS_WIDTH = 1920
+ADS_CANVAS_HEIGHT = 1080
+DEFAULT_CRM_WIDTH = 1440
+DEFAULT_CRM_HEIGHT = 900
+
+
 def ads_slide_count() -> int:
     return 14
 
@@ -105,6 +111,14 @@ def clamp_ads_index(value: int | None) -> int:
     if n <= 0:
         return 0
     return idx % n
+
+
+def clamp_viewport_dim(value, default: int, lo: int, hi: int) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, n))
 
 
 def tv_page_version() -> str:
@@ -132,6 +146,10 @@ def state_payload() -> dict:
         "ok": True,
         "mode": cfg.mode,
         "crm_path": sanitize_tv_crm_path(cfg.crm_path),
+        "crm_width": clamp_viewport_dim(cfg.crm_width, DEFAULT_CRM_WIDTH, 640, 5120),
+        "crm_height": clamp_viewport_dim(cfg.crm_height, DEFAULT_CRM_HEIGHT, 360, 2880),
+        "ads_width": ADS_CANVAS_WIDTH,
+        "ads_height": ADS_CANVAS_HEIGHT,
         "ads_index": clamp_ads_index(cfg.ads_index),
         "rev": int(cfg.rev or 1),
         "page_v": tv_page_version(),
@@ -140,15 +158,27 @@ def state_payload() -> dict:
 
 def set_ads_index(index: int) -> TvDisplaySettings:
     cfg = get_settings()
-    cfg.ads_index = clamp_ads_index(index)
+    idx = clamp_ads_index(index)
+    if int(cfg.ads_index or 0) == idx:
+        return cfg
+    cfg.ads_index = idx
     cfg.save(update_fields=["ads_index", "updated_at"])
     return cfg
 
 
-def set_display(*, mode: str, path: str | None = None, follow: bool = False) -> TvDisplaySettings:
+def set_display(
+    *,
+    mode: str,
+    path: str | None = None,
+    follow: bool = False,
+    viewport_w=None,
+    viewport_h=None,
+) -> TvDisplaySettings:
     cfg = get_settings()
     old_mode = cfg.mode
     old_path = cfg.crm_path or "/"
+    old_w = int(cfg.crm_width or DEFAULT_CRM_WIDTH)
+    old_h = int(cfg.crm_height or DEFAULT_CRM_HEIGHT)
     if mode == TvDisplayMode.CRM:
         cfg.mode = TvDisplayMode.CRM
         if path is not None:
@@ -160,7 +190,16 @@ def set_display(*, mode: str, path: str | None = None, follow: bool = False) -> 
             cfg.crm_path = "/"
     else:
         cfg.mode = TvDisplayMode.ADS
-    changed = cfg.mode != old_mode or (cfg.crm_path or "/") != old_path
+    if viewport_w is not None:
+        cfg.crm_width = clamp_viewport_dim(viewport_w, old_w, 640, 5120)
+    if viewport_h is not None:
+        cfg.crm_height = clamp_viewport_dim(viewport_h, old_h, 360, 2880)
+    changed = (
+        cfg.mode != old_mode
+        or (cfg.crm_path or "/") != old_path
+        or int(cfg.crm_width or 0) != old_w
+        or int(cfg.crm_height or 0) != old_h
+    )
     if changed:
         cfg.rev = int(cfg.rev or 1) + 1
         cfg.save()

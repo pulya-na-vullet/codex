@@ -1370,6 +1370,8 @@ class TvDisplaySettings(models.Model):
         db_index=True,
     )
     crm_path = models.CharField("Путь CRM на ТВ", max_length=255, blank=True, default="/")
+    crm_width = models.PositiveIntegerField("Ширина окна CRM на Mac", default=1440)
+    crm_height = models.PositiveIntegerField("Высота окна CRM на Mac", default=900)
     ads_index = models.PositiveIntegerField("Слайд рекламы", default=0)
     rev = models.PositiveIntegerField("Версия состояния", default=1)
     updated_at = models.DateTimeField(auto_now=True)

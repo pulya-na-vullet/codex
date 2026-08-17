@@ -16,6 +16,25 @@
       color: #f7fbf8;
       font-family: Arial, Helvetica, sans-serif;
     }
+    #tvAdsWrap, #tvCrmStage {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      overflow: hidden;
+      transform-origin: center center;
+    }
+    #tvAdsWrap {
+      width: 1920px;
+      height: 1080px;
+      background: #000;
+    }
+    #tvAdsWrap.is-off { visibility: hidden; pointer-events: none; }
+    #tvCrmStage {
+      display: none;
+      z-index: 20;
+      background: #fff;
+    }
+    #tvCrmStage.is-on { display: block; }
     .stage {
       position: absolute;
       top: 0; left: 0;
@@ -28,23 +47,19 @@
       top: 0; left: 0;
       width: 100%;
       height: 100%;
-      object-fit: contain;
+      object-fit: cover;
       object-position: center center;
       opacity: 0;
       z-index: 0;
     }
     .bg.is-on { opacity: 1; z-index: 1; }
     #tvCrmFrame {
-      position: absolute;
-      top: 0; left: 0;
       width: 100%;
       height: 100%;
       border: 0;
-      z-index: 20;
+      display: block;
       background: #0f172a;
-      display: none;
     }
-    #tvCrmFrame.is-on { display: block; }
     .caption {
       position: absolute;
       left: 0; right: 0; bottom: 0;
@@ -111,6 +126,7 @@
   </style>
 </head>
 <body>
+  <div id="tvAdsWrap">
   <div class="stage" id="tv-root" data-scene="hall">
     <img class="bg is-on" data-scene="hall" src="{% static 'workshop/promo/tv43/bg-three-windows-fhd.png' %}?v={{ tv_page_version }}" alt="">
     <img class="bg" data-scene="atelier" src="{% static 'workshop/promo/tv43/bg-atelier-purple-hall-fhd.png' %}?v={{ tv_page_version }}" alt="">
@@ -217,7 +233,10 @@
       </section>
     </div>
   </div>
-  <iframe id="tvCrmFrame" title="CRM на ТВ" src="about:blank"></iframe>
+  </div>
+  <div id="tvCrmStage">
+    <iframe id="tvCrmFrame" title="CRM на ТВ" src="about:blank"></iframe>
+  </div>
   <script>
   (function () {
     var stage = document.getElementById('tv-root');
@@ -247,7 +266,34 @@
     var lastMode = '';
     var lastPath = '';
     var PAGE_V = '{{ tv_page_version|default:"1" }}';
+    var adsWrap = document.getElementById('tvAdsWrap');
+    var crmStage = document.getElementById('tvCrmStage');
     var crmFrame = document.getElementById('tvCrmFrame');
+    var lastCrmSrc = '';
+    var lastLayout = '';
+    var adsW = 1920;
+    var adsH = 1080;
+    var crmW = 1440;
+    var crmH = 900;
+
+    function fitBox(el, w, h) {
+      if (!el) return;
+      w = Math.max(640, Math.min(5120, Math.round(w || 1440)));
+      h = Math.max(360, Math.min(2880, Math.round(h || 900)));
+      var sw = window.innerWidth || w;
+      var sh = window.innerHeight || h;
+      var scale = Math.min(sw / w, sh / h);
+      el.style.width = w + 'px';
+      el.style.height = h + 'px';
+      var t = 'translate(-50%, -50%) scale(' + scale + ')';
+      el.style.webkitTransform = t;
+      el.style.transform = t;
+    }
+
+    function layoutScreens() {
+      fitBox(adsWrap, adsW, adsH);
+      fitBox(crmStage, crmW, crmH);
+    }
 
     function slidesOf(scene) {
       var out = [];
@@ -298,17 +344,26 @@
     function showCrm(rev, path) {
       paused = true;
       reportProgress(showing);
+      layoutScreens();
+      if (adsWrap) adsWrap.className = 'is-off';
+      if (crmStage) crmStage.className = 'is-on';
       if (crmFrame) {
-        crmFrame.className = 'is-on';
-        crmFrame.src = '/tv/frame?v=' + encodeURIComponent(rev || '1')
+        var src = '/tv/frame?v=' + encodeURIComponent(rev || '1')
           + '&p=' + encodeURIComponent(path || '/');
+        if (src !== lastCrmSrc) {
+          lastCrmSrc = src;
+          crmFrame.src = src;
+        }
       }
     }
 
     function showAds(startIndex) {
       paused = false;
-      if (crmFrame) {
-        crmFrame.className = '';
+      layoutScreens();
+      if (crmStage) crmStage.className = '';
+      if (adsWrap) adsWrap.className = '';
+      if (crmFrame && lastCrmSrc) {
+        lastCrmSrc = '';
         crmFrame.src = 'about:blank';
       }
       if (typeof startIndex === 'number') {
@@ -324,13 +379,19 @@
         location.replace('/tv?v=' + encodeURIComponent(data.page_v));
         return;
       }
+      if (data.ads_width) adsW = data.ads_width;
+      if (data.ads_height) adsH = data.ads_height;
+      if (data.crm_width) crmW = data.crm_width;
+      if (data.crm_height) crmH = data.crm_height;
       var mode = data.mode === 'crm' ? 'crm' : 'ads';
       var rev = data.rev;
       var path = data.crm_path || '/';
-      if (mode === lastMode && rev === lastRev && path === lastPath) return;
+      var layout = crmW + 'x' + crmH + '/' + adsW + 'x' + adsH;
+      if (mode === lastMode && rev === lastRev && path === lastPath && layout === lastLayout) return;
       lastMode = mode;
       lastRev = rev;
       lastPath = path;
+      lastLayout = layout;
       if (mode === 'crm') showCrm(rev, path);
       else showAds(typeof data.ads_index === 'number' ? data.ads_index : showing);
     }
@@ -342,10 +403,12 @@
       } catch (e) {}
     }
 
+    layoutScreens();
+    window.addEventListener('resize', layoutScreens);
     tick();
     timer = setInterval(tick, 8000);
     poll();
-    setInterval(poll, 1500);
+    setInterval(poll, 4000);
   })();
   </script>
 </body>
