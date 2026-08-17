@@ -37,13 +37,13 @@ th,td{border:1px solid #bbb;padding:8px} th{background:#f1f5f9;text-align:left}
 {% endfor %}
 </tbody></table>
 <div class="total">
-{% if order.discount_percent %}
 <div>Услуги: {{ order.service_subtotal }}</div>
-<div>Дополнительная скидка на услуги: {{ order.discount_percent|floatformat:0 }}% (−{{ order.discount_amount }})</div>
+{% if order.discount_percent %}
+<div><strong>Скидка {{ order.discount_percent|floatformat:0 }}% только на услуги (−{{ order.discount_amount }}).</strong> На комплектующие скидка не действует.</div>
 {% endif %}
 <div>Услуги для «Мой налог»: {{ order.taxable_sum }}</div>
 {% if order.has_nontaxable_parts %}
-<div>Комплектующие (без налога): {{ order.parts_sum }}</div>
+<div>Комплектующие (без скидки и без налога): {{ order.parts_sum }}</div>
 {% endif %}
 <div class="grand">ИТОГО к оплате: {{ order.total_sum }}</div>
 </div>

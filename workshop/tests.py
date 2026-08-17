@@ -108,6 +108,57 @@ class OrderLogicTests(TestCase):
         pdf = build_order_pdf(order, list(order.lines.all()))
         self.assertTrue(pdf.startswith(b"%PDF"))
 
+    def test_client_card_discount_applies_to_services_not_parts(self):
+        from workshop.models import OrderLineKind, OrderStatus
+
+        order = Order.objects.create(order_number="ORD-DISC01", client=self.client_obj)
+        OrderLine.objects.create(
+            order=order,
+            kind=OrderLineKind.SERVICE,
+            service_name="Установка ОС",
+            unit_price=Decimal("2500"),
+            quantity=1,
+        )
+        OrderLine.objects.create(
+            order=order,
+            kind=OrderLineKind.SERVICE,
+            service_name="Сборка ПК",
+            unit_price=Decimal("1000"),
+            quantity=1,
+        )
+        OrderLine.objects.create(
+            order=order,
+            kind=OrderLineKind.PARTS,
+            service_name="видеокарта",
+            unit_price=Decimal("12500"),
+            quantity=1,
+        )
+        order.recalculate_totals()
+        self.assertEqual(order.total_sum, Decimal("16000.00"))
+        self.client_obj.set_discount_percent(10, manual=True)
+        updated = self.client_obj.apply_discount_to_open_orders()
+        self.assertEqual(updated, 1)
+        order.refresh_from_db()
+        self.assertEqual(order.discount_percent, Decimal("10.00"))
+        self.assertEqual(order.taxable_sum, Decimal("3150.00"))
+        self.assertEqual(order.parts_sum, Decimal("12500.00"))
+        self.assertEqual(order.total_sum, Decimal("15650.00"))
+        self.assertEqual(order.discount_amount, Decimal("350.00"))
+
+        done = Order.objects.create(
+            order_number="ORD-DISC02",
+            client=self.client_obj,
+            status=OrderStatus.DONE,
+            total_sum=Decimal("5000"),
+            taxable_sum=Decimal("5000"),
+            parts_sum=Decimal("0"),
+            discount_percent=Decimal("0"),
+        )
+        self.client_obj.apply_discount_to_open_orders()
+        done.refresh_from_db()
+        self.assertEqual(done.discount_percent, Decimal("0.00"))
+        self.assertEqual(done.total_sum, Decimal("5000.00"))
+
     def test_manual_discount_not_overwritten(self):
         self.client_obj.set_discount_percent(5, manual=True)
         for _ in range(3):
@@ -791,6 +842,47 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, order.order_number)
         r = self.http.get(f"/orders/{order.id}/print")
         self.assertNotContains(r, "клиент просил позвонить после 18")
+
+    def test_client_card_discount_updates_current_order_print(self):
+        from workshop.models import OrderLineKind
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        client = Client.objects.create(name="Скидка", phone="+79990008877")
+        order = Order.objects.create(order_number="ORD-CARD01", client=client)
+        OrderLine.objects.create(
+            order=order,
+            kind=OrderLineKind.SERVICE,
+            service_name="Сборка ПК",
+            unit_price=Decimal("1000"),
+            quantity=1,
+        )
+        OrderLine.objects.create(
+            order=order,
+            kind=OrderLineKind.PARTS,
+            service_name="CPU",
+            unit_price=Decimal("3500"),
+            quantity=1,
+        )
+        order.recalculate_totals()
+        self.assertEqual(order.total_sum, Decimal("4500.00"))
+        r = self.http.post(
+            f"/clients/{client.id}",
+            {"comment": "", "discount_percent": "10", "allow_marketing_sms": "1"},
+        )
+        self.assertEqual(r.status_code, 302)
+        order.refresh_from_db()
+        client.refresh_from_db()
+        self.assertEqual(client.discount_percent, Decimal("10.00"))
+        self.assertEqual(order.discount_percent, Decimal("10.00"))
+        self.assertEqual(order.taxable_sum, Decimal("900.00"))
+        self.assertEqual(order.parts_sum, Decimal("3500.00"))
+        self.assertEqual(order.total_sum, Decimal("4400.00"))
+        r = self.http.get(f"/orders/{order.id}")
+        self.assertContains(r, "Скидка 10% только на услуги")
+        r = self.http.get(f"/orders/{order.id}/print")
+        self.assertContains(r, "Скидка 10% только на услуги")
+        self.assertContains(r, "На комплектующие скидка не действует")
+        self.assertContains(r, "без скидки и без налога")
 
     def test_client_comment_edit_shows_in_list(self):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
