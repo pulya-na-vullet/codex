@@ -8,7 +8,7 @@ from io import BytesIO
 from django.conf import settings
 from django.contrib import messages
 from django.db.models import Q
-from django.http import HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -74,6 +74,7 @@ def dashboard(request: HttpRequest):
         SoftwareDevContract,
         SoftwareDevStatus,
     )
+    from workshop.products import PRODUCTS
 
     orders_in_work = Order.objects.filter(status=OrderStatus.ACTIVE).count()
     diagnostics_in_work = AcceptanceAct.objects.filter(status=AcceptanceActStatus.DIAGNOSTICS).count()
@@ -124,8 +125,51 @@ def dashboard(request: HttpRequest):
             "software_open": software_open,
             "software_in_progress": software_in_progress,
             "software_pending_signature": software_pending_signature,
+            "product_count": len(PRODUCTS),
         },
     )
+
+
+def products_shelf(request: HttpRequest):
+    from workshop.products import PRODUCTS
+
+    return render(
+        request,
+        "workshop/products.html",
+        {
+            "title": "Продукты",
+            "products": PRODUCTS,
+        },
+    )
+
+
+def product_deck(request: HttpRequest, slug: str, page: str | None = None):
+    from django.template.loader import render_to_string
+
+    from workshop.products import get_product, prepare_deck_html
+
+    product = get_product(slug)
+    if product is None:
+        raise Http404("product")
+    page_obj = product.page(page)
+    if page_obj is None:
+        raise Http404("product page")
+    path = product.file_path(page_obj)
+    if not path.is_file():
+        raise Http404("product file")
+    html = path.read_text(encoding="utf-8")
+    chrome = ""
+    if not getattr(request, "tv_cast_staff", None):
+        chrome = render_to_string(
+            "workshop/product_deck_chrome.html",
+            {"product": product, "page": page_obj},
+            request=request,
+        )
+    body = prepare_deck_html(html, product, chrome=chrome or None)
+    response = HttpResponse(body, content_type="text/html; charset=utf-8")
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
+
 
 def statistics(request: HttpRequest):
     from calendar import Calendar

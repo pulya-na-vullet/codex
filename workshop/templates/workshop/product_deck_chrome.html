@@ -1,0 +1,59 @@
+{% csrf_token %}
+<div id="itm-product-chrome" data-html2canvas-ignore="true">
+  <a class="itm-chrome-link" href="/products">← На полку</a>
+  <a class="itm-chrome-link" href="/">CRM</a>
+  <button type="button" class="itm-chrome-tv" id="itmDeckTvCrm">на ТВ</button>
+  <button type="button" class="itm-chrome-tv" id="itmDeckTvAds">реклама</button>
+  <span class="itm-chrome-title">{{ product.name }} · {{ page.title }}</span>
+</div>
+<style>
+  #itm-product-chrome {
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    z-index: 2147483647;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    max-width: calc(100vw - 32px);
+    padding: 8px 10px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    font-family: Manrope, system-ui, sans-serif;
+    color: #e2e8f0;
+  }
+  #itm-product-chrome .itm-chrome-link,
+  #itm-product-chrome .itm-chrome-tv {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    color: #f8fafc;
+    background: #1e293b;
+    border: 1px solid #64748b;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.1;
+    cursor: pointer;
+  }
+  #itm-product-chrome .itm-chrome-link:hover,
+  #itm-product-chrome .itm-chrome-tv:hover {
+    border-color: #93c5fd;
+    background: #334155;
+  }
+  #itm-product-chrome .itm-chrome-tv.is-on {
+    background: rgba(37, 99, 235, 0.35);
+    border-color: #60a5fa;
+  }
+  #itm-product-chrome .itm-chrome-title {
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 6px;
+  }
+</style>
+<script src="/static/workshop/js/product-deck-chrome.js"></script>

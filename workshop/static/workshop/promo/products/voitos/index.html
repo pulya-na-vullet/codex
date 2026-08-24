@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voitos — promo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #102033;
+      --ink-soft: #3a4d63;
+      --teal-deep: #0f6f66;
+      --line: rgba(16, 32, 51, 0.12);
+      --font-display: "Syne", sans-serif;
+      --font-body: "Manrope", sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      font-family: var(--font-body);
+      color: var(--ink);
+      background:
+        radial-gradient(900px 600px at 12% -10%, #dcecf6 0%, transparent 55%),
+        radial-gradient(800px 500px at 90% 0%, #c8e4de 0%, transparent 50%),
+        linear-gradient(165deg, #eef4f8 0%, #d9e6f0 50%, #e8f1ef 100%);
+      padding: clamp(2rem, 6vw, 4rem);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .wrap { width: min(720px, 100%); }
+    .brand {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: clamp(2.4rem, 8vw, 4rem);
+      letter-spacing: -0.04em;
+    }
+    .brand em { font-style: normal; color: var(--teal-deep); }
+    h1 {
+      font-family: var(--font-display);
+      font-size: clamp(1.6rem, 4vw, 2.2rem);
+      letter-spacing: -0.03em;
+      margin: 0.6rem 0 1.5rem;
+      max-width: 16ch;
+    }
+    .cards { display: grid; gap: 1rem; }
+    a.card {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 1.15rem;
+      padding: 1.25rem 1.4rem;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    a.card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(15, 111, 102, 0.35);
+    }
+    a.card strong {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      display: block;
+      margin-bottom: 0.35rem;
+    }
+    a.card span { color: var(--ink-soft); font-weight: 500; line-height: 1.4; }
+    .note { margin-top: 1.5rem; color: var(--ink-soft); font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="brand">Voi<em>tos</em></p>
+    <h1>Материалы для презентации</h1>
+    <div class="cards">
+      <a class="card" href="presentation-traktoristy.html">
+        <strong>Презентация для трактористов</strong>
+        <span>Проект, сборы двора, приоритет команды, регистрация и рабочий день. Стрелки / пробел — листать слайды.</span>
+      </a>
+      <a class="card" href="demo-sosedi.html">
+        <strong>Демо-страница для соседей</strong>
+        <span>Полноэкранная история двора: сборы, точки оплаты, мастера, QR на APK. Листайте вниз.</span>
+      </a>
+    </div>
+    <p class="note">Откройте index.html локально в браузере или раздайте всю папку promo целиком.</p>
+  </div>
+</body>
+</html>

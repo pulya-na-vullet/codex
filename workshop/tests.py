@@ -415,6 +415,111 @@ class AuthAndPagesTests(TestCase):
         r = anon.get("/tv/cast.jpg")
         self.assertEqual(r.status_code, 204)
 
+    def test_product_shelf_login_and_tv_path(self):
+        from pathlib import Path
+
+        from workshop.products import PRODUCTS, html_link_map, prepare_deck_html, rewrite_internal_html_links
+        from workshop.tv_display import sanitize_tv_crm_path
+
+        r = self.http.get("/products")
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/login", r.url)
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        r = self.http.get("/")
+        self.assertContains(r, 'href="/products">Продукты</a>')
+        self.assertContains(r, "Продукты команды")
+        self.assertContains(r, "полка презентаций")
+
+        r = self.http.get("/products")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Полка продуктов")
+        self.assertContains(r, "Voitos")
+        self.assertContains(r, "QA Manager")
+        self.assertContains(r, 'href="/products/voitos"')
+        self.assertContains(r, 'href="/products/qms"')
+        self.assertContains(r, 'href="/products/voitos/traktoristy"')
+        self.assertContains(r, 'href="/products/voitos/sosedi"')
+        self.assertRegex(
+            r.content.decode(),
+            r'nav-page-btn is-active" href="/products">Продукты</a>',
+        )
+
+        voitos = next(p for p in PRODUCTS if p.slug == "voitos")
+        mapping = html_link_map(voitos)
+        self.assertEqual(mapping["index.html"], "/products/voitos")
+        self.assertEqual(mapping["presentation-traktoristy.html"], "/products/voitos/traktoristy")
+        rewritten = rewrite_internal_html_links(
+            '<a href="presentation-traktoristy.html">x</a><a href="./demo-sosedi.html">y</a>',
+            voitos,
+        )
+        self.assertIn('href="/products/voitos/traktoristy"', rewritten)
+        self.assertIn('href="/products/voitos/sosedi"', rewritten)
+        self.assertNotIn("presentation-traktoristy.html", rewritten)
+
+        r = self.http.get("/products/voitos")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Voitos — promo")
+        self.assertContains(r, "На полку")
+        self.assertContains(r, 'href="/"')
+        self.assertContains(r, "/products/voitos/traktoristy")
+        self.assertContains(r, "/products/voitos/sosedi")
+        self.assertNotContains(r, 'href="presentation-traktoristy.html"')
+        self.assertContains(r, 'href="/static/workshop/promo/products/voitos/"')
+        self.assertContains(r, "/static/workshop/js/product-deck-chrome.js")
+        self.assertContains(r, 'id="itmDeckTvCrm"')
+
+        r = self.http.get("/products/voitos/traktoristy")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "На полку")
+        self.assertContains(r, "voitos-mark.png")
+
+        r = self.http.get("/products/qms")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "QA Manager")
+        self.assertContains(r, "На полку")
+        self.assertContains(r, "система управления качеством")
+
+        r = self.http.get("/products/missing")
+        self.assertEqual(r.status_code, 404)
+
+        self.assertEqual(sanitize_tv_crm_path("/products"), "/products")
+        self.assertEqual(sanitize_tv_crm_path("/products/voitos/traktoristy"), "/products/voitos/traktoristy")
+        self.assertEqual(sanitize_tv_crm_path("/products/qms"), "/products/qms")
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/products"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["crm_path"], "/products")
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/products/qms","follow":true}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["crm_path"], "/products/qms")
+
+        anon = HttpClient()
+        r = anon.get("/tv/frame")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "QA Manager")
+        self.assertNotContains(r, "На полку")
+        self.assertNotContains(r, 'id="itmDeckTvCrm"')
+
+        root = Path(__file__).resolve().parent / "static" / "workshop" / "promo" / "products"
+        self.assertTrue((root / "voitos" / "voitos-mark.png").is_file())
+        self.assertTrue((root / "voitos" / "qr-latest-apk.png").is_file())
+        self.assertTrue((root / "qms" / "presentation.html").is_file())
+        self.assertFalse((root / "qms" / "QMS Code.zip").exists())
+        self.assertTrue((Path(__file__).resolve().parent / "static" / "workshop" / "js" / "product-deck-chrome.js").is_file())
+
+        prepared = prepare_deck_html("<html><head></head><body>x</body></html>", voitos, chrome="<nav>bar</nav>")
+        self.assertIn('<base href="/static/workshop/promo/products/voitos/">', prepared)
+        self.assertIn("<nav>bar</nav></body>", prepared)
+
     def test_quiet_tv_poll_log_filter(self):
         import logging
 

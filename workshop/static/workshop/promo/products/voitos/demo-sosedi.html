@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voitos — для нашего двора</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #102033;
+      --ink-soft: #3a4d63;
+      --mist: #e7eef5;
+      --sky: #c9dbe9;
+      --teal: #1f9e8f;
+      --teal-deep: #0f6f66;
+      --ice: #f4f8fb;
+      --line: rgba(16, 32, 51, 0.12);
+      --font-display: "Syne", sans-serif;
+      --font-body: "Manrope", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-snap-type: y proximity;
+    }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--ink);
+      background: var(--ice);
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* Atmosphere — soft sky layers, no flat fill */
+    .sky {
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background:
+        radial-gradient(1200px 700px at 12% -10%, #dcecf6 0%, transparent 55%),
+        radial-gradient(900px 600px at 88% 8%, #c8e4de 0%, transparent 50%),
+        radial-gradient(1000px 800px at 50% 110%, #d5e3f0 0%, transparent 55%),
+        linear-gradient(165deg, #eef4f8 0%, #d9e6f0 48%, #e8f1ef 100%);
+      animation: sky-drift 28s ease-in-out infinite alternate;
+    }
+
+    .grain {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    @keyframes sky-drift {
+      from { filter: hue-rotate(0deg) saturate(1); transform: scale(1); }
+      to { filter: hue-rotate(8deg) saturate(1.05); transform: scale(1.03); }
+    }
+
+    section {
+      min-height: 100vh;
+      min-height: 100dvh;
+      scroll-snap-align: start;
+      display: flex;
+      align-items: center;
+      padding: clamp(2.5rem, 6vh, 5rem) clamp(1.5rem, 6vw, 5rem);
+    }
+
+    .wrap {
+      width: min(1100px, 100%);
+      margin: 0 auto;
+    }
+
+    .brand {
+      font-family: var(--font-display);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 0.92;
+    }
+
+    h1, h2 {
+      font-family: var(--font-display);
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1.05;
+    }
+
+    h1 {
+      font-size: clamp(2.4rem, 7vw, 5.2rem);
+      max-width: 14ch;
+      margin-top: 0.35em;
+    }
+
+    h2 {
+      font-size: clamp(2rem, 5.2vw, 3.6rem);
+      max-width: 16ch;
+      margin-bottom: 0.55em;
+    }
+
+    .lede {
+      font-size: clamp(1.15rem, 2.2vw, 1.65rem);
+      color: var(--ink-soft);
+      max-width: 34ch;
+      font-weight: 500;
+    }
+
+    .hint {
+      margin-top: 2.2rem;
+      font-size: clamp(1rem, 1.6vw, 1.25rem);
+      color: var(--teal-deep);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .hint span {
+      display: inline-block;
+      animation: nudge 2.2s ease-in-out infinite;
+    }
+
+    @keyframes nudge {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(6px); }
+    }
+
+    /* Hero */
+    .hero {
+      position: relative;
+    }
+
+    .hero-inner {
+      display: grid;
+      gap: clamp(1.5rem, 4vw, 3rem);
+      align-items: end;
+    }
+
+    @media (min-width: 900px) {
+      .hero-inner {
+        grid-template-columns: 1.15fr 0.85fr;
+      }
+    }
+
+    .logo-plane {
+      width: min(100%, 420px);
+      aspect-ratio: 1;
+      justify-self: end;
+      border-radius: 28% 42% 32% 48% / 40% 30% 50% 35%;
+      background:
+        linear-gradient(145deg, rgba(31, 158, 143, 0.22), rgba(80, 140, 190, 0.18)),
+        radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.55), transparent 55%);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      animation: float-soft 7s ease-in-out infinite;
+    }
+
+    .logo-plane img {
+      width: 72%;
+      height: auto;
+      display: block;
+    }
+
+    @keyframes float-soft {
+      0%, 100% { transform: translateY(0) rotate(-1deg); }
+      50% { transform: translateY(-12px) rotate(1.5deg); }
+    }
+
+    .brand-mark {
+      font-size: clamp(3.2rem, 10vw, 7.5rem);
+      color: var(--ink);
+    }
+
+    .brand-mark em {
+      font-style: normal;
+      color: var(--teal-deep);
+    }
+
+    /* Reveal on scroll */
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 0.8s ease, transform 0.8s ease;
+    }
+
+    .reveal.in {
+      opacity: 1;
+      transform: none;
+    }
+
+    .hero .reveal {
+      transition-delay: 0.05s;
+    }
+
+    .hero .logo-plane.reveal {
+      transition-delay: 0.2s;
+    }
+
+    /* Feature sections */
+    .kicker {
+      font-size: clamp(0.95rem, 1.4vw, 1.1rem);
+      font-weight: 600;
+      color: var(--teal-deep);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.85rem;
+    }
+
+    .body {
+      font-size: clamp(1.2rem, 2.3vw, 1.7rem);
+      color: var(--ink-soft);
+      max-width: 28ch;
+      font-weight: 500;
+    }
+
+    .split {
+      display: grid;
+      gap: clamp(1.5rem, 4vw, 3rem);
+      align-items: center;
+    }
+
+    @media (min-width: 860px) {
+      .split {
+        grid-template-columns: 1fr 1fr;
+      }
+      .split.reverse .copy { order: 2; }
+      .split.reverse .visual { order: 1; }
+    }
+
+    .visual {
+      min-height: clamp(220px, 36vh, 380px);
+      border-radius: 2rem;
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(160deg, #f7fbfd, #d7ebe6 55%, #c5d9ea);
+      border: 1px solid var(--line);
+    }
+
+    .visual::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 70% 30%, rgba(31, 158, 143, 0.28), transparent 45%),
+        radial-gradient(circle at 20% 80%, rgba(61, 156, 253, 0.18), transparent 40%);
+    }
+
+    .visual-label {
+      position: absolute;
+      inset: auto 8% 10% 8%;
+      z-index: 1;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: clamp(1.5rem, 3vw, 2.4rem);
+      letter-spacing: -0.03em;
+      color: var(--ink);
+      max-width: 12ch;
+    }
+
+    /* Payment dots demo */
+    .chat-demo {
+      position: absolute;
+      inset: 14% 10%;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      justify-content: center;
+    }
+
+    .bubble {
+      align-self: flex-start;
+      max-width: 85%;
+      padding: 0.85rem 1.1rem;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 1rem 1rem 1rem 0.35rem;
+      font-size: clamp(0.95rem, 1.5vw, 1.15rem);
+      color: var(--ink);
+    }
+
+    .bubble.mine {
+      align-self: flex-end;
+      border-radius: 1rem 1rem 0.35rem 1rem;
+      background: rgba(31, 158, 143, 0.16);
+    }
+
+    .meta {
+      margin-top: 0.45rem;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.85em;
+      color: var(--ink-soft);
+    }
+
+    .dots {
+      display: inline-flex;
+      gap: 3px;
+      align-items: center;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+    }
+
+    .dot.ok { background: #2f9d6a; }
+    .dot.no { background: #d45b5b; }
+
+    /* Closing */
+    .finale {
+      text-align: center;
+      justify-content: center;
+    }
+
+    .finale .wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .finale h2 {
+      max-width: 18ch;
+    }
+
+    .finale .lede {
+      max-width: 36ch;
+    }
+
+    .finale .brand {
+      font-size: clamp(2.8rem, 8vw, 5.5rem);
+      margin-bottom: 0.4em;
+    }
+
+    .finale .brand em {
+      font-style: normal;
+      color: var(--teal-deep);
+    }
+
+    .qr-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      height: 100%;
+      padding: 1.25rem;
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+
+    .qr-block img {
+      width: min(52vw, 240px);
+      height: auto;
+      border-radius: 1rem;
+      background: #f4f8fb;
+      padding: 0.65rem;
+      border: 1px solid var(--line);
+    }
+
+    .qr-block p {
+      font-size: clamp(1rem, 1.8vw, 1.25rem);
+      color: var(--ink);
+      font-weight: 600;
+      max-width: 18ch;
+    }
+
+    .qr-block a {
+      color: var(--teal-deep);
+      font-weight: 600;
+      font-size: clamp(0.9rem, 1.4vw, 1.05rem);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(15, 111, 102, 0.35);
+    }
+
+    footer.note {
+      padding: 1.5rem;
+      text-align: center;
+      font-size: 0.95rem;
+      color: var(--ink-soft);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .sky, .logo-plane, .hint span { animation: none; }
+      .reveal { opacity: 1; transform: none; transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sky" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <section class="hero" id="top">
+    <div class="wrap hero-inner">
+      <div class="reveal">
+        <p class="brand brand-mark">Voi<em>tos</em></p>
+        <h1>Соседи решают дела двора вместе</h1>
+        <p class="lede">Сборы, мастера и чат группы — в одном приложении, без путаницы в переписках.</p>
+        <p class="hint">Листайте вниз <span aria-hidden="true">↓</span></p>
+      </div>
+      <div class="logo-plane reveal" aria-hidden="true">
+        <img src="voitos-mark.png" alt="" width="280" height="280" />
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split">
+      <div class="copy reveal">
+        <p class="kicker">Зачем Voitos</p>
+        <h2>Общие задачи — без хаоса</h2>
+        <p class="body">Снег, площадка, дорога, свет: двор скидывается прозрачно, видит прогресс и не теряет нити в десятках чатов.</p>
+      </div>
+      <div class="visual reveal" aria-hidden="true">
+        <p class="visual-label">Один двор. Общий порядок.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split reverse">
+      <div class="copy reveal">
+        <p class="kicker">Сборы</p>
+        <h2>Скинулись — и видно, кто уже оплатил</h2>
+        <p class="body">До четырёх активных сборов сразу. У каждого соседа в чате рядом с сообщением — маленькие кружки: зелёный оплатил, красный ещё нет.</p>
+      </div>
+      <div class="visual reveal" aria-hidden="true">
+        <div class="chat-demo">
+          <div class="bubble">
+            Завтра техника во дворе в 9:00
+            <div class="meta">
+              <span>03.15 18:42</span>
+              <span class="dots" title="оплата сборов">
+                <i class="dot ok"></i><i class="dot ok"></i><i class="dot no"></i>
+              </span>
+            </div>
+          </div>
+          <div class="bubble mine">
+            Ок, я уже скинул
+            <div class="meta">
+              <span>03.15 18:44</span>
+              <span class="dots">
+                <i class="dot ok"></i><i class="dot ok"></i><i class="dot ok"></i>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split">
+      <div class="copy reveal">
+        <p class="kicker">Мастера</p>
+        <h2>Нужен специалист — вызываете рядом</h2>
+        <p class="body">Электрик, компьютер, маникюр на дом и другие роли. Исполнители из нашего круга — заявка уходит по правилам Voitos.</p>
+      </div>
+      <div class="visual reveal" aria-hidden="true">
+        <p class="visual-label">Вызов мастера без беготни по объявлениям.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split reverse">
+      <div class="copy reveal">
+        <p class="kicker">Чат группы</p>
+        <h2>Переписка двора на виду</h2>
+        <p class="body">Групповой чат привязан к вашему дому: сообщения, баланс свободных средств группы и статусы по сборам — рядом с каждым соседом.</p>
+      </div>
+      <div class="visual reveal" aria-hidden="true">
+        <p class="visual-label">Все на одной волне.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split">
+      <div class="copy reveal">
+        <p class="kicker">Как пользоваться</p>
+        <h2>Приложение на телефоне</h2>
+        <p class="body">Вход по телефону, короткое знакомство с сервисом, подписка для доступа к сборам и вызову мастеров. Админ двора помогает с подключением.</p>
+      </div>
+      <div class="visual reveal" aria-hidden="true">
+        <p class="visual-label">Установили — и двор уже в кармане.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap split reverse">
+      <div class="copy reveal">
+        <p class="kicker">Скачать</p>
+        <h2>Наведите камеру на QR</h2>
+        <p class="body">Ссылка всегда ведёт на последний релиз APK в GitHub — обновлять QR не нужно.</p>
+      </div>
+      <div class="visual reveal">
+        <div class="qr-block">
+          <img
+            src="qr-latest-apk.png"
+            width="240"
+            height="240"
+            alt="QR-код: скачать последний релиз Voitos с GitHub"
+          />
+          <p>Последний релиз Android</p>
+          <a href="https://github.com/pulya-na-vullet/Voitos/releases/latest/download/voitos-debug.apk">
+            github.com/…/releases/latest
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="finale">
+    <div class="wrap reveal">
+      <p class="brand">Voi<em>tos</em></p>
+      <h2>Сделано, чтобы соседям было проще договариваться</h2>
+      <p class="lede">Отсканируйте QR выше — на телефон придёт актуальная сборка с GitHub.</p>
+    </div>
+  </section>
+
+  <footer class="note">Voitos · демонстрация для соседей · листайте колесом или пультом</footer>
+
+  <script>
+    (function () {
+      var nodes = document.querySelectorAll(".reveal");
+      if (!("IntersectionObserver" in window)) {
+        nodes.forEach(function (n) { n.classList.add("in"); });
+        return;
+      }
+      var io = new IntersectionObserver(
+        function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) {
+              e.target.classList.add("in");
+              io.unobserve(e.target);
+            }
+          });
+        },
+        { threshold: 0.22, rootMargin: "0px 0px -8% 0px" }
+      );
+      nodes.forEach(function (n) { io.observe(n); });
+      // Hero visible immediately on TV load
+      requestAnimationFrame(function () {
+        document.querySelectorAll(".hero .reveal").forEach(function (n) {
+          n.classList.add("in");
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -84,6 +84,7 @@ _NAV_SECTIONS: dict[str, frozenset[str]] = {
             "software_set_mytax",
         }
     ),
+    "products": frozenset({"products", "product_deck", "product_page"}),
     "statistics": frozenset({"statistics"}),
     "audit": frozenset({"audit_log", "audit_log_export"}),
     "admin": frozenset({"admin_panel", "max_webhook", "api_docs"}),
