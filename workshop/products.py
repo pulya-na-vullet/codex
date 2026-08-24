@@ -185,3 +185,137 @@ def prepare_deck_html(html: str, product: Product, chrome: str | None = None) ->
     if chrome:
         prepared = inject_before_body_end(prepared, chrome)
     return prepared
+
+
+_STYLE_RE = re.compile(r"<style\b[^>]*>(.*?)</style>", re.I | re.S)
+_LINK_RE = re.compile(r"<link\b[^>]*>", re.I)
+_SCRIPT_RE = re.compile(r"<script\b[^>]*>.*?</script>", re.I | re.S)
+_BODY_RE = re.compile(r"<body\b[^>]*>(.*?)</body>", re.I | re.S)
+
+
+def _prefix_selector(sel: str, scope: str) -> str:
+    sel = sel.strip()
+    if not sel:
+        return sel
+    if sel.startswith("@") or sel in {"from", "to"} or re.match(r"^[\d.]+%", sel):
+        return sel
+    sel = re.sub(r":root\b", scope, sel)
+    sel = re.sub(r"\bhtml\b", scope, sel)
+    sel = re.sub(r"\bbody\b", scope, sel)
+    if sel.startswith(scope):
+        return sel
+    if sel == "*":
+        return f"{scope}, {scope} *"
+    return f"{scope} {sel}"
+
+
+def scope_css(css: str, scope: str = "#product-deck") -> str:
+    """Keep presentation rules inside the CRM embed, not on html/body."""
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    css = re.sub(r"position\s*:\s*fixed\b", "position: absolute", css, flags=re.I)
+    css = re.sub(r"min-height\s*:\s*100(?:vh|dvh)\b", "min-height: 100%", css, flags=re.I)
+
+    def transform(chunk: str) -> str:
+        out: list[str] = []
+        i = 0
+        n = len(chunk)
+        while i < n:
+            if chunk[i].isspace():
+                j = i
+                while j < n and chunk[j].isspace():
+                    j += 1
+                out.append(chunk[i:j])
+                i = j
+                continue
+            if chunk.startswith("@keyframes", i) or chunk.startswith("@-webkit-keyframes", i):
+                brace = chunk.find("{", i)
+                if brace < 0:
+                    out.append(chunk[i:])
+                    break
+                j = brace
+                depth = 0
+                while j < n:
+                    if chunk[j] == "{":
+                        depth += 1
+                    elif chunk[j] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            j += 1
+                            break
+                    j += 1
+                out.append(chunk[i:j])
+                i = j
+                continue
+            if chunk[i] == "@":
+                brace = chunk.find("{", i)
+                if brace < 0:
+                    out.append(chunk[i:])
+                    break
+                header = chunk[i:brace]
+                j = brace
+                depth = 0
+                while j < n:
+                    if chunk[j] == "{":
+                        depth += 1
+                    elif chunk[j] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            inner = chunk[brace + 1 : j]
+                            if header.strip().lower().startswith("@font-face"):
+                                out.append(header + "{" + inner + "}")
+                            else:
+                                out.append(header + "{" + transform(inner) + "}")
+                            j += 1
+                            break
+                    j += 1
+                i = j
+                continue
+            brace = chunk.find("{", i)
+            if brace < 0:
+                out.append(chunk[i:])
+                break
+            selectors = chunk[i:brace]
+            j = brace
+            depth = 0
+            while j < n:
+                if chunk[j] == "{":
+                    depth += 1
+                elif chunk[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        body = chunk[brace : j + 1]
+                        prefixed: list[str] = []
+                        seen: set[str] = set()
+                        for part in selectors.split(","):
+                            item = _prefix_selector(part, scope)
+                            if item and item not in seen:
+                                seen.add(item)
+                                prefixed.append(item)
+                        out.append(", ".join(prefixed) + body)
+                        j += 1
+                        break
+                j += 1
+            i = j
+        return "".join(out)
+
+    return transform(css)
+
+
+def extract_embed(html: str) -> dict[str, str]:
+    """Split a full presentation document into CRM-embeddable pieces."""
+    links = [
+        tag
+        for tag in _LINK_RE.findall(html)
+        if "stylesheet" in tag.lower() or "preconnect" in tag.lower() or "font" in tag.lower()
+    ]
+    styles = _STYLE_RE.findall(html)
+    body_match = _BODY_RE.search(html)
+    body = body_match.group(1) if body_match else html
+    scripts = _SCRIPT_RE.findall(body)
+    body = _SCRIPT_RE.sub("", body)
+    return {
+        "links": "\n".join(links),
+        "css": scope_css("\n".join(styles)),
+        "body": body.strip(),
+        "scripts": "\n".join(scripts),
+    }

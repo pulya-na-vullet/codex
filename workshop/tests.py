@@ -418,7 +418,7 @@ class AuthAndPagesTests(TestCase):
     def test_product_shelf_login_and_tv_path(self):
         from pathlib import Path
 
-        from workshop.products import PRODUCTS, html_link_map, prepare_deck_html, rewrite_internal_html_links
+        from workshop.products import PRODUCTS, extract_embed, html_link_map, prepare_deck_html, rewrite_internal_html_links, scope_css
         from workshop.tv_display import sanitize_tv_crm_path
 
         r = self.http.get("/products")
@@ -461,21 +461,28 @@ class AuthAndPagesTests(TestCase):
 
         r = self.http.get("/products/voitos")
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Voitos — promo")
+        self.assertContains(r, 'id="product-deck"')
+        self.assertContains(r, "Материалы для презентации")
         self.assertContains(r, "На полку")
-        self.assertContains(r, 'href="/"')
+        self.assertContains(r, 'href="/products"')
+        self.assertContains(r, 'href="/products">Продукты</a>')
         self.assertContains(r, "/products/voitos/traktoristy")
         self.assertContains(r, "/products/voitos/sosedi")
         self.assertNotContains(r, 'href="presentation-traktoristy.html"')
         self.assertNotContains(r, "<base ")
-        self.assertContains(r, "/static/workshop/js/product-deck-chrome.js")
-        self.assertContains(r, 'id="itmDeckTvCrm"')
+        self.assertNotContains(r, "<iframe")
+        self.assertNotContains(r, "product-deck-chrome.js")
+        self.assertNotContains(r, 'id="itmDeckTvCrm"')
+        self.assertContains(r, "html2canvas.min.js")
+        self.assertContains(r, "#product-deck")
 
         r = self.http.get("/products/voitos/traktoristy")
         self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="product-deck"')
         self.assertContains(r, "На полку")
         self.assertContains(r, "/static/workshop/promo/products/voitos/voitos-mark.png")
         self.assertNotContains(r, "<base ")
+        self.assertNotContains(r, "<iframe")
 
         r = self.http.get("/products/voitos/sosedi")
         self.assertEqual(r.status_code, 200)
@@ -483,15 +490,17 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, 'id="next"')
         self.assertContains(r, "Далее")
         self.assertContains(r, 'class="slide active"')
-        self.assertContains(r, "overflow: hidden")
         self.assertNotContains(r, "Листайте вниз")
         self.assertContains(r, "/static/workshop/promo/products/voitos/qr-latest-apk.png")
+        self.assertNotContains(r, "<iframe")
 
         r = self.http.get("/products/qms")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "QA Manager")
         self.assertContains(r, "На полку")
-        self.assertContains(r, "система управления качеством")
+        self.assertContains(r, "Система управления качеством")
+        self.assertContains(r, 'id="product-deck"')
+        self.assertNotContains(r, "<iframe")
 
         r = self.http.get("/products/missing")
         self.assertEqual(r.status_code, 404)
@@ -521,22 +530,37 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "QA Manager")
         self.assertNotContains(r, "На полку")
         self.assertNotContains(r, 'id="itmDeckTvCrm"')
+        self.assertContains(r, 'id="product-deck"')
+        self.assertNotContains(r, "<iframe")
 
         root = Path(__file__).resolve().parent / "static" / "workshop" / "promo" / "products"
         self.assertTrue((root / "voitos" / "voitos-mark.png").is_file())
         self.assertTrue((root / "voitos" / "qr-latest-apk.png").is_file())
         self.assertTrue((root / "qms" / "presentation.html").is_file())
         self.assertFalse((root / "qms" / "QMS Code.zip").exists())
-        self.assertTrue((Path(__file__).resolve().parent / "static" / "workshop" / "js" / "product-deck-chrome.js").is_file())
 
         prepared = prepare_deck_html(
             '<html><head></head><body><img src="voitos-mark.png"></body></html>',
             voitos,
-            chrome="<nav>bar</nav>",
         )
         self.assertNotIn("<base", prepared)
         self.assertIn("/static/workshop/promo/products/voitos/voitos-mark.png", prepared)
-        self.assertIn("<nav>bar</nav></body>", prepared)
+
+        scoped = scope_css("html, body { height: 100%; } * { margin: 0; } .slide { color: red; }")
+        self.assertIn("#product-deck { height: 100%; }", scoped)
+        self.assertIn("#product-deck, #product-deck * { margin: 0; }", scoped)
+        self.assertIn("#product-deck .slide { color: red; }", scoped)
+        self.assertNotIn("html, body", scoped)
+
+        embed = extract_embed(
+            "<html><head><style>body { color: #111; } .nav { position: fixed; }</style></head>"
+            "<body><div class='deck'>x</div><script>var ok=1;</script></body></html>"
+        )
+        self.assertIn("#product-deck { color: #111; }", embed["css"])
+        self.assertIn("position: absolute", embed["css"])
+        self.assertIn("class='deck'", embed["body"])
+        self.assertIn("var ok=1", embed["scripts"])
+        self.assertNotIn("<script", embed["body"])
 
     def test_quiet_tv_poll_log_filter(self):
         import logging

@@ -1,0 +1,21 @@
+{% extends "workshop/base.html" %}
+{% block title %}{{ product.name }} · {{ page.title }}{% endblock %}
+{% block extra_head %}
+{{ deck.links|safe }}
+<style>{{ deck.css|safe }}</style>
+{% endblock %}
+{% block body_class %}page-product-deck{% endblock %}
+{% block main_class %} product-deck-main{% endblock %}
+{% block content %}
+<div class="product-embed">
+    {% if not tv_cast %}
+    <div class="product-embed-toolbar" data-html2canvas-ignore="true">
+        <a href="{% url 'products' %}">← На полку</a>
+    </div>
+    {% endif %}
+    <div id="product-deck">
+        {{ deck.body|safe }}
+    </div>
+</div>
+{{ deck.scripts|safe }}
+{% endblock %}

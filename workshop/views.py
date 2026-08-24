@@ -144,9 +144,7 @@ def products_shelf(request: HttpRequest):
 
 
 def product_deck(request: HttpRequest, slug: str, page: str | None = None):
-    from django.template.loader import render_to_string
-
-    from workshop.products import get_product, prepare_deck_html
+    from workshop.products import extract_embed, get_product, rewrite_internal_html_links, rewrite_relative_assets
 
     product = get_product(slug)
     if product is None:
@@ -158,17 +156,20 @@ def product_deck(request: HttpRequest, slug: str, page: str | None = None):
     if not path.is_file():
         raise Http404("product file")
     html = path.read_text(encoding="utf-8")
-    chrome = ""
-    if not getattr(request, "tv_cast_staff", None):
-        chrome = render_to_string(
-            "workshop/product_deck_chrome.html",
-            {"product": product, "page": page_obj},
-            request=request,
-        )
-    body = prepare_deck_html(html, product, chrome=chrome or None)
-    response = HttpResponse(body, content_type="text/html; charset=utf-8")
-    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    return response
+    html = rewrite_internal_html_links(html, product)
+    html = rewrite_relative_assets(html, product)
+    deck = extract_embed(html)
+    return render(
+        request,
+        "workshop/product_embed.html",
+        {
+            "product": product,
+            "page": page_obj,
+            "deck": deck,
+            "title": f"{product.name} · {page_obj.title}",
+            "product_embed": True,
+        },
+    )
 
 
 def statistics(request: HttpRequest):
