@@ -2998,12 +2998,14 @@ def tv_display_api(request: HttpRequest):
     follow = bool(payload.get("follow"))
     viewport_w = payload.get("viewport_w", request.POST.get("viewport_w"))
     viewport_h = payload.get("viewport_h", request.POST.get("viewport_h"))
+    caster = payload.get("caster", request.POST.get("caster"))
     cfg = set_display(
         mode=mode,
         path=path,
         follow=follow,
         viewport_w=viewport_w,
         viewport_h=viewport_h,
+        caster=caster,
     )
     if not follow:
         log_action(
@@ -3021,7 +3023,13 @@ def tv_cast_frame_api(request: HttpRequest):
     from workshop.tv_cast_frames import put_jpeg
     from workshop.tv_display import state_payload
 
-    seq = put_jpeg(request.body or b"")
+    caster = request.headers.get("X-Tv-Caster") or request.META.get("HTTP_X_TV_CASTER") or ""
+    seq = put_jpeg(request.body or b"", caster=caster)
+    if seq is None:
+        payload = state_payload()
+        payload["ok"] = False
+        payload["error"] = "caster"
+        return HttpResponse(json.dumps(payload), content_type="application/json", status=409)
     if not seq:
         return HttpResponse(
             json.dumps({"ok": False, "error": "not-jpeg"}),

@@ -391,6 +391,8 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "html2canvas.min.js")
         self.assertContains(r, "about:blank")
         self.assertContains(r, "withBlankIframes")
+        self.assertContains(r, "itmTvCaster")
+        self.assertContains(r, "becomeCaster")
         self.assertContains(r, "показать клиенту на ТВ")
         self.assertContains(r, "показать рекламу на ТВ")
         self.assertContains(r, 'id="tvCastToggle"')
@@ -419,6 +421,74 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(r.json()["cast_seq"], 0)
         r = anon.get("/tv/cast.jpg")
         self.assertEqual(r.status_code, 204)
+
+    def test_tv_cast_only_one_browser_owns_the_frame(self):
+        from workshop.tv_cast_frames import get_jpeg
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        jpeg_mac = b"\xff\xd8\xffMAC"
+        jpeg_srv = b"\xff\xd8\xffSRV"
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/orders","caster":"mac-1"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["caster"], "mac-1")
+        self.assertEqual(r.json()["crm_path"], "/orders")
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/products","follow":true,"caster":"server-2"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["crm_path"], "/orders")
+        self.assertEqual(r.json()["caster"], "mac-1")
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/products/qms","follow":true,"caster":"mac-1"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["crm_path"], "/products/qms")
+
+        r = self.http.post(
+            "/admin-panel/tv-cast-frame",
+            data=jpeg_mac,
+            content_type="image/jpeg",
+            HTTP_X_TV_CASTER="mac-1",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(get_jpeg()[0], jpeg_mac)
+
+        r = self.http.post(
+            "/admin-panel/tv-cast-frame",
+            data=jpeg_srv,
+            content_type="image/jpeg",
+            HTTP_X_TV_CASTER="server-2",
+        )
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["error"], "caster")
+        self.assertEqual(get_jpeg()[0], jpeg_mac)
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/products","caster":"server-2"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["caster"], "server-2")
+        self.assertEqual(r.json()["crm_path"], "/products")
+        self.assertEqual(r.json()["cast_seq"], 0)
+
+        r = self.http.post(
+            "/admin-panel/tv-cast-frame",
+            data=jpeg_srv,
+            content_type="image/jpeg",
+            HTTP_X_TV_CASTER="server-2",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(get_jpeg()[0], jpeg_srv)
 
     def test_product_shelf_login_and_tv_path(self):
         from pathlib import Path

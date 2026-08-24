@@ -141,7 +141,7 @@ def get_settings() -> TvDisplaySettings:
 
 
 def state_payload() -> dict:
-    from workshop.tv_cast_frames import cast_seq
+    from workshop.tv_cast_frames import cast_seq, get_caster
 
     cfg = get_settings()
     return {
@@ -154,6 +154,7 @@ def state_payload() -> dict:
         "ads_height": ADS_CANVAS_HEIGHT,
         "ads_index": clamp_ads_index(cfg.ads_index),
         "cast_seq": int(cast_seq() or 0),
+        "caster": get_caster(),
         "rev": int(cfg.rev or 1),
         "page_v": tv_page_version(),
     }
@@ -176,13 +177,24 @@ def set_display(
     follow: bool = False,
     viewport_w=None,
     viewport_h=None,
+    caster: str | None = None,
 ) -> TvDisplaySettings:
+    from workshop.tv_cast_frames import clear_jpeg, get_caster, sanitize_caster, set_caster
+
     cfg = get_settings()
     old_mode = cfg.mode
     old_path = cfg.crm_path or "/"
     old_w = int(cfg.crm_width or DEFAULT_CRM_WIDTH)
     old_h = int(cfg.crm_height or DEFAULT_CRM_HEIGHT)
+    token = sanitize_caster(caster)
+    owner = get_caster()
     if mode == TvDisplayMode.CRM:
+        if follow and owner and token != owner:
+            return cfg
+        if not follow and token:
+            if token != owner:
+                clear_jpeg(reset_caster=False)
+            set_caster(token)
         cfg.mode = TvDisplayMode.CRM
         if path is not None:
             if is_allowed_tv_path(path):
@@ -193,8 +205,6 @@ def set_display(
             cfg.crm_path = "/"
     else:
         cfg.mode = TvDisplayMode.ADS
-        from workshop.tv_cast_frames import clear_jpeg
-
         clear_jpeg()
     if viewport_w is not None:
         cfg.crm_width = clamp_viewport_dim(viewport_w, old_w, 640, 5120)

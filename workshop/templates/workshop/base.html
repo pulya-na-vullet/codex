@@ -774,6 +774,7 @@
   if (!wrap || !toggle) return;
   var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
   var lastSent = '';
+  var lastCaster = '';
   var live = false;
   var uploading = false;
   var dirty = true;
@@ -781,17 +782,45 @@
   var dirtyTimer = null;
   var h2cLoading = false;
   var modeNow = 'ads';
+  var CASTER_KEY = 'itmTvCaster';
 
   function here() {
     return (location.pathname || '/') + (location.search || '');
   }
 
+  function myCaster() {
+    try { return sessionStorage.getItem(CASTER_KEY) || ''; } catch (e) { return ''; }
+  }
+
+  function becomeCaster() {
+    var id = myCaster();
+    if (!id) {
+      id = 'c' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      try { sessionStorage.setItem(CASTER_KEY, id); } catch (e) {}
+    }
+    return id;
+  }
+
+  function isMine() {
+    var mine = myCaster();
+    return !!(mine && lastCaster && mine === lastCaster);
+  }
+
   function setStatus(data) {
     var ads = !(data && data.mode === 'crm');
     modeNow = ads ? 'ads' : 'crm';
+    lastCaster = (data && data.caster) || '';
     wrap.classList.toggle('is-ads', ads);
     wrap.classList.toggle('is-crm', !ads);
+    wrap.classList.toggle('is-owner', !ads && isMine());
     toggle.setAttribute('aria-checked', ads ? 'true' : 'false');
+    if (!ads && lastCaster && !isMine()) {
+      wrap.title = 'Кадр на ТВ идёт с другого окна. Нажмите «показать клиенту на ТВ», чтобы вести трансляцию отсюда.';
+    } else if (!ads && isMine()) {
+      wrap.title = 'Трансляция на ТВ идёт с этого окна';
+    } else {
+      wrap.title = '';
+    }
   }
 
   async function send(mode, follow) {
@@ -801,6 +830,8 @@
     var body = { mode: mode };
     if (mode === 'crm') body.path = here();
     if (follow) body.follow = true;
+    var id = myCaster();
+    if (id) body.caster = id;
     var r = await fetch('{% url "tv_display_api" %}', {
       method: 'POST',
       credentials: 'same-origin',
@@ -820,6 +851,7 @@
   function applyMode(mode) {
     lastSent = '';
     if (mode === 'crm') {
+      becomeCaster();
       send('crm', false).then(function () { startPump(); });
     } else {
       stopPump();
@@ -938,8 +970,10 @@
       return fetch('{% url "tv_cast_frame_api" %}', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'image/jpeg' },
+        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'image/jpeg', 'X-Tv-Caster': myCaster() },
         body: blob
+      }).then(function (r) {
+        if (r && r.status === 409) stopPump();
       });
     }).catch(function () {}).then(function () {
       uploading = false;
@@ -977,7 +1011,7 @@
   window.addEventListener('pagehide', stopPump);
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) stopPump();
-    else if (modeNow === 'crm') startPump();
+    else if (modeNow === 'crm' && isMine()) startPump();
   });
 
   async function refresh() {
@@ -986,7 +1020,7 @@
       var r = await fetch('{% url "tv_state_api" %}', { credentials: 'same-origin', cache: 'no-store' });
       var data = await r.json();
       setStatus(data);
-      if (data && data.mode === 'crm') {
+      if (data && data.mode === 'crm' && isMine()) {
         await send('crm', true);
         startPump();
       } else {
@@ -996,7 +1030,8 @@
   }
 
   toggle.addEventListener('click', function () {
-    applyMode(modeNow === 'ads' ? 'crm' : 'ads');
+    if (modeNow === 'crm' && isMine()) applyMode('ads');
+    else applyMode('crm');
   });
   if (crmLabel) crmLabel.addEventListener('click', function () { applyMode('crm'); });
   if (adsLabel) adsLabel.addEventListener('click', function () { applyMode('ads'); });
