@@ -291,7 +291,7 @@ def scope_css(css: str, scope: str = "#product-deck") -> str:
                             if item and item not in seen:
                                 seen.add(item)
                                 prefixed.append(item)
-                        out.append(", ".join(prefixed) + body)
+                        out.append(", ".join(prefixed) + " " + body.lstrip())
                         j += 1
                         break
                 j += 1
