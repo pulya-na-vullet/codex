@@ -299,39 +299,47 @@
       color: var(--teal-deep);
     }
 
+    .qr-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      width: 100%;
+      height: 100%;
+      padding: 1rem;
+      position: relative;
+      z-index: 1;
+      align-items: center;
+    }
+
     .qr-block {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 1rem;
-      height: 100%;
-      padding: 1.25rem;
-      position: relative;
-      z-index: 1;
+      gap: 0.65rem;
       text-align: center;
     }
 
     .qr-block img {
-      width: min(52vw, 240px);
+      width: min(22vw, 168px);
       height: auto;
       border-radius: 1rem;
       background: #f4f8fb;
-      padding: 0.65rem;
+      padding: 0.5rem;
       border: 1px solid var(--line);
     }
 
     .qr-block p {
-      font-size: clamp(1rem, 1.8vw, 1.25rem);
+      font-size: clamp(0.95rem, 1.6vw, 1.15rem);
       color: var(--ink);
-      font-weight: 600;
-      max-width: 18ch;
+      font-weight: 700;
+      max-width: 14ch;
     }
 
     .qr-block a {
       color: var(--teal-deep);
       font-weight: 600;
-      font-size: clamp(0.9rem, 1.4vw, 1.05rem);
+      font-size: clamp(0.78rem, 1.2vw, 0.95rem);
       text-decoration: none;
       border-bottom: 1px solid rgba(15, 111, 102, 0.35);
     }
@@ -518,20 +526,34 @@
         <div class="copy">
           <p class="kicker">Скачать</p>
           <h2>Наведите камеру на QR</h2>
-          <p class="body">Ссылка всегда ведёт на последний релиз APK в GitHub — обновлять QR не нужно.</p>
+          <p class="body">Два кода: Android ставит APK, iPhone — iOS-сборку. APK на iPhone не устанавливается.</p>
         </div>
         <div class="visual">
-          <div class="qr-block">
-            <img
-              src="qr-latest-apk.png"
-              width="240"
-              height="240"
-              alt="QR-код: скачать последний релиз Voitos с GitHub"
-            />
-            <p>Последний релиз Android</p>
-            <a href="https://github.com/pulya-na-vullet/Voitos/releases/latest/download/voitos-debug.apk">
-              github.com/…/releases/latest
-            </a>
+          <div class="qr-pair">
+            <div class="qr-block">
+              <img
+                src="qr-latest-apk.png"
+                width="168"
+                height="168"
+                alt="QR-код: скачать Voitos для Android"
+              />
+              <p>Android</p>
+              <a href="https://github.com/pulya-na-vullet/Voitos/releases/latest/download/voitos-debug.apk">
+                APK · последний релиз
+              </a>
+            </div>
+            <div class="qr-block">
+              <img
+                src="qr-latest-ios.png"
+                width="168"
+                height="168"
+                alt="QR-код: скачать Voitos для iPhone"
+              />
+              <p>iPhone</p>
+              <a href="https://github.com/pulya-na-vullet/Voitos/releases/latest/download/voitos-ios.ipa">
+                iOS · последний релиз
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -541,7 +563,7 @@
       <div class="wrap">
         <p class="brand">Voi<em>tos</em></p>
         <h2>Сделано, чтобы соседям было проще договариваться</h2>
-        <p class="lede">Отсканируйте QR на предыдущем слайде — на телефон придёт актуальная сборка с GitHub.</p>
+        <p class="lede">Отсканируйте QR на предыдущем слайде: Android — APK, iPhone — iOS-сборка.</p>
       </div>
     </section>
   </div>

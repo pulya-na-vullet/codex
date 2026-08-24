@@ -302,6 +302,38 @@
     .finale .sheet { text-align: center; justify-items: center; }
     .finale h2 { max-width: 18ch; }
 
+    .qr-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.85rem;
+      margin-top: 0.85rem;
+      width: min(520px, 100%);
+    }
+    .qr-block {
+      text-align: center;
+    }
+    .qr-block img {
+      width: min(28vw, 148px);
+      height: auto;
+      background: #f4f8fb;
+      padding: 0.45rem;
+      border-radius: 1rem;
+      border: 1px solid var(--line);
+    }
+    .qr-block p {
+      font-weight: 700;
+      margin-top: 0.4rem;
+    }
+    .qr-block a {
+      display: inline-block;
+      margin-top: 0.2rem;
+      color: var(--teal-deep);
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(15, 111, 102, 0.35);
+    }
+
     @media (prefers-reduced-motion: reduce) {
       .slide.active { animation: none; }
       .hero-visual { animation: none; }
@@ -475,11 +507,23 @@
         <p class="kicker">Старт сегодня</p>
         <h2>Три шага</h2>
         <ol class="steps panel">
-          <li><span class="n">1</span><span>Установить приложение Voitos (Android).</span></li>
+          <li><span class="n">1</span><span>Установить Voitos: Android — APK, iPhone — iOS-сборка (не APK).</span></li>
           <li><span class="n">2</span><span>Зарегистрироваться исполнителем: техника, стаж, права.</span></li>
           <li><span class="n">3</span><span>Дождаться проверки — и принимать заказы двора.</span></li>
         </ol>
-        <p class="lede" style="margin-top:0.75rem;">Демо для соседей (как выглядит двор) — файл <strong>demo-sosedi.html</strong> в этой же папке.</p>
+        <div class="qr-pair">
+          <div class="qr-block">
+            <img src="qr-latest-apk.png" width="148" height="148" alt="QR: Voitos для Android" />
+            <p>Android</p>
+            <a href="https://github.com/pulya-na-vullet/Voitos/releases/latest/download/voitos-debug.apk">APK</a>
+          </div>
+          <div class="qr-block">
+            <img src="qr-latest-ios.png" width="148" height="148" alt="QR: Voitos для iPhone" />
+            <p>iPhone</p>
+            <a href="https://github.com/pulya-na-vullet/Voitos/releases/latest/download/voitos-ios.ipa">iOS</a>
+          </div>
+        </div>
+        <p class="lede" style="margin-top:0.75rem;">APK на iPhone не ставится — для Apple свой QR.</p>
       </div>
     </section>
 

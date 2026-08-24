@@ -91,7 +91,7 @@ PRODUCTS: tuple[Product, ...] = (
                 slug="sosedi",
                 file_name="demo-sosedi.html",
                 title="Демо для соседей",
-                blurb="Слайды: двор, сборы, мастера, QR. Стрелки или пробел — листать.",
+                blurb="Слайды: двор, сборы, мастера, QR Android и iPhone. Стрелки или пробел — листать.",
                 kind="slides",
             ),
         ),

@@ -562,6 +562,8 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "техническая команда")
         self.assertNotIn("тракторист", r.content.decode().lower())
         self.assertContains(r, "/static/workshop/promo/products/voitos/voitos-mark.png")
+        self.assertContains(r, "/static/workshop/promo/products/voitos/qr-latest-apk.png")
+        self.assertContains(r, "/static/workshop/promo/products/voitos/qr-latest-ios.png")
         self.assertNotContains(r, "<base ")
         self.assertNotContains(r, "<iframe")
 
@@ -573,6 +575,11 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, 'class="slide active"')
         self.assertNotContains(r, "Листайте вниз")
         self.assertContains(r, "/static/workshop/promo/products/voitos/qr-latest-apk.png")
+        self.assertContains(r, "/static/workshop/promo/products/voitos/qr-latest-ios.png")
+        self.assertContains(r, "voitos-debug.apk")
+        self.assertContains(r, "voitos-ios.ipa")
+        self.assertContains(r, "Android")
+        self.assertContains(r, "iPhone")
         self.assertNotContains(r, "<iframe")
 
         r = self.http.get("/products/qms")
@@ -617,6 +624,7 @@ class AuthAndPagesTests(TestCase):
         root = Path(__file__).resolve().parent / "static" / "workshop" / "promo" / "products"
         self.assertTrue((root / "voitos" / "voitos-mark.png").is_file())
         self.assertTrue((root / "voitos" / "qr-latest-apk.png").is_file())
+        self.assertTrue((root / "voitos" / "qr-latest-ios.png").is_file())
         self.assertTrue((root / "qms" / "presentation.html").is_file())
         self.assertFalse((root / "qms" / "QMS Code.zip").exists())
 
