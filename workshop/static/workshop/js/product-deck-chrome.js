@@ -174,7 +174,7 @@
 
   function markDirty() { if (live) dirty = true; }
 
-  ["click", "keyup", "scroll", "change", "input"].forEach(function (ev) {
+  ["click", "keyup", "wheel", "scroll", "change", "input"].forEach(function (ev) {
     window.addEventListener(ev, markDirty, true);
   });
   window.addEventListener("resize", markDirty);

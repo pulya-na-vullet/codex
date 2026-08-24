@@ -475,6 +475,16 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "/static/workshop/promo/products/voitos/voitos-mark.png")
         self.assertNotContains(r, "<base ")
 
+        r = self.http.get("/products/voitos/sosedi")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "На полку")
+        self.assertContains(r, 'id="next"')
+        self.assertContains(r, "Далее")
+        self.assertContains(r, 'class="slide active"')
+        self.assertContains(r, "overflow: hidden")
+        self.assertNotContains(r, "Листайте вниз")
+        self.assertContains(r, "/static/workshop/promo/products/voitos/qr-latest-apk.png")
+
         r = self.http.get("/products/qms")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "QA Manager")

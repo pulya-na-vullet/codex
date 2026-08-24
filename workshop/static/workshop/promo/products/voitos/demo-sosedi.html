@@ -11,8 +11,6 @@
     :root {
       --ink: #102033;
       --ink-soft: #3a4d63;
-      --mist: #e7eef5;
-      --sky: #c9dbe9;
       --teal: #1f9e8f;
       --teal-deep: #0f6f66;
       --ice: #f4f8fb;
@@ -23,21 +21,16 @@
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    html {
-      scroll-behavior: smooth;
-      scroll-snap-type: y proximity;
-    }
-
-    body {
+    html, body {
+      height: 100%;
+      overflow: hidden;
       font-family: var(--font-body);
       color: var(--ink);
       background: var(--ice);
       line-height: 1.45;
       -webkit-font-smoothing: antialiased;
-      overflow-x: hidden;
     }
 
-    /* Atmosphere — soft sky layers, no flat fill */
     .sky {
       position: fixed;
       inset: 0;
@@ -47,7 +40,6 @@
         radial-gradient(900px 600px at 88% 8%, #c8e4de 0%, transparent 50%),
         radial-gradient(1000px 800px at 50% 110%, #d5e3f0 0%, transparent 55%),
         linear-gradient(165deg, #eef4f8 0%, #d9e6f0 48%, #e8f1ef 100%);
-      animation: sky-drift 28s ease-in-out infinite alternate;
     }
 
     .grain {
@@ -59,23 +51,33 @@
       background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     }
 
-    @keyframes sky-drift {
-      from { filter: hue-rotate(0deg) saturate(1); transform: scale(1); }
-      to { filter: hue-rotate(8deg) saturate(1.05); transform: scale(1.03); }
+    .deck {
+      height: 100%;
+      width: 100%;
+      position: relative;
     }
 
-    section {
-      min-height: 100vh;
-      min-height: 100dvh;
-      scroll-snap-align: start;
-      display: flex;
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: none;
+      padding: clamp(1.5rem, 4vh, 3rem) clamp(1.5rem, 6vw, 5rem) 4.75rem;
       align-items: center;
-      padding: clamp(2.5rem, 6vh, 5rem) clamp(1.5rem, 6vw, 5rem);
+      justify-content: center;
+    }
+
+    .slide.active {
+      display: flex;
+      animation: rise 0.45s ease;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: none; }
     }
 
     .wrap {
       width: min(1100px, 100%);
-      margin: 0 auto;
     }
 
     .brand {
@@ -119,21 +121,6 @@
       letter-spacing: 0.02em;
     }
 
-    .hint span {
-      display: inline-block;
-      animation: nudge 2.2s ease-in-out infinite;
-    }
-
-    @keyframes nudge {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(6px); }
-    }
-
-    /* Hero */
-    .hero {
-      position: relative;
-    }
-
     .hero-inner {
       display: grid;
       gap: clamp(1.5rem, 4vw, 3rem);
@@ -141,9 +128,7 @@
     }
 
     @media (min-width: 900px) {
-      .hero-inner {
-        grid-template-columns: 1.15fr 0.85fr;
-      }
+      .hero-inner { grid-template-columns: 1.15fr 0.85fr; }
     }
 
     .logo-plane {
@@ -181,27 +166,6 @@
       color: var(--teal-deep);
     }
 
-    /* Reveal on scroll */
-    .reveal {
-      opacity: 0;
-      transform: translateY(28px);
-      transition: opacity 0.8s ease, transform 0.8s ease;
-    }
-
-    .reveal.in {
-      opacity: 1;
-      transform: none;
-    }
-
-    .hero .reveal {
-      transition-delay: 0.05s;
-    }
-
-    .hero .logo-plane.reveal {
-      transition-delay: 0.2s;
-    }
-
-    /* Feature sections */
     .kicker {
       font-size: clamp(0.95rem, 1.4vw, 1.1rem);
       font-weight: 600;
@@ -222,12 +186,11 @@
       display: grid;
       gap: clamp(1.5rem, 4vw, 3rem);
       align-items: center;
+      width: min(1100px, 100%);
     }
 
     @media (min-width: 860px) {
-      .split {
-        grid-template-columns: 1fr 1fr;
-      }
+      .split { grid-template-columns: 1fr 1fr; }
       .split.reverse .copy { order: 2; }
       .split.reverse .visual { order: 1; }
     }
@@ -262,7 +225,6 @@
       max-width: 12ch;
     }
 
-    /* Payment dots demo */
     .chat-demo {
       position: absolute;
       inset: 14% 10%;
@@ -299,25 +261,23 @@
       color: var(--ink-soft);
     }
 
-    .dots {
+    .pay-dots {
       display: inline-flex;
       gap: 3px;
       align-items: center;
     }
 
-    .dot {
+    .pay-dot {
       width: 7px;
       height: 7px;
       border-radius: 50%;
     }
 
-    .dot.ok { background: #2f9d6a; }
-    .dot.no { background: #d45b5b; }
+    .pay-dot.ok { background: #2f9d6a; }
+    .pay-dot.no { background: #d45b5b; }
 
-    /* Closing */
     .finale {
       text-align: center;
-      justify-content: center;
     }
 
     .finale .wrap {
@@ -326,13 +286,8 @@
       align-items: center;
     }
 
-    .finale h2 {
-      max-width: 18ch;
-    }
-
-    .finale .lede {
-      max-width: 36ch;
-    }
+    .finale h2 { max-width: 18ch; }
+    .finale .lede { max-width: 36ch; }
 
     .finale .brand {
       font-size: clamp(2.8rem, 8vw, 5.5rem);
@@ -381,181 +336,282 @@
       border-bottom: 1px solid rgba(15, 111, 102, 0.35);
     }
 
-    footer.note {
-      padding: 1.5rem;
-      text-align: center;
-      font-size: 0.95rem;
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.85rem clamp(1rem, 4vw, 2rem) 1.1rem;
+      background: linear-gradient(180deg, transparent, rgba(232, 241, 239, 0.92) 35%);
+    }
+
+    .nav button {
+      font: inherit;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.8);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 0.65rem 1.1rem;
+      cursor: pointer;
+    }
+
+    .nav button:hover { border-color: rgba(15, 111, 102, 0.35); }
+    .nav button:disabled { opacity: 0.35; cursor: default; }
+
+    .nav-dots {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .nav-dots button {
+      width: 0.55rem;
+      height: 0.55rem;
+      padding: 0;
+      border-radius: 50%;
+      border: none;
+      background: rgba(16, 32, 51, 0.22);
+      cursor: pointer;
+    }
+
+    .nav-dots button.on { background: var(--teal-deep); transform: scale(1.25); }
+
+    .counter {
+      position: fixed;
+      top: 1rem;
+      right: 1.25rem;
+      z-index: 20;
+      font-size: 0.9rem;
+      font-weight: 600;
       color: var(--ink-soft);
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0.35rem 0.75rem;
+    }
+
+    .hint-keys {
+      font-size: 0.85rem;
+      color: var(--ink-soft);
+      text-align: center;
     }
 
     @media (prefers-reduced-motion: reduce) {
-      html { scroll-behavior: auto; }
-      .sky, .logo-plane, .hint span { animation: none; }
-      .reveal { opacity: 1; transform: none; transition: none; }
+      .slide.active { animation: none; }
+      .logo-plane { animation: none; }
     }
   </style>
 </head>
 <body>
   <div class="sky" aria-hidden="true"></div>
   <div class="grain" aria-hidden="true"></div>
+  <div class="counter" id="counter">1 / 8</div>
 
-  <section class="hero" id="top">
-    <div class="wrap hero-inner">
-      <div class="reveal">
-        <p class="brand brand-mark">Voi<em>tos</em></p>
-        <h1>Соседи решают дела двора вместе</h1>
-        <p class="lede">Сборы, мастера и чат группы — в одном приложении, без путаницы в переписках.</p>
-        <p class="hint">Листайте вниз <span aria-hidden="true">↓</span></p>
+  <div class="deck" id="deck">
+    <section class="slide active" data-slide="0">
+      <div class="wrap hero-inner">
+        <div>
+          <p class="brand brand-mark">Voi<em>tos</em></p>
+          <h1>Соседи решают дела двора вместе</h1>
+          <p class="lede">Сборы, мастера и чат группы — в одном приложении, без путаницы в переписках.</p>
+          <p class="hint">Стрелки или пробел — дальше</p>
+        </div>
+        <div class="logo-plane" aria-hidden="true">
+          <img src="voitos-mark.png" alt="" width="280" height="280" />
+        </div>
       </div>
-      <div class="logo-plane reveal" aria-hidden="true">
-        <img src="voitos-mark.png" alt="" width="280" height="280" />
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <section>
-    <div class="wrap split">
-      <div class="copy reveal">
-        <p class="kicker">Зачем Voitos</p>
-        <h2>Общие задачи — без хаоса</h2>
-        <p class="body">Снег, площадка, дорога, свет: двор скидывается прозрачно, видит прогресс и не теряет нити в десятках чатов.</p>
+    <section class="slide" data-slide="1">
+      <div class="split">
+        <div class="copy">
+          <p class="kicker">Зачем Voitos</p>
+          <h2>Общие задачи — без хаоса</h2>
+          <p class="body">Снег, площадка, дорога, свет: двор скидывается прозрачно, видит прогресс и не теряет нити в десятках чатов.</p>
+        </div>
+        <div class="visual" aria-hidden="true">
+          <p class="visual-label">Один двор. Общий порядок.</p>
+        </div>
       </div>
-      <div class="visual reveal" aria-hidden="true">
-        <p class="visual-label">Один двор. Общий порядок.</p>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <section>
-    <div class="wrap split reverse">
-      <div class="copy reveal">
-        <p class="kicker">Сборы</p>
-        <h2>Скинулись — и видно, кто уже оплатил</h2>
-        <p class="body">До четырёх активных сборов сразу. У каждого соседа в чате рядом с сообщением — маленькие кружки: зелёный оплатил, красный ещё нет.</p>
-      </div>
-      <div class="visual reveal" aria-hidden="true">
-        <div class="chat-demo">
-          <div class="bubble">
-            Завтра техника во дворе в 9:00
-            <div class="meta">
-              <span>03.15 18:42</span>
-              <span class="dots" title="оплата сборов">
-                <i class="dot ok"></i><i class="dot ok"></i><i class="dot no"></i>
-              </span>
+    <section class="slide" data-slide="2">
+      <div class="split reverse">
+        <div class="copy">
+          <p class="kicker">Сборы</p>
+          <h2>Скинулись — и видно, кто уже оплатил</h2>
+          <p class="body">До четырёх активных сборов сразу. У каждого соседа в чате рядом с сообщением — маленькие кружки: зелёный оплатил, красный ещё нет.</p>
+        </div>
+        <div class="visual" aria-hidden="true">
+          <div class="chat-demo">
+            <div class="bubble">
+              Завтра техника во дворе в 9:00
+              <div class="meta">
+                <span>03.15 18:42</span>
+                <span class="pay-dots" title="оплата сборов">
+                  <i class="pay-dot ok"></i><i class="pay-dot ok"></i><i class="pay-dot no"></i>
+                </span>
+              </div>
             </div>
-          </div>
-          <div class="bubble mine">
-            Ок, я уже скинул
-            <div class="meta">
-              <span>03.15 18:44</span>
-              <span class="dots">
-                <i class="dot ok"></i><i class="dot ok"></i><i class="dot ok"></i>
-              </span>
+            <div class="bubble mine">
+              Ок, я уже скинул
+              <div class="meta">
+                <span>03.15 18:44</span>
+                <span class="pay-dots">
+                  <i class="pay-dot ok"></i><i class="pay-dot ok"></i><i class="pay-dot ok"></i>
+                </span>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section>
-    <div class="wrap split">
-      <div class="copy reveal">
-        <p class="kicker">Мастера</p>
-        <h2>Нужен специалист — вызываете рядом</h2>
-        <p class="body">Электрик, компьютер, маникюр на дом и другие роли. Исполнители из нашего круга — заявка уходит по правилам Voitos.</p>
-      </div>
-      <div class="visual reveal" aria-hidden="true">
-        <p class="visual-label">Вызов мастера без беготни по объявлениям.</p>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <div class="wrap split reverse">
-      <div class="copy reveal">
-        <p class="kicker">Чат группы</p>
-        <h2>Переписка двора на виду</h2>
-        <p class="body">Групповой чат привязан к вашему дому: сообщения, баланс свободных средств группы и статусы по сборам — рядом с каждым соседом.</p>
-      </div>
-      <div class="visual reveal" aria-hidden="true">
-        <p class="visual-label">Все на одной волне.</p>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <div class="wrap split">
-      <div class="copy reveal">
-        <p class="kicker">Как пользоваться</p>
-        <h2>Приложение на телефоне</h2>
-        <p class="body">Вход по телефону, короткое знакомство с сервисом, подписка для доступа к сборам и вызову мастеров. Админ двора помогает с подключением.</p>
-      </div>
-      <div class="visual reveal" aria-hidden="true">
-        <p class="visual-label">Установили — и двор уже в кармане.</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="download">
-    <div class="wrap split reverse">
-      <div class="copy reveal">
-        <p class="kicker">Скачать</p>
-        <h2>Наведите камеру на QR</h2>
-        <p class="body">Ссылка всегда ведёт на последний релиз APK в GitHub — обновлять QR не нужно.</p>
-      </div>
-      <div class="visual reveal">
-        <div class="qr-block">
-          <img
-            src="qr-latest-apk.png"
-            width="240"
-            height="240"
-            alt="QR-код: скачать последний релиз Voitos с GitHub"
-          />
-          <p>Последний релиз Android</p>
-          <a href="https://github.com/pulya-na-vullet/Voitos/releases/latest/download/voitos-debug.apk">
-            github.com/…/releases/latest
-          </a>
+    <section class="slide" data-slide="3">
+      <div class="split">
+        <div class="copy">
+          <p class="kicker">Мастера</p>
+          <h2>Нужен специалист — вызываете рядом</h2>
+          <p class="body">Электрик, компьютер, маникюр на дом и другие роли. Исполнители из нашего круга — заявка уходит по правилам Voitos.</p>
+        </div>
+        <div class="visual" aria-hidden="true">
+          <p class="visual-label">Вызов мастера без беготни по объявлениям.</p>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="finale">
-    <div class="wrap reveal">
-      <p class="brand">Voi<em>tos</em></p>
-      <h2>Сделано, чтобы соседям было проще договариваться</h2>
-      <p class="lede">Отсканируйте QR выше — на телефон придёт актуальная сборка с GitHub.</p>
-    </div>
-  </section>
+    <section class="slide" data-slide="4">
+      <div class="split reverse">
+        <div class="copy">
+          <p class="kicker">Чат группы</p>
+          <h2>Переписка двора на виду</h2>
+          <p class="body">Групповой чат привязан к вашему дому: сообщения, баланс свободных средств группы и статусы по сборам — рядом с каждым соседом.</p>
+        </div>
+        <div class="visual" aria-hidden="true">
+          <p class="visual-label">Все на одной волне.</p>
+        </div>
+      </div>
+    </section>
 
-  <footer class="note">Voitos · демонстрация для соседей · листайте колесом или пультом</footer>
+    <section class="slide" data-slide="5">
+      <div class="split">
+        <div class="copy">
+          <p class="kicker">Как пользоваться</p>
+          <h2>Приложение на телефоне</h2>
+          <p class="body">Вход по телефону, короткое знакомство с сервисом, подписка для доступа к сборам и вызову мастеров. Админ двора помогает с подключением.</p>
+        </div>
+        <div class="visual" aria-hidden="true">
+          <p class="visual-label">Установили — и двор уже в кармане.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-slide="6">
+      <div class="split reverse">
+        <div class="copy">
+          <p class="kicker">Скачать</p>
+          <h2>Наведите камеру на QR</h2>
+          <p class="body">Ссылка всегда ведёт на последний релиз APK в GitHub — обновлять QR не нужно.</p>
+        </div>
+        <div class="visual">
+          <div class="qr-block">
+            <img
+              src="qr-latest-apk.png"
+              width="240"
+              height="240"
+              alt="QR-код: скачать последний релиз Voitos с GitHub"
+            />
+            <p>Последний релиз Android</p>
+            <a href="https://github.com/pulya-na-vullet/Voitos/releases/latest/download/voitos-debug.apk">
+              github.com/…/releases/latest
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide finale" data-slide="7">
+      <div class="wrap">
+        <p class="brand">Voi<em>tos</em></p>
+        <h2>Сделано, чтобы соседям было проще договариваться</h2>
+        <p class="lede">Отсканируйте QR на предыдущем слайде — на телефон придёт актуальная сборка с GitHub.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="nav">
+    <button type="button" id="prev" aria-label="Назад">← Назад</button>
+    <div>
+      <div class="nav-dots" id="dots" aria-label="Слайды"></div>
+      <p class="hint-keys">← → · пробел · клик по точкам</p>
+    </div>
+    <button type="button" id="next" aria-label="Вперёд">Далее →</button>
+  </div>
 
   <script>
     (function () {
-      var nodes = document.querySelectorAll(".reveal");
-      if (!("IntersectionObserver" in window)) {
-        nodes.forEach(function (n) { n.classList.add("in"); });
-        return;
-      }
-      var io = new IntersectionObserver(
-        function (entries) {
-          entries.forEach(function (e) {
-            if (e.isIntersecting) {
-              e.target.classList.add("in");
-              io.unobserve(e.target);
-            }
-          });
-        },
-        { threshold: 0.22, rootMargin: "0px 0px -8% 0px" }
-      );
-      nodes.forEach(function (n) { io.observe(n); });
-      // Hero visible immediately on TV load
-      requestAnimationFrame(function () {
-        document.querySelectorAll(".hero .reveal").forEach(function (n) {
-          n.classList.add("in");
-        });
+      var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+      var i = 0;
+      var dots = document.getElementById("dots");
+      var counter = document.getElementById("counter");
+      var prev = document.getElementById("prev");
+      var next = document.getElementById("next");
+      var wheelLock = 0;
+
+      slides.forEach(function (_, idx) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("aria-label", "Слайд " + (idx + 1));
+        b.addEventListener("click", function () { go(idx); });
+        dots.appendChild(b);
       });
+
+      function go(n) {
+        if (n < 0 || n >= slides.length) return;
+        slides[i].classList.remove("active");
+        i = n;
+        slides[i].classList.add("active");
+        counter.textContent = (i + 1) + " / " + slides.length;
+        prev.disabled = i === 0;
+        next.disabled = i === slides.length - 1;
+        Array.prototype.forEach.call(dots.children, function (d, idx) {
+          d.classList.toggle("on", idx === i);
+        });
+      }
+
+      prev.addEventListener("click", function () { go(i - 1); });
+      next.addEventListener("click", function () { go(i + 1); });
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown" || e.key === "ArrowDown") {
+          e.preventDefault();
+          go(i + 1);
+        } else if (e.key === "ArrowLeft" || e.key === "PageUp" || e.key === "ArrowUp") {
+          e.preventDefault();
+          go(i - 1);
+        } else if (e.key === "Home") {
+          go(0);
+        } else if (e.key === "End") {
+          go(slides.length - 1);
+        }
+      });
+
+      document.addEventListener("wheel", function (e) {
+        e.preventDefault();
+        var now = Date.now();
+        if (now - wheelLock < 520) return;
+        if (e.deltaY > 24) { wheelLock = now; go(i + 1); }
+        else if (e.deltaY < -24) { wheelLock = now; go(i - 1); }
+      }, { passive: false });
+
+      go(0);
     })();
   </script>
 </body>
