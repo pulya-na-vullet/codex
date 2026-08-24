@@ -148,17 +148,29 @@ def rewrite_internal_html_links(html: str, product: Product) -> str:
     return updated
 
 
-def inject_base_href(html: str, href: str) -> str:
-    if re.search(r"<base\b", html, flags=re.I):
-        return html
-    prefix = href if href.endswith("/") else href + "/"
-    return re.sub(
-        r"(<head\b[^>]*>)",
-        rf'\1<base href="{prefix}">',
-        html,
-        count=1,
-        flags=re.I,
-    )
+_RELATIVE_ASSET = re.compile(
+    r"""(?P<attr>src|href)=(?P<q>['"])(?P<path>(?![/#]|https?:|data:|mailto:)[^'"]+)(?P=q)""",
+    flags=re.I,
+)
+
+
+def rewrite_relative_assets(html: str, product: Product) -> str:
+    """Point local images at /static so decks work without a <base> tag.
+
+    A <base href> makes html2canvas's empty iframe resolve to /products/ and
+    the TV/Mac then flicker between the shelf and the deck about once a second.
+    """
+    prefix = product.static_prefix()
+    html_files = set(html_link_map(product))
+
+    def repl(match: re.Match[str]) -> str:
+        path = match.group("path").replace("\\", "/").lstrip("./")
+        name = path.split("/")[-1]
+        if name in html_files or not name:
+            return match.group(0)
+        return f"{match.group('attr')}={match.group('q')}{prefix}{name}{match.group('q')}"
+
+    return _RELATIVE_ASSET.sub(repl, html)
 
 
 def inject_before_body_end(html: str, snippet: str) -> str:
@@ -169,7 +181,7 @@ def inject_before_body_end(html: str, snippet: str) -> str:
 
 def prepare_deck_html(html: str, product: Product, chrome: str | None = None) -> str:
     prepared = rewrite_internal_html_links(html, product)
-    prepared = inject_base_href(prepared, product.static_prefix())
+    prepared = rewrite_relative_assets(prepared, product)
     if chrome:
         prepared = inject_before_body_end(prepared, chrome)
     return prepared

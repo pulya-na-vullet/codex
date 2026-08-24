@@ -465,14 +465,15 @@ class AuthAndPagesTests(TestCase):
         self.assertContains(r, "/products/voitos/traktoristy")
         self.assertContains(r, "/products/voitos/sosedi")
         self.assertNotContains(r, 'href="presentation-traktoristy.html"')
-        self.assertContains(r, 'href="/static/workshop/promo/products/voitos/"')
+        self.assertNotContains(r, "<base ")
         self.assertContains(r, "/static/workshop/js/product-deck-chrome.js")
         self.assertContains(r, 'id="itmDeckTvCrm"')
 
         r = self.http.get("/products/voitos/traktoristy")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "На полку")
-        self.assertContains(r, "voitos-mark.png")
+        self.assertContains(r, "/static/workshop/promo/products/voitos/voitos-mark.png")
+        self.assertNotContains(r, "<base ")
 
         r = self.http.get("/products/qms")
         self.assertEqual(r.status_code, 200)
@@ -516,8 +517,13 @@ class AuthAndPagesTests(TestCase):
         self.assertFalse((root / "qms" / "QMS Code.zip").exists())
         self.assertTrue((Path(__file__).resolve().parent / "static" / "workshop" / "js" / "product-deck-chrome.js").is_file())
 
-        prepared = prepare_deck_html("<html><head></head><body>x</body></html>", voitos, chrome="<nav>bar</nav>")
-        self.assertIn('<base href="/static/workshop/promo/products/voitos/">', prepared)
+        prepared = prepare_deck_html(
+            '<html><head></head><body><img src="voitos-mark.png"></body></html>',
+            voitos,
+            chrome="<nav>bar</nav>",
+        )
+        self.assertNotIn("<base", prepared)
+        self.assertIn("/static/workshop/promo/products/voitos/voitos-mark.png", prepared)
         self.assertIn("<nav>bar</nav></body>", prepared)
 
     def test_quiet_tv_poll_log_filter(self):

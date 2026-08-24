@@ -720,6 +720,7 @@
   var uploading = false;
   var dirty = true;
   var pumpTimer = null;
+  var dirtyTimer = null;
   var h2cLoading = false;
   var modeNow = 'ads';
 
@@ -851,15 +852,18 @@
     live = true;
     dirty = true;
     loadH2C(function () { dirty = true; captureOnce(); });
-    if (pumpTimer) return;
-    pumpTimer = setInterval(function () {
-      if (!live) return;
-      if (dirty) {
-        dirty = false;
-        captureOnce();
-      }
-    }, 450);
-    setInterval(function () { if (live) dirty = true; }, 1800);
+    if (!pumpTimer) {
+      pumpTimer = setInterval(function () {
+        if (!live) return;
+        if (dirty) {
+          dirty = false;
+          captureOnce();
+        }
+      }, 450);
+    }
+    if (!dirtyTimer) {
+      dirtyTimer = setInterval(function () { if (live) dirty = true; }, 1800);
+    }
   }
 
   function stopPump() {
@@ -872,8 +876,14 @@
     window.addEventListener(ev, markDirty, true);
   });
   window.addEventListener('resize', markDirty);
+  window.addEventListener('pagehide', stopPump);
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) stopPump();
+    else if (modeNow === 'crm') startPump();
+  });
 
   async function refresh() {
+    if (document.hidden) return;
     try {
       var r = await fetch('{% url "tv_state_api" %}', { credentials: 'same-origin', cache: 'no-store' });
       var data = await r.json();
