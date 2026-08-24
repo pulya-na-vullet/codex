@@ -65,10 +65,10 @@ PRODUCTS: tuple[Product, ...] = (
     Product(
         slug="voitos",
         name="Voitos",
-        tagline="Сборы двора и работа тракториста",
+        tagline="Сборы двора и работа технической команды",
         description=(
             "Приложение для соседей: общие сборы, точки оплаты и мастера. "
-            "Есть слайды для трактористов и полноэкранное демо «для нашего двора»."
+            "Есть слайды для технической команды и полноэкранное демо «для нашего двора»."
         ),
         rel_dir="workshop/promo/products/voitos",
         accent="#1f9e8f",
@@ -83,7 +83,7 @@ PRODUCTS: tuple[Product, ...] = (
             ProductPage(
                 slug="traktoristy",
                 file_name="presentation-traktoristy.html",
-                title="Презентация для трактористов",
+                title="Презентация для технической команды",
                 blurb="Слайды: проект, сборы, рабочий день. Стрелки или пробел — листать.",
                 kind="slides",
             ),
