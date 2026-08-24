@@ -69,5 +69,16 @@
             </div>
         </a>
     </div>
+    <div class="col-md-4">
+        <a href="{% url 'products' %}" class="text-decoration-none">
+            <div class="card h-100">
+                <div class="card-body text-center py-4">
+                    <div class="display-5 fw-bold text-primary">{{ product_count }}</div>
+                    <div class="mt-2">Продукты команды</div>
+                    <div class="small-muted">полка презентаций · можно на ТВ</div>
+                </div>
+            </div>
+        </a>
+    </div>
 </div>
 {% endblock %}

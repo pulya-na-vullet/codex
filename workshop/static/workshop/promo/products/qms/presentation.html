@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QA Manager — система управления качеством тестирования</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --violet: #667eea;
+      --purple: #764ba2;
+      --teal: #20c997;
+      --cyan: #17a2b8;
+      --ink: #1a1d29;
+      --muted: #5b6170;
+      --card: #ffffff;
+      --soft: rgba(255,255,255,.12);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: Inter, "Segoe UI", sans-serif;
+      background: #0e1020;
+      color: #fff;
+      overflow: hidden;
+    }
+
+    .deck { position: relative; width: 100%; height: 100%; }
+    .slide {
+      position: absolute; inset: 0;
+      display: none;
+      padding: 56px 72px 88px;
+      background:
+        radial-gradient(1200px 600px at 110% -10%, rgba(118,75,162,.45), transparent 55%),
+        radial-gradient(900px 500px at -10% 110%, rgba(32,201,151,.18), transparent 50%),
+        linear-gradient(135deg, #1c2140 0%, #2a1f4a 55%, #1a2748 100%);
+    }
+    .slide.active { display: flex; flex-direction: column; animation: in .38s ease; }
+    @keyframes in {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: none; }
+    }
+    .slide.title-slide {
+      justify-content: center;
+      text-align: left;
+    }
+
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 13px; letter-spacing: .16em; text-transform: uppercase;
+      color: #c9c4ff; font-weight: 700; margin-bottom: 18px;
+    }
+    h1 { font-size: 56px; line-height: 1.08; font-weight: 800; letter-spacing: -1.2px; max-width: 980px; }
+    h2 { font-size: 38px; font-weight: 800; letter-spacing: -0.6px; margin-bottom: 10px; }
+    .lead { font-size: 22px; color: #d8dce8; max-width: 820px; line-height: 1.45; margin-top: 18px; }
+    .sub { color: #b8bfd3; font-size: 17px; margin-bottom: 28px; }
+
+    .grid { display: grid; gap: 18px; margin-top: 8px; }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+    .card {
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 18px;
+      padding: 22px 22px 20px;
+      backdrop-filter: blur(10px);
+    }
+    .card h3 { font-size: 18px; margin: 10px 0 8px; }
+    .card p { color: #cfd4e4; font-size: 15px; line-height: 1.5; }
+    .icon {
+      width: 42px; height: 42px; border-radius: 12px;
+      display: grid; place-items: center; font-size: 18px;
+      background: linear-gradient(135deg, var(--violet), var(--purple));
+    }
+    .icon.teal { background: linear-gradient(135deg, #20c997, #17a2b8); }
+    .icon.gold { background: linear-gradient(135deg, #f6c343, #fd7e14); }
+    .icon.rose { background: linear-gradient(135deg, #ff6b6b, #ee5a52); }
+    .icon.blue { background: linear-gradient(135deg, #4facfe, #00f2fe); }
+
+    .role {
+      display: flex; gap: 16px; align-items: flex-start;
+    }
+    .badge {
+      display: inline-block; padding: 4px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 700; letter-spacing: .04em;
+      background: rgba(102,126,234,.25); color: #dbe0ff;
+    }
+    .list { list-style: none; display: grid; gap: 10px; margin-top: 8px; }
+    .list li {
+      display: flex; gap: 12px; align-items: flex-start;
+      color: #d7dceb; font-size: 17px; line-height: 1.4;
+    }
+    .list i { color: #8ea2ff; margin-top: 4px; }
+
+    .flow {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px;
+    }
+    .chip {
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 999px; padding: 10px 16px; font-weight: 600; font-size: 15px;
+    }
+    .arrow { color: #9aa6d8; }
+
+    .matrix {
+      display: grid; grid-template-columns: 180px repeat(5, 1fr);
+      gap: 6px; margin-top: 18px; font-size: 13px;
+    }
+    .m-h, .m-c {
+      background: rgba(255,255,255,.08); border-radius: 8px;
+      padding: 10px 8px; text-align: center; font-weight: 700;
+    }
+    .m-h { background: linear-gradient(135deg, #667eea, #764ba2); }
+    .ok { background: rgba(40,167,69,.35); color: #b8ffcf; }
+    .no { background: rgba(255,255,255,.04); color: transparent; }
+
+    .kpi { text-align: left; }
+    .kpi b { display: block; font-size: 32px; font-weight: 800; }
+    .kpi span { color: #c5cadb; font-size: 14px; }
+
+    .footer-bar {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      height: 56px; display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px;
+      background: rgba(8,10,22,.72); backdrop-filter: blur(12px);
+      border-top: 1px solid rgba(255,255,255,.08);
+      z-index: 10;
+    }
+    .progress { position: absolute; left: 0; top: 0; height: 3px; width: 0; background: linear-gradient(90deg, #667eea, #20c997); }
+    .nav { display: flex; gap: 8px; }
+    button.navbtn {
+      background: rgba(255,255,255,.08); color: #fff; border: 1px solid rgba(255,255,255,.14);
+      width: 38px; height: 32px; border-radius: 8px; cursor: pointer;
+    }
+    button.navbtn:hover { background: rgba(255,255,255,.16); }
+    .hint { color: #9aa3bb; font-size: 13px; }
+    .counter { font-variant-numeric: tabular-nums; color: #cfd4e4; font-weight: 600; }
+
+    .two-col { display: grid; grid-template-columns: 1.1fr .9fr; gap: 28px; align-items: start; }
+    .score {
+      font-size: 64px; font-weight: 800; line-height: 1;
+      background: linear-gradient(135deg, #20c997, #4facfe);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .tiny { color: #b0b7cc; font-size: 14px; margin-top: 8px; }
+
+    @media (max-width: 980px) {
+      .slide { padding: 32px 22px 80px; }
+      h1 { font-size: 36px; }
+      h2 { font-size: 28px; }
+      .grid-2, .grid-3, .grid-4, .two-col { grid-template-columns: 1fr; }
+    }
+    @media print {
+      body { overflow: visible; background: #111; }
+      .slide { position: relative; display: flex !important; page-break-after: always; min-height: 100vh; }
+      .footer-bar { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <section class="slide title-slide">
+    <div class="eyebrow"><i class="fa-solid fa-flask"></i> QMS · QA Manager</div>
+    <h1>Система управления качеством тестирования</h1>
+    <p class="lead">Единое рабочее место аналитика, тестировщика и администратора: требования, тест-кейсы, прогоны, трассировка и ИИ-ревью.</p>
+    <div class="flow" style="margin-top:36px">
+      <span class="chip">Проекты</span><span class="arrow">→</span>
+      <span class="chip">User Stories</span><span class="arrow">→</span>
+      <span class="chip">Тест-кейсы</span><span class="arrow">→</span>
+      <span class="chip">Тест-раны</span><span class="arrow">→</span>
+      <span class="chip">Покрытие</span>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Зачем нужна система</h2>
+    <p class="sub">Классические таблицы и разрозненные TestRail/Excel не закрывают связку «требование → кейс → результат».</p>
+    <div class="grid grid-3">
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-link"></i></div>
+        <h3>Потеря трассировки</h3>
+        <p>Не видно, какие user story закрыты тестами, а какие остались без покрытия.</p>
+      </div>
+      <div class="card">
+        <div class="icon gold"><i class="fa-solid fa-pen-ruler"></i></div>
+        <h3>Качество кейсов</h3>
+        <p>Кейсы без шагов, предусловий и тегов копятся и не проходят ревью.</p>
+      </div>
+      <div class="card">
+        <div class="icon teal"><i class="fa-solid fa-people-arrows"></i></div>
+        <h3>Разные роли</h3>
+        <p>Аналитик проектирует покрытие, тестировщик исполняет, админ управляет доступом — нужны разные экраны.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Что это за продукт</h2>
+    <p class="sub">Веб-приложение QA Manager (QMS) на Spring Boot: каталог тестов, требования и исполнение в одном контуре.</p>
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>Для команды качества</h3>
+        <ul class="list">
+          <li><i class="fa-solid fa-check"></i> Хранение проектов, секций, user story и тест-сьютов</li>
+          <li><i class="fa-solid fa-check"></i> Полноценные тест-кейсы: шаги, теги, приоритеты, статусы</li>
+          <li><i class="fa-solid fa-check"></i> Тест-раны с фиксацией Passed / Failed / Skipped</li>
+          <li><i class="fa-solid fa-check"></i> Матрица трассируемости «User Story × Test Case»</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Отличие от «просто TMS»</h3>
+        <ul class="list">
+          <li><i class="fa-solid fa-star"></i> ИИ-анализ соответствия кейсов требованиям</li>
+          <li><i class="fa-solid fa-star"></i> ИИ-ревью качества кейса с оценкой 1–10</li>
+          <li><i class="fa-solid fa-star"></i> Импорт секций и stories из Excel/CSV</li>
+          <li><i class="fa-solid fa-star"></i> Ролевой вход: Admin / Analyst / Tester</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Три роли — три входа</h2>
+    <p class="sub">После логина пользователь попадает на свой рабочий стол. Пароли хранятся в BCrypt.</p>
+    <div class="grid grid-3">
+      <div class="card role">
+        <div>
+          <div class="icon rose"><i class="fa-solid fa-user-shield"></i></div>
+          <h3>ADMIN</h3>
+          <span class="badge">/admin/users</span>
+          <p>Создание и редактирование пользователей, роли, активация и деактивация с причиной, статистика аккаунтов.</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-diagram-project"></i></div>
+        <h3>ANALYST</h3>
+        <span class="badge">/projects</span>
+        <p>Проекты, секции, user stories, связь с кейсами, матрица покрытия, импорт требований.</p>
+      </div>
+      <div class="card">
+        <div class="icon teal"><i class="fa-solid fa-vial"></i></div>
+        <h3>TESTER</h3>
+        <span class="badge">/project-qa</span>
+        <p>Тест-сьюты, кейсы, шаги, теги, комментарии, ИИ-ревью и выполнение тест-ранов.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Модель данных</h2>
+    <p class="sub">Иерархия от проекта до шага — так, как думает QA-команда.</p>
+    <div class="flow">
+      <span class="chip">Project</span><span class="arrow">→</span>
+      <span class="chip">Section</span><span class="arrow">→</span>
+      <span class="chip">User Story</span>
+    </div>
+    <div class="flow" style="margin-top:14px">
+      <span class="chip">Project</span><span class="arrow">→</span>
+      <span class="chip">Test Suite</span><span class="arrow">→</span>
+      <span class="chip">Test Case</span><span class="arrow">→</span>
+      <span class="chip">Steps / Tags / Comments</span>
+    </div>
+    <div class="flow" style="margin-top:14px">
+      <span class="chip">Project</span><span class="arrow">→</span>
+      <span class="chip">Test Run</span><span class="arrow">→</span>
+      <span class="chip">Результат по каждому кейсу</span>
+    </div>
+    <div class="card" style="margin-top:28px">
+      <p>Связь many-to-many: один тест-кейс покрывает несколько user story, одна story закрывается несколькими кейсами. Именно это питает матрицу трассируемости.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Тест-кейсы как центр системы</h2>
+    <p class="sub">Не «название в списке», а полноценный артефакт тестирования.</p>
+    <div class="grid grid-4">
+      <div class="card kpi"><b>4</b><span>приоритета: Low → Critical</span></div>
+      <div class="card kpi"><b>4</b><span>статуса: Draft, Review, Active, Archive</span></div>
+      <div class="card kpi"><b>Шаги</b><span>действие + ожидаемый результат</span></div>
+      <div class="card kpi"><b>Теги</b><span>цветные метки в рамках проекта</span></div>
+    </div>
+    <div class="grid grid-2" style="margin-top:18px">
+      <div class="card">
+        <h3>Содержание кейса</h3>
+        <p>Название, описание, предусловия, шаги, теги, связанные user stories и лента комментариев.</p>
+      </div>
+      <div class="card">
+        <h3>Операции</h3>
+        <p>CRUD, поиск по сьюту, клонирование кейса вместе со структурой, добавление/удаление шагов и связей.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Требования и импорт</h2>
+    <p class="sub">Аналитик ведёт секции проекта и user stories — вручную или пакетом из файла.</p>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="icon gold"><i class="fa-solid fa-file-excel"></i></div>
+        <h3>Excel / CSV</h3>
+        <p>Поддержка .xlsx, .xls и .csv. Секции импортируются вместе с историями; отдельно можно загрузить список stories в секцию. Пакетная загрузка не «роняет» большой файл.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-sitemap"></i></div>
+        <h3>Связь с тестами</h3>
+        <p>Любой кейс привязывается к user story. Связь двусторонняя: видно покрытие требования и «зачем написан» кейс.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Тест-раны — исполнение</h2>
+    <p class="sub">Прогон собирается из отдельных кейсов или целых сьютов. Исполнитель и автор фиксируются.</p>
+    <div class="grid grid-3">
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-play"></i></div>
+        <h3>Статусы рана</h3>
+        <p>Не начат → В процессе → Завершён. Состав кейсов можно менять после создания.</p>
+      </div>
+      <div class="card">
+        <div class="icon teal"><i class="fa-solid fa-clipboard-check"></i></div>
+        <h3>Результат кейса</h3>
+        <p>Не выполнен / Успешно / Провален / Пропущен + комментарий исполнителя.</p>
+      </div>
+      <div class="card">
+        <div class="icon gold"><i class="fa-solid fa-chart-pie"></i></div>
+        <h3>Статистика</h3>
+        <p>Счётчики и проценты passed / failed / skipped / not run по каждому прогону.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Матрица трассируемости</h2>
+    <p class="sub">Живая таблица покрытия: строки — user stories, столбцы — тест-кейсы. Галочка = есть связь.</p>
+    <div class="matrix">
+      <div class="m-h">US \ TC</div>
+      <div class="m-h">TC-1</div><div class="m-h">TC-2</div><div class="m-h">TC-3</div><div class="m-h">TC-4</div><div class="m-h">TC-5</div>
+      <div class="m-c">Вход в систему</div>
+      <div class="m-c ok">✓</div><div class="m-c ok">✓</div><div class="m-c no">·</div><div class="m-c no">·</div><div class="m-c no">·</div>
+      <div class="m-c">Сброс пароля</div>
+      <div class="m-c no">·</div><div class="m-c no">·</div><div class="m-c ok">✓</div><div class="m-c no">·</div><div class="m-c no">·</div>
+      <div class="m-c">Платёж</div>
+      <div class="m-c no">·</div><div class="m-c no">·</div><div class="m-c no">·</div><div class="m-c ok">✓</div><div class="m-c ok">✓</div>
+    </div>
+    <p class="tiny">Матрица пересчитывается планировщиком и сохраняется по проекту — аналитик сразу видит «дыры» в покрытии. Клик по TC открывает кейс.</p>
+  </section>
+
+  <section class="slide">
+    <h2>Фишка: ИИ-ревью тест-кейса</h2>
+    <p class="sub">YandexGPT оценивает кейс по чеклисту качества и ставит общую оценку.</p>
+    <div class="two-col">
+      <div>
+        <ul class="list">
+          <li><i class="fa-solid fa-1"></i> Атомарность — одна проверяемая функция</li>
+          <li><i class="fa-solid fa-2"></i> Теги: есть ли и насколько уместны</li>
+          <li><i class="fa-solid fa-3"></i> Полнота описания</li>
+          <li><i class="fa-solid fa-4"></i> Шаги с действиями и ожидаемым результатом</li>
+          <li><i class="fa-solid fa-5"></i> Адекватность предусловий</li>
+          <li><i class="fa-solid fa-6"></i> Связь с пользовательскими историями</li>
+        </ul>
+      </div>
+      <div class="card" style="text-align:center; padding:36px 24px">
+        <div class="score">8/10</div>
+        <p style="margin-top:12px">Результат сохраняется в TestCaseReview и доступен повторно — не нужно гонять модель каждый раз.</p>
+        <p class="tiny">Можно ревьюить один кейс или весь сьют разом.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Фишка: ИИ-анализ покрытия</h2>
+    <p class="sub">Для всего тест-сьюта модель сопоставляет кейсы с user stories проекта.</p>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="icon teal"><i class="fa-solid fa-robot"></i></div>
+        <h3>Что делает</h3>
+        <p>Строит промпт из списка stories и полных кейсов (описание, предусловия, шаги). Для каждого кейса пишет, каким требованиям он соответствует и почему — или что покрытия нет.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><i class="fa-solid fa-comments"></i></div>
+        <h3>Куда кладёт ответ</h3>
+        <p>Комментарии типа AI_GENERATED на кейсе. Рядом живут ручные комментарии команды. История анализа (промпт + ответ) сохраняется отдельно.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Комментарии и коллаборация</h2>
+    <div class="grid grid-3">
+      <div class="card">
+        <h3>MANUAL</h3>
+        <p>Обычные заметки тестировщика или аналитика с привязкой к пользователю.</p>
+      </div>
+      <div class="card">
+        <h3>AI_GENERATED</h3>
+        <p>Автоматические выводы модели по соответствию требованиям.</p>
+      </div>
+      <div class="card">
+        <h3>SYSTEM</h3>
+        <p>Служебные сообщения процесса — отдельный тип, не смешивается с людьми и ИИ.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <p>Теги цветные и живут внутри проекта: smoke, regression, api, ui — без «глобальной свалки» меток.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Администрирование</h2>
+    <p class="sub">Отдельный кабинет администратора, недоступный аналитику и тестировщику.</p>
+    <div class="grid grid-2">
+      <ul class="list">
+        <li><i class="fa-solid fa-user-plus"></i> Создание пользователей: логин, ФИО, email, роль</li>
+        <li><i class="fa-solid fa-toggle-off"></i> Деактивация с причиной, повторная активация</li>
+        <li><i class="fa-solid fa-magnifying-glass"></i> Поиск по пользователям, REST API рядом с формами</li>
+        <li><i class="fa-solid fa-chart-simple"></i> Счётчики: всего / активных / администраторов</li>
+      </ul>
+      <div class="card">
+        <h3>Безопасность</h3>
+        <p>Spring Security, form-login, BCrypt, разграничение URL. Демо-учётные записи создаются при первом запуске: admin, analyst, tester.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Технологический стек</h2>
+    <div class="grid grid-4">
+      <div class="card"><h3>Backend</h3><p>Java 17, Spring Boot 3.5, Spring MVC + Security, JPA/Hibernate, Validation</p></div>
+      <div class="card"><h3>Данные</h3><p>PostgreSQL, схема qms_projects, ddl-auto update</p></div>
+      <div class="card"><h3>UI</h3><p>Thymeleaf, Bootstrap 5, Font Awesome, кастомный градиентный интерфейс</p></div>
+      <div class="card"><h3>ИИ и файлы</h3><p>YandexGPT (IAM-токен с автообновлением), SheetJS на клиенте, Apache POI / CSV</p></div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <p>Архитектура классическая layered: controller → service → repository → entity/DTO. Планировщик пересобирает матрицы и обновляет IAM-токен Yandex Cloud.</p>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>Карта возможностей</h2>
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>Уже умеет</h3>
+        <ul class="list">
+          <li><i class="fa-solid fa-check"></i> Ролевой доступ и отдельные UI для аналитика и QA</li>
+          <li><i class="fa-solid fa-check"></i> Каталог кейсов со шагами, тегами, клонированием</li>
+          <li><i class="fa-solid fa-check"></i> Импорт требований из Excel/CSV</li>
+          <li><i class="fa-solid fa-check"></i> Тест-раны и живая статистика прогона</li>
+          <li><i class="fa-solid fa-check"></i> Матрица трассируемости</li>
+          <li><i class="fa-solid fa-check"></i> Два ИИ-сценария: качество кейса и покрытие stories</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Для кого ценность</h3>
+        <p><b>Аналитик</b> — видит пробелы покрытия требований тестами.</p>
+        <p style="margin-top:10px"><b>Тестировщик</b> — ведёт кейсы и отмечает результаты ранов.</p>
+        <p style="margin-top:10px"><b>Тимлид / QA lead</b> — оценка качества кейсов и прозрачность прогонов.</p>
+        <p style="margin-top:10px"><b>Админ</b> — контроль доступа без лезания в БД.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide title-slide">
+    <div class="eyebrow"><i class="fa-solid fa-circle-check"></i> Итог</div>
+    <h1>QA Manager закрывает цикл качества</h1>
+    <p class="lead">От user story до отметки Passed в тест-ране — с трассировкой и ИИ-помощником, без разъезда по таблицам.</p>
+    <div class="grid grid-3" style="margin-top:36px; max-width:960px">
+      <div class="card kpi"><b>3</b><span>роли с разными экранами</span></div>
+      <div class="card kpi"><b>2</b><span>ИИ-сервиса на YandexGPT</span></div>
+      <div class="card kpi"><b>1</b><span>матрица покрытия на проект</span></div>
+    </div>
+    <p class="tiny" style="margin-top:28px">Откройте presentation.html в браузере · стрелки / пробел · F — полный экран</p>
+  </section>
+</div>
+
+<div class="footer-bar">
+  <div class="progress" id="progress"></div>
+  <div class="hint">← → · пробел · F полный экран</div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <span class="counter" id="counter">1 / 1</span>
+    <div class="nav">
+      <button class="navbtn" id="prev" aria-label="Назад"><i class="fa-solid fa-chevron-left"></i></button>
+      <button class="navbtn" id="next" aria-label="Вперёд"><i class="fa-solid fa-chevron-right"></i></button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const slides = [...document.querySelectorAll('.slide')];
+  let i = 0;
+  const counter = document.getElementById('counter');
+  const progress = document.getElementById('progress');
+
+  function show(n) {
+    i = (n + slides.length) % slides.length;
+    slides.forEach((s, idx) => s.classList.toggle('active', idx === i));
+    counter.textContent = (i + 1) + ' / ' + slides.length;
+    progress.style.width = ((i + 1) / slides.length * 100) + '%';
+  }
+  document.getElementById('prev').onclick = () => show(i - 1);
+  document.getElementById('next').onclick = () => show(i + 1);
+  document.addEventListener('keydown', (e) => {
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); show(i + 1); }
+    if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); show(i - 1); }
+    if (e.key === 'Home') show(0);
+    if (e.key === 'End') show(slides.length - 1);
+    if (e.key === 'f' || e.key === 'F') document.documentElement.requestFullscreen?.();
+  });
+  let touchX = null;
+  document.addEventListener('touchstart', e => { touchX = e.changedTouches[0].screenX; }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (touchX == null) return;
+    const dx = e.changedTouches[0].screenX - touchX;
+    if (dx < -40) show(i + 1);
+    if (dx > 40) show(i - 1);
+    touchX = null;
+  });
+  show(0);
+</script>
+</body>
+</html>

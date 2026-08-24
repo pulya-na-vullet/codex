@@ -281,6 +281,9 @@ class AuthAndPagesTests(TestCase):
         self.assertNotContains(r, "worldFx")
         self.assertNotContains(r, "id=\"portal\"")
         self.assertContains(r, "id=\"tvCastView\"")
+        self.assertContains(r, "id=\"tvCastA\"")
+        self.assertContains(r, "id=\"tvCastB\"")
+        self.assertContains(r, "tv-cast-frame")
         self.assertContains(r, "/tv/state")
         self.assertContains(r, "page_v")
         self.assertContains(r, "location.replace")
@@ -375,6 +378,7 @@ class AuthAndPagesTests(TestCase):
 
         js = Path(__file__).resolve().parent / "static" / "workshop" / "js" / "html2canvas.min.js"
         self.assertTrue(js.is_file())
+        self.assertIn('t.src="about:blank"', js.read_text(encoding="utf-8"))
 
         anon = HttpClient()
         r = anon.get("/tv/cast.jpg")
@@ -385,7 +389,10 @@ class AuthAndPagesTests(TestCase):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         r = self.http.get("/")
         self.assertContains(r, "html2canvas.min.js")
-        self.assertContains(r, "tv-cast-frame")
+        self.assertContains(r, "about:blank")
+        self.assertContains(r, "withBlankIframes")
+        self.assertContains(r, "itmTvCaster")
+        self.assertContains(r, "becomeCaster")
         self.assertContains(r, "показать клиенту на ТВ")
         self.assertContains(r, "показать рекламу на ТВ")
         self.assertContains(r, 'id="tvCastToggle"')
@@ -414,6 +421,235 @@ class AuthAndPagesTests(TestCase):
         self.assertEqual(r.json()["cast_seq"], 0)
         r = anon.get("/tv/cast.jpg")
         self.assertEqual(r.status_code, 204)
+
+    def test_tv_cast_only_one_browser_owns_the_frame(self):
+        from workshop.tv_cast_frames import get_jpeg
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        jpeg_mac = b"\xff\xd8\xffMAC"
+        jpeg_srv = b"\xff\xd8\xffSRV"
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/orders","caster":"mac-1"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["caster"], "mac-1")
+        self.assertEqual(r.json()["crm_path"], "/orders")
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/products","follow":true,"caster":"server-2"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["crm_path"], "/orders")
+        self.assertEqual(r.json()["caster"], "mac-1")
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/products/qms","follow":true,"caster":"mac-1"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["crm_path"], "/products/qms")
+
+        r = self.http.post(
+            "/admin-panel/tv-cast-frame",
+            data=jpeg_mac,
+            content_type="image/jpeg",
+            HTTP_X_TV_CASTER="mac-1",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(get_jpeg()[0], jpeg_mac)
+
+        r = self.http.post(
+            "/admin-panel/tv-cast-frame",
+            data=jpeg_srv,
+            content_type="image/jpeg",
+            HTTP_X_TV_CASTER="server-2",
+        )
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(r.json()["error"], "caster")
+        self.assertEqual(get_jpeg()[0], jpeg_mac)
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/products","caster":"server-2"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["caster"], "server-2")
+        self.assertEqual(r.json()["crm_path"], "/products")
+        self.assertEqual(r.json()["cast_seq"], 0)
+
+        r = self.http.post(
+            "/admin-panel/tv-cast-frame",
+            data=jpeg_srv,
+            content_type="image/jpeg",
+            HTTP_X_TV_CASTER="server-2",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(get_jpeg()[0], jpeg_srv)
+
+    def test_product_shelf_login_and_tv_path(self):
+        from pathlib import Path
+
+        from workshop.products import PRODUCTS, extract_embed, html_link_map, prepare_deck_html, rewrite_internal_html_links, scope_css
+        from workshop.tv_display import sanitize_tv_crm_path
+
+        r = self.http.get("/products")
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/login", r.url)
+
+        self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
+        r = self.http.get("/")
+        self.assertContains(r, 'href="/products">Продукты</a>')
+        self.assertContains(r, "Продукты команды")
+        self.assertContains(r, "полка презентаций")
+
+        r = self.http.get("/products")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Полка продуктов")
+        self.assertContains(r, "Voitos")
+        self.assertContains(r, "Презентация для технической команды")
+        self.assertNotIn("тракторист", r.content.decode().lower())
+        self.assertContains(r, "QMS")
+        self.assertContains(r, "Quality management system")
+        self.assertNotContains(r, "QA Manager")
+        self.assertContains(r, 'href="/products/voitos"')
+        self.assertContains(r, 'href="/products/qms"')
+        self.assertContains(r, 'href="/products/voitos/traktoristy"')
+        self.assertContains(r, 'href="/products/voitos/sosedi"')
+        self.assertRegex(
+            r.content.decode(),
+            r'nav-page-btn is-active" href="/products">Продукты</a>',
+        )
+
+        voitos = next(p for p in PRODUCTS if p.slug == "voitos")
+        mapping = html_link_map(voitos)
+        self.assertEqual(mapping["index.html"], "/products/voitos")
+        self.assertEqual(mapping["presentation-traktoristy.html"], "/products/voitos/traktoristy")
+        rewritten = rewrite_internal_html_links(
+            '<a href="presentation-traktoristy.html">x</a><a href="./demo-sosedi.html">y</a>',
+            voitos,
+        )
+        self.assertIn('href="/products/voitos/traktoristy"', rewritten)
+        self.assertIn('href="/products/voitos/sosedi"', rewritten)
+        self.assertNotIn("presentation-traktoristy.html", rewritten)
+
+        r = self.http.get("/products/voitos")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="product-deck"')
+        self.assertContains(r, "Материалы для презентации")
+        self.assertContains(r, "На полку")
+        self.assertContains(r, 'href="/products"')
+        self.assertContains(r, 'href="/products">Продукты</a>')
+        self.assertContains(r, "/products/voitos/traktoristy")
+        self.assertContains(r, "/products/voitos/sosedi")
+        self.assertNotContains(r, 'href="presentation-traktoristy.html"')
+        self.assertNotContains(r, "<base ")
+        self.assertNotContains(r, "<iframe")
+        self.assertNotContains(r, "product-deck-chrome.js")
+        self.assertNotContains(r, 'id="itmDeckTvCrm"')
+        self.assertContains(r, "html2canvas.min.js")
+        self.assertContains(r, "about:blank")
+        self.assertContains(r, "withBlankIframes")
+        self.assertContains(r, "#product-deck")
+
+        r = self.http.get("/products/voitos/traktoristy")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="product-deck"')
+        self.assertContains(r, "На полку")
+        self.assertContains(r, "техническая команда")
+        self.assertNotIn("тракторист", r.content.decode().lower())
+        self.assertContains(r, "/static/workshop/promo/products/voitos/voitos-mark.png")
+        self.assertContains(r, "/static/workshop/promo/products/voitos/qr-latest-apk.png")
+        self.assertContains(r, "/static/workshop/promo/products/voitos/qr-latest-ios.png")
+        self.assertNotContains(r, "<base ")
+        self.assertNotContains(r, "<iframe")
+
+        r = self.http.get("/products/voitos/sosedi")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "На полку")
+        self.assertContains(r, 'id="next"')
+        self.assertContains(r, "Далее")
+        self.assertContains(r, 'class="slide active"')
+        self.assertNotContains(r, "Листайте вниз")
+        self.assertContains(r, "/static/workshop/promo/products/voitos/qr-latest-apk.png")
+        self.assertContains(r, "/static/workshop/promo/products/voitos/qr-latest-ios.png")
+        self.assertContains(r, "voitos-debug.apk")
+        self.assertContains(r, "voitos-ios.ipa")
+        self.assertContains(r, "Android")
+        self.assertContains(r, "iPhone")
+        self.assertNotContains(r, "<iframe")
+
+        r = self.http.get("/products/qms")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "QA Manager")
+        self.assertContains(r, "На полку")
+        self.assertContains(r, "Система управления качеством")
+        self.assertContains(r, 'id="product-deck"')
+        self.assertNotContains(r, "<iframe")
+
+        r = self.http.get("/products/missing")
+        self.assertEqual(r.status_code, 404)
+
+        self.assertEqual(sanitize_tv_crm_path("/products"), "/products")
+        self.assertEqual(sanitize_tv_crm_path("/products/voitos/traktoristy"), "/products/voitos/traktoristy")
+        self.assertEqual(sanitize_tv_crm_path("/products/qms"), "/products/qms")
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/products"}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["crm_path"], "/products")
+
+        r = self.http.post(
+            "/admin-panel/tv-display",
+            data='{"mode":"crm","path":"/products/qms","follow":true}',
+            content_type="application/json",
+        )
+        self.assertEqual(r.json()["crm_path"], "/products/qms")
+
+        anon = HttpClient()
+        r = anon.get("/tv/frame")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "QA Manager")
+        self.assertNotContains(r, "На полку")
+        self.assertNotContains(r, 'id="itmDeckTvCrm"')
+        self.assertContains(r, 'id="product-deck"')
+        self.assertNotContains(r, "<iframe")
+
+        root = Path(__file__).resolve().parent / "static" / "workshop" / "promo" / "products"
+        self.assertTrue((root / "voitos" / "voitos-mark.png").is_file())
+        self.assertTrue((root / "voitos" / "qr-latest-apk.png").is_file())
+        self.assertTrue((root / "voitos" / "qr-latest-ios.png").is_file())
+        self.assertTrue((root / "qms" / "presentation.html").is_file())
+        self.assertFalse((root / "qms" / "QMS Code.zip").exists())
+
+        prepared = prepare_deck_html(
+            '<html><head></head><body><img src="voitos-mark.png"></body></html>',
+            voitos,
+        )
+        self.assertNotIn("<base", prepared)
+        self.assertIn("/static/workshop/promo/products/voitos/voitos-mark.png", prepared)
+
+        scoped = scope_css("html, body { height: 100%; } * { margin: 0; } .slide { color: red; }")
+        self.assertIn("#product-deck { height: 100%; }", scoped)
+        self.assertIn("#product-deck, #product-deck * { margin: 0; }", scoped)
+        self.assertIn("#product-deck .slide { color: red; }", scoped)
+        self.assertNotIn("html, body", scoped)
+
+        embed = extract_embed(
+            "<html><head><style>body { color: #111; } .nav { position: fixed; }</style></head>"
+            "<body><div class='deck'>x</div><script>var ok=1;</script></body></html>"
+        )
+        self.assertIn("#product-deck { color: #111; }", embed["css"])
+        self.assertIn("position: absolute", embed["css"])
+        self.assertIn("class='deck'", embed["body"])
+        self.assertIn("var ok=1", embed["scripts"])
+        self.assertNotIn("<script", embed["body"])
 
     def test_quiet_tv_poll_log_filter(self):
         import logging

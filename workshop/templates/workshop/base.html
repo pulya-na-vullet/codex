@@ -359,6 +359,63 @@
         body.tv-cast main.container-fluid { padding: 1.2rem 1.5rem 2rem; font-size: 1.12rem; }
         body.tv-cast form .btn,
         body.tv-cast form button { display: none !important; }
+        body.page-product-deck {
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        body.page-product-deck .navbar {
+            flex: 0 0 auto;
+            margin-bottom: 0 !important;
+        }
+        body.page-product-deck main.product-deck-main {
+            flex: 1 1 auto;
+            min-height: 0;
+            padding: 0 !important;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        body.tv-cast.page-product-deck main.product-deck-main {
+            padding: 0 !important;
+            font-size: inherit;
+        }
+        .product-embed {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .product-embed-toolbar {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 30;
+        }
+        .product-embed-toolbar a {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+            color: #f8fafc;
+            background: rgba(15, 23, 42, 0.88);
+            border: 1px solid #64748b;
+            border-radius: 10px;
+            padding: 8px 12px;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .product-embed-toolbar a:hover {
+            border-color: #93c5fd;
+            color: #fff;
+        }
+        #product-deck {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
         .tv-cast-switch {
             display: inline-flex;
             align-items: center;
@@ -588,6 +645,7 @@
         }
 
     </style>
+    {% block extra_head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}{% if tv_cast %} tv-cast{% endif %}">
 {% load workshop_extras %}
@@ -614,6 +672,7 @@
             <a class="btn btn-sm nav-page-btn {% nav_active 'acceptance' %}" href="{% url 'acceptance_acts' %}">Акты приёма</a>
             <a class="btn btn-sm nav-page-btn {% nav_active 'modeling' %}" href="{% url 'modeling_list' %}">3D моделирование</a>
             <a class="btn btn-sm nav-page-btn {% nav_active 'software' %}" href="{% url 'software_list' %}">Разработка ПО</a>
+            <a class="btn btn-sm nav-page-btn {% nav_active 'products' %}" href="{% url 'products' %}">Продукты</a>
             <a class="btn btn-sm nav-page-btn {% nav_active 'statistics' %}" href="{% url 'statistics' %}">Статистика</a>
             <a class="btn btn-sm nav-page-btn {% nav_active 'audit' %}" href="{% url 'audit_log' %}">Журнал</a>
             {% if is_workshop_admin %}
@@ -641,7 +700,7 @@
     </div>
 </nav>
 {% endif %}
-<main class="container-fluid pb-4">
+<main class="container-fluid pb-4{% block main_class %}{% endblock %}">
     {% if messages %}
         <div class="mb-3">
             {% for message in messages %}
@@ -715,23 +774,53 @@
   if (!wrap || !toggle) return;
   var csrf = (document.querySelector('input[name=csrfmiddlewaretoken]') || {}).value || '';
   var lastSent = '';
+  var lastCaster = '';
   var live = false;
   var uploading = false;
   var dirty = true;
   var pumpTimer = null;
+  var dirtyTimer = null;
   var h2cLoading = false;
   var modeNow = 'ads';
+  var CASTER_KEY = 'itmTvCaster';
 
   function here() {
     return (location.pathname || '/') + (location.search || '');
   }
 
+  function myCaster() {
+    try { return sessionStorage.getItem(CASTER_KEY) || ''; } catch (e) { return ''; }
+  }
+
+  function becomeCaster() {
+    var id = myCaster();
+    if (!id) {
+      id = 'c' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      try { sessionStorage.setItem(CASTER_KEY, id); } catch (e) {}
+    }
+    return id;
+  }
+
+  function isMine() {
+    var mine = myCaster();
+    return !!(mine && lastCaster && mine === lastCaster);
+  }
+
   function setStatus(data) {
     var ads = !(data && data.mode === 'crm');
     modeNow = ads ? 'ads' : 'crm';
+    lastCaster = (data && data.caster) || '';
     wrap.classList.toggle('is-ads', ads);
     wrap.classList.toggle('is-crm', !ads);
+    wrap.classList.toggle('is-owner', !ads && isMine());
     toggle.setAttribute('aria-checked', ads ? 'true' : 'false');
+    if (!ads && lastCaster && !isMine()) {
+      wrap.title = 'Кадр на ТВ идёт с другого окна. Нажмите «показать клиенту на ТВ», чтобы вести трансляцию отсюда.';
+    } else if (!ads && isMine()) {
+      wrap.title = 'Трансляция на ТВ идёт с этого окна';
+    } else {
+      wrap.title = '';
+    }
   }
 
   async function send(mode, follow) {
@@ -741,6 +830,8 @@
     var body = { mode: mode };
     if (mode === 'crm') body.path = here();
     if (follow) body.follow = true;
+    var id = myCaster();
+    if (id) body.caster = id;
     var r = await fetch('{% url "tv_display_api" %}', {
       method: 'POST',
       credentials: 'same-origin',
@@ -760,6 +851,7 @@
   function applyMode(mode) {
     lastSent = '';
     if (mode === 'crm') {
+      becomeCaster();
       send('crm', false).then(function () { startPump(); });
     } else {
       stopPump();
@@ -778,7 +870,42 @@
     document.head.appendChild(s);
   }
 
+  function withBlankIframes(fn) {
+    var orig = document.createElement;
+    document.createElement = function (name) {
+      var el = orig.apply(this, arguments);
+      if (String(name).toLowerCase() === 'iframe') {
+        try { el.setAttribute('src', 'about:blank'); } catch (e) {}
+      }
+      return el;
+    };
+    var restore = function () { document.createElement = orig; };
+    try {
+      var result = fn();
+      if (result && typeof result.then === 'function') {
+        return Promise.resolve(result).then(function (value) {
+          restore();
+          return value;
+        }, function (err) {
+          restore();
+          throw err;
+        });
+      }
+      restore();
+      return result;
+    } catch (e) {
+      restore();
+      throw e;
+    }
+  }
+
   function prepClone(doc) {
+    Array.prototype.forEach.call(doc.querySelectorAll('iframe.html2canvas-container'), function (el) {
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    });
+    var freeze = doc.createElement('style');
+    freeze.textContent = '*,*::before,*::after{animation:none!important;transition:none!important;}';
+    (doc.head || doc.documentElement).appendChild(freeze);
     var nodes = doc.querySelectorAll('.service-tree, .panel-scroll');
     Array.prototype.forEach.call(nodes, function (el) {
       el.style.overflow = 'visible';
@@ -811,25 +938,30 @@
     var dpr = window.devicePixelRatio || 1;
     var scale = Math.min(dpr, 2, 1920 / w);
     if (scale < 1) scale = Math.min(1, 1920 / w);
-    window.html2canvas(document.body, {
-      logging: false,
-      backgroundColor: '#0f172a',
-      useCORS: true,
-      foreignObjectRendering: false,
-      scale: scale,
-      width: w,
-      height: h,
-      x: window.pageXOffset || 0,
-      y: window.pageYOffset || 0,
-      scrollX: -(window.pageXOffset || 0),
-      scrollY: -(window.pageYOffset || 0),
-      windowWidth: w,
-      windowHeight: h,
-      ignoreElements: function (el) {
-        return !!(el && el.getAttribute && el.getAttribute('data-html2canvas-ignore'));
-      },
-      onclone: prepClone
-    }).then(function (canvas) {
+    var job = withBlankIframes(function () {
+      return window.html2canvas(document.body, {
+        logging: false,
+        backgroundColor: '#0f172a',
+        useCORS: true,
+        foreignObjectRendering: false,
+        scale: scale,
+        width: w,
+        height: h,
+        x: window.pageXOffset || 0,
+        y: window.pageYOffset || 0,
+        scrollX: -(window.pageXOffset || 0),
+        scrollY: -(window.pageYOffset || 0),
+        windowWidth: w,
+        windowHeight: h,
+        ignoreElements: function (el) {
+          if (!el || !el.getAttribute) return false;
+          if (el.getAttribute('data-html2canvas-ignore')) return true;
+          return String(el.tagName || '').toLowerCase() === 'iframe';
+        },
+        onclone: prepClone
+      });
+    });
+    Promise.resolve(job).then(function (canvas) {
       return new Promise(function (resolve) {
         canvas.toBlob(resolve, 'image/jpeg', 0.88);
       });
@@ -838,8 +970,10 @@
       return fetch('{% url "tv_cast_frame_api" %}', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'image/jpeg' },
+        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'image/jpeg', 'X-Tv-Caster': myCaster() },
         body: blob
+      }).then(function (r) {
+        if (r && r.status === 409) stopPump();
       });
     }).catch(function () {}).then(function () {
       uploading = false;
@@ -850,15 +984,18 @@
     live = true;
     dirty = true;
     loadH2C(function () { dirty = true; captureOnce(); });
-    if (pumpTimer) return;
-    pumpTimer = setInterval(function () {
-      if (!live) return;
-      if (dirty) {
-        dirty = false;
-        captureOnce();
-      }
-    }, 450);
-    setInterval(function () { if (live) dirty = true; }, 1800);
+    if (!pumpTimer) {
+      pumpTimer = setInterval(function () {
+        if (!live) return;
+        if (dirty) {
+          dirty = false;
+          captureOnce();
+        }
+      }, 450);
+    }
+    if (!dirtyTimer) {
+      dirtyTimer = setInterval(function () { if (live) dirty = true; }, 1800);
+    }
   }
 
   function stopPump() {
@@ -867,17 +1004,23 @@
 
   function markDirty() { if (live) dirty = true; }
 
-  ['click', 'keyup', 'scroll', 'change', 'input'].forEach(function (ev) {
+  ['click', 'keyup', 'wheel', 'scroll', 'change', 'input'].forEach(function (ev) {
     window.addEventListener(ev, markDirty, true);
   });
   window.addEventListener('resize', markDirty);
+  window.addEventListener('pagehide', stopPump);
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) stopPump();
+    else if (modeNow === 'crm' && isMine()) startPump();
+  });
 
   async function refresh() {
+    if (document.hidden) return;
     try {
       var r = await fetch('{% url "tv_state_api" %}', { credentials: 'same-origin', cache: 'no-store' });
       var data = await r.json();
       setStatus(data);
-      if (data && data.mode === 'crm') {
+      if (data && data.mode === 'crm' && isMine()) {
         await send('crm', true);
         startPump();
       } else {
@@ -887,7 +1030,8 @@
   }
 
   toggle.addEventListener('click', function () {
-    applyMode(modeNow === 'ads' ? 'crm' : 'ads');
+    if (modeNow === 'crm' && isMine()) applyMode('ads');
+    else applyMode('crm');
   });
   if (crmLabel) crmLabel.addEventListener('click', function () { applyMode('crm'); });
   if (adsLabel) adsLabel.addEventListener('click', function () { applyMode('ads'); });

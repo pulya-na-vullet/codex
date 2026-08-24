@@ -50,13 +50,25 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      object-fit: contain;
-      object-position: center center;
       background: #000;
       display: none;
       z-index: 20;
     }
     #tvCastView.is-on { display: block; }
+    .tv-cast-frame {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center center;
+      opacity: 0;
+      z-index: 1;
+    }
+    .tv-cast-frame.is-on {
+      opacity: 1;
+      z-index: 2;
+    }
     .caption {
       position: absolute;
       left: 0; right: 0; bottom: 0;
@@ -229,7 +241,10 @@
       </section>
     </div>
   </div>
-  <img id="tvCastView" alt="">
+  <div id="tvCastView">
+    <img class="tv-cast-frame" id="tvCastA" alt="">
+    <img class="tv-cast-frame" id="tvCastB" alt="">
+  </div>
   <script>
   (function () {
     var stage = document.getElementById('tv-root');
@@ -260,7 +275,12 @@
     var lastPath = '';
     var lastCastSeq = -1;
     var PAGE_V = '{{ tv_page_version|default:"1" }}';
-    var castImg = document.getElementById('tvCastView');
+    var castWrap = document.getElementById('tvCastView');
+    var castFrames = [
+      document.getElementById('tvCastA'),
+      document.getElementById('tvCastB')
+    ];
+    var castOn = -1;
     var pollTimer = null;
 
     function slidesOf(scene) {
@@ -313,22 +333,37 @@
       paused = true;
       reportProgress(showing);
       if (stage) stage.className = 'stage is-off';
-      if (castImg) castImg.className = 'is-on';
-      if (seq && seq !== lastCastSeq) {
-        lastCastSeq = seq;
-        var src = '/tv/cast.jpg?s=' + encodeURIComponent(seq);
-        var next = new Image();
-        next.onload = function () { castImg.src = src; };
-        next.src = src;
-      }
+      if (castWrap) castWrap.className = 'is-on';
+      if (!seq || seq === lastCastSeq) return;
+      lastCastSeq = seq;
+      var src = '/tv/cast.jpg?s=' + encodeURIComponent(seq);
+      var loadIdx = castOn === 0 ? 1 : 0;
+      var img = castFrames[loadIdx];
+      if (!img) return;
+      img.onload = function () {
+        img.onload = null;
+        img.className = 'tv-cast-frame is-on';
+        if (castOn >= 0 && castOn !== loadIdx && castFrames[castOn]) {
+          castFrames[castOn].className = 'tv-cast-frame';
+        }
+        castOn = loadIdx;
+      };
+      img.onerror = function () { img.onload = null; };
+      try { img.decoding = 'sync'; } catch (e) {}
+      img.src = src;
     }
 
     function showAds(startIndex) {
       paused = false;
       lastCastSeq = -1;
-      if (castImg) {
-        castImg.className = '';
-        castImg.removeAttribute('src');
+      castOn = -1;
+      if (castWrap) castWrap.className = '';
+      var i;
+      for (i = 0; i < castFrames.length; i++) {
+        if (!castFrames[i]) continue;
+        castFrames[i].onload = null;
+        castFrames[i].className = 'tv-cast-frame';
+        castFrames[i].removeAttribute('src');
       }
       if (stage) stage.className = 'stage';
       if (typeof startIndex === 'number') {

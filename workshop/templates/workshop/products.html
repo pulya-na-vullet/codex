@@ -1,0 +1,108 @@
+{% extends "workshop/base.html" %}
+{% block title %}Продукты · {{ COMPANY_NAME }}{% endblock %}
+{% block content %}
+<style>
+  .product-shelf-head h1 {
+    font-family: Manrope, sans-serif;
+    font-weight: 800;
+    letter-spacing: .02em;
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+  }
+  .product-shelf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.25rem;
+  }
+  .product-shelf-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 280px;
+    border-radius: 1.25rem;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    overflow: hidden;
+  }
+  .product-shelf-pages a {
+    display: inline-block;
+    padding: .45rem .8rem;
+    border-radius: 999px;
+    background: #0b1220;
+    border: 1px solid #334155;
+    color: #e2e8f0;
+    font-size: .95rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .product-shelf-pages a:hover {
+    border-color: #60a5fa;
+    color: #fff;
+  }
+  a.product-shelf-open {
+    margin-top: .5rem;
+    font-weight: 800;
+    color: #7ddea0;
+    font-size: 1.05rem;
+    text-decoration: none;
+  }
+  a.product-shelf-open:hover { color: #bbf7d0; }
+  .product-shelf-accent {
+    height: 8px;
+  }
+  .product-shelf-body {
+    padding: 1.35rem 1.4rem 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+    flex: 1;
+  }
+  .product-shelf-name {
+    font-family: Manrope, sans-serif;
+    font-size: 1.7rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .product-shelf-tag {
+    color: #93c5fd;
+    font-weight: 700;
+    font-size: 1.05rem;
+  }
+  .product-shelf-desc {
+    color: var(--text-soft);
+    font-size: 1.02rem;
+    line-height: 1.45;
+    flex: 1;
+  }
+  .product-shelf-pages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .45rem;
+    margin-top: .4rem;
+  }
+</style>
+<div class="product-shelf-head mb-4">
+  <h1 class="mb-2">Полка продуктов</h1>
+  <p class="small-muted mb-0" style="font-size:1.05rem;max-width:46rem;">
+    Презентации продуктов команды. Откройте карточку, листайте слайды стрелками или пробелом.
+    Чтобы показать клиенту на телевизоре — включите «показать клиенту на ТВ» и оставьте эту страницу на экране.
+  </p>
+</div>
+<div class="product-shelf-grid">
+  {% for product in products %}
+  <article class="product-shelf-card">
+    <div class="product-shelf-accent" style="background:{{ product.accent }};"></div>
+    <div class="product-shelf-body">
+      <div class="product-shelf-name">{{ product.name }}</div>
+      <div class="product-shelf-tag">{{ product.tagline }}</div>
+      <div class="product-shelf-desc">{{ product.description }}</div>
+      <div class="product-shelf-pages">
+        {% for url, page in product.page_links %}
+        <a href="{{ url }}">{{ page.title }}</a>
+        {% endfor %}
+      </div>
+      <a class="product-shelf-open" href="{{ product.open_url }}">Открыть презентацию →</a>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}

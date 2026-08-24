@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voitos — презентация для технической команды</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #102033;
+      --ink-soft: #3a4d63;
+      --teal: #1f9e8f;
+      --teal-deep: #0f6f66;
+      --ice: #eef4f8;
+      --panel: rgba(255, 255, 255, 0.72);
+      --line: rgba(16, 32, 51, 0.12);
+      --ok: #2f9d6a;
+      --font-display: "Syne", sans-serif;
+      --font-body: "Manrope", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: var(--font-body);
+      color: var(--ink);
+      background: #d9e6f0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .sky {
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background:
+        radial-gradient(1100px 700px at 8% -12%, #dcecf6 0%, transparent 55%),
+        radial-gradient(900px 600px at 92% 0%, #c8e4de 0%, transparent 50%),
+        linear-gradient(165deg, #eef4f8 0%, #d9e6f0 50%, #e8f1ef 100%);
+    }
+
+    .deck {
+      height: 100%;
+      width: 100%;
+      position: relative;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: none;
+      padding: clamp(1.5rem, 4vh, 3rem) clamp(1.5rem, 5vw, 4.5rem) 4.5rem;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .slide.active {
+      display: flex;
+      animation: rise 0.45s ease;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .sheet {
+      width: min(1080px, 100%);
+      display: grid;
+      gap: clamp(1rem, 2.5vh, 1.75rem);
+    }
+
+    .brand {
+      font-family: var(--font-display);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      font-size: clamp(1.4rem, 3vw, 2rem);
+      color: var(--ink);
+    }
+    .brand em { font-style: normal; color: var(--teal-deep); }
+
+    .kicker {
+      font-size: clamp(0.85rem, 1.4vw, 1rem);
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--teal-deep);
+    }
+
+    h1, h2 {
+      font-family: var(--font-display);
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1.05;
+    }
+
+    h1 { font-size: clamp(2.2rem, 6vw, 4.4rem); max-width: 16ch; }
+    h2 { font-size: clamp(1.8rem, 4.5vw, 3.2rem); max-width: 18ch; }
+
+    .lede {
+      font-size: clamp(1.1rem, 2.1vw, 1.55rem);
+      color: var(--ink-soft);
+      font-weight: 500;
+      max-width: 38ch;
+      line-height: 1.4;
+    }
+
+    .grid-2 {
+      display: grid;
+      gap: 1rem;
+    }
+    @media (min-width: 820px) {
+      .grid-2 { grid-template-columns: 1.1fr 0.9fr; align-items: center; }
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 1.25rem;
+      padding: clamp(1rem, 2.5vw, 1.5rem);
+      backdrop-filter: blur(8px);
+    }
+
+    .steps {
+      list-style: none;
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .steps li {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.85rem;
+      align-items: start;
+      font-size: clamp(1rem, 1.7vw, 1.25rem);
+      color: var(--ink);
+      font-weight: 500;
+      line-height: 1.35;
+    }
+
+    .n {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 999px;
+      background: rgba(31, 158, 143, 0.18);
+      color: var(--teal-deep);
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+      font-family: var(--font-display);
+      flex-shrink: 0;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+    }
+
+    .chip {
+      padding: 0.45rem 0.85rem;
+      border-radius: 999px;
+      background: rgba(31, 158, 143, 0.14);
+      color: var(--teal-deep);
+      font-weight: 600;
+      font-size: clamp(0.9rem, 1.4vw, 1.05rem);
+      border: 1px solid rgba(15, 111, 102, 0.18);
+    }
+
+    .hero-visual {
+      aspect-ratio: 1;
+      width: min(100%, 340px);
+      justify-self: end;
+      border-radius: 28% 42% 32% 48% / 40% 30% 50% 35%;
+      background:
+        linear-gradient(145deg, rgba(31, 158, 143, 0.22), rgba(80, 140, 190, 0.18)),
+        radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.55), transparent 55%);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      animation: float-soft 7s ease-in-out infinite;
+    }
+
+    .hero-visual img { width: 68%; height: auto; display: block; }
+
+    @keyframes float-soft {
+      0%, 100% { transform: translateY(0) rotate(-1deg); }
+      50% { transform: translateY(-10px) rotate(1.2deg); }
+    }
+
+    .flow {
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .flow-row {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.75rem;
+      align-items: center;
+      padding: 0.75rem 0.9rem;
+      border-radius: 0.9rem;
+      background: rgba(255, 255, 255, 0.55);
+      border: 1px solid var(--line);
+      font-size: clamp(0.95rem, 1.5vw, 1.15rem);
+      font-weight: 500;
+    }
+
+    .arrow {
+      color: var(--teal-deep);
+      font-weight: 800;
+      font-family: var(--font-display);
+    }
+
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.85rem clamp(1rem, 4vw, 2rem) 1.1rem;
+      background: linear-gradient(180deg, transparent, rgba(232, 241, 239, 0.92) 35%);
+    }
+
+    .nav button {
+      font: inherit;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.8);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 0.65rem 1.1rem;
+      cursor: pointer;
+    }
+
+    .nav button:hover { border-color: rgba(15, 111, 102, 0.35); }
+    .nav button:disabled { opacity: 0.35; cursor: default; }
+
+    .dots {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .dots button {
+      width: 0.55rem;
+      height: 0.55rem;
+      padding: 0;
+      border-radius: 50%;
+      border: none;
+      background: rgba(16, 32, 51, 0.22);
+      cursor: pointer;
+    }
+
+    .dots button.on { background: var(--teal-deep); transform: scale(1.25); }
+
+    .counter {
+      position: fixed;
+      top: 1rem;
+      right: 1.25rem;
+      z-index: 20;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--ink-soft);
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0.35rem 0.75rem;
+    }
+
+    .hint-keys {
+      font-size: 0.85rem;
+      color: var(--ink-soft);
+      text-align: center;
+    }
+
+    .two-col {
+      display: grid;
+      gap: 0.85rem;
+    }
+    @media (min-width: 720px) {
+      .two-col { grid-template-columns: 1fr 1fr; }
+    }
+
+    .mini-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: clamp(1.1rem, 2vw, 1.35rem);
+      margin-bottom: 0.45rem;
+    }
+
+    .muted { color: var(--ink-soft); font-weight: 500; }
+
+    .finale .sheet { text-align: center; justify-items: center; }
+    .finale h2 { max-width: 18ch; }
+
+    .qr-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.85rem;
+      margin-top: 0.85rem;
+      width: min(520px, 100%);
+    }
+    .qr-block {
+      text-align: center;
+    }
+    .qr-block img {
+      width: min(28vw, 148px);
+      height: auto;
+      background: #f4f8fb;
+      padding: 0.45rem;
+      border-radius: 1rem;
+      border: 1px solid var(--line);
+    }
+    .qr-block p {
+      font-weight: 700;
+      margin-top: 0.4rem;
+    }
+    .qr-block a {
+      display: inline-block;
+      margin-top: 0.2rem;
+      color: var(--teal-deep);
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-decoration: none;
+      border-bottom: 1px solid rgba(15, 111, 102, 0.35);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slide.active { animation: none; }
+      .hero-visual { animation: none; }
+    }
+
+    @media print {
+      html, body { overflow: visible; height: auto; background: white; }
+      .sky, .nav, .counter { display: none !important; }
+      .slide {
+        position: relative;
+        display: flex !important;
+        page-break-after: always;
+        min-height: 100vh;
+        animation: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="sky" aria-hidden="true"></div>
+  <div class="counter" id="counter">1 / 10</div>
+
+  <div class="deck" id="deck">
+    <!-- 1 -->
+    <section class="slide active" data-slide="0">
+      <div class="sheet grid-2">
+        <div>
+          <p class="brand">Voi<em>tos</em></p>
+          <p class="kicker" style="margin-top:1rem;">Презентация для исполнителей</p>
+          <h1>Как техническая команда работает в Voitos</h1>
+          <p class="lede">Коротко о проекте, заявках со двора и вашем дне: от регистрации до маршрута и оплаты.</p>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+          <img src="voitos-mark.png" alt="" width="280" height="280" />
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section class="slide" data-slide="1">
+      <div class="sheet">
+        <p class="kicker">Что такое Voitos</p>
+        <h2>Платформа двора: соседи + мастера</h2>
+        <div class="two-col" style="margin-top:0.5rem;">
+          <div class="panel">
+            <p class="mini-title">Жители</p>
+            <p class="muted">Собирают деньги на снег и дорогу, вызывают мастеров, ведут чат группы (например, «9 аллея»).</p>
+          </div>
+          <div class="panel">
+            <p class="mini-title">Исполнители</p>
+            <p class="muted">Техническая команда, водители грузовика, компьютерные мастера и другие роли — получают заказы в приложении.</p>
+          </div>
+        </div>
+        <div class="chips" style="margin-top:0.25rem;">
+          <span class="chip">Сборы двора</span>
+          <span class="chip">Заявки</span>
+          <span class="chip">Маршрут на карте</span>
+          <span class="chip">Оплата работы</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section class="slide" data-slide="2">
+      <div class="sheet">
+        <p class="kicker">Откуда берётся работа</p>
+        <h2>Снег и дорога — через сбор денег</h2>
+        <ol class="steps panel">
+          <li><span class="n">1</span><span>Группа соседей (улица / аллея) запускает сбор: чистка снега или ремонт дороги.</span></li>
+          <li><span class="n">2</span><span>Жители скидываются в приложении. Видно, кто уже оплатил.</span></li>
+          <li><span class="n">3</span><span>Когда сумма собрана — заказ уходит исполнителям техники.</span></li>
+          <li><span class="n">4</span><span>Вам приходит адрес объекта (например «9 аллея») и предложение по времени.</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section class="slide" data-slide="3">
+      <div class="sheet">
+        <p class="kicker">Приоритет команды Voitos</p>
+        <h2>Сначала своим — потом остальным</h2>
+        <div class="two-col">
+          <div class="panel">
+            <p class="mini-title">Высокий приоритет</p>
+            <p class="muted">Если при проверке анкеты отметили «член команды Voitos» — заявки падают вам в первую очередь.</p>
+          </div>
+          <div class="panel">
+            <p class="mini-title">Когда занято</p>
+            <p class="muted">Если у приоритетных на сегодня слоты забиты — заказ передаётся другим проверенным исполнителям.</p>
+          </div>
+        </div>
+        <p class="lede" style="margin-top:0.5rem;">Так двор получает технику быстрее, а команда Voitos — стабильный поток заказов.</p>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section class="slide" data-slide="4">
+      <div class="sheet">
+        <p class="kicker">Регистрация</p>
+        <h2>Что заполняете один раз</h2>
+        <ol class="steps panel">
+          <li><span class="n">1</span><span>Роль: техническая команда или водитель грузовой.</span></li>
+          <li><span class="n">2</span><span>Модель / тип техники и госномер.</span></li>
+          <li><span class="n">3</span><span>Стаж работы на технике.</span></li>
+          <li><span class="n">4</span><span>Телефон, населённый пункт, банк и телефон для перевода.</span></li>
+          <li><span class="n">5</span><span>Фото водительских прав / удостоверения — на проверку админу.</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- 6 -->
+    <section class="slide" data-slide="5">
+      <div class="sheet">
+        <p class="kicker">Рабочий день</p>
+        <h2>Флоу заказа в приложении</h2>
+        <div class="flow panel">
+          <div class="flow-row"><span class="arrow">→</span><span>Приходит предложение: задача, время, адрес группы.</span></div>
+          <div class="flow-row"><span class="arrow">→</span><span>«Согласен» / «Отказаться» / предложить другое время.</span></div>
+          <div class="flow-row"><span class="arrow">→</span><span>Маршрут от вас до объекта: Яндекс.Карты или 2ГИС.</span></div>
+          <div class="flow-row"><span class="arrow">→</span><span>Если на задаче несколько исполнителей — контакты коллег в приложении (когда админ включил показ).</span></div>
+          <div class="flow-row"><span class="arrow">→</span><span>После работ — оплата по реквизитам из анкеты, чек в системе.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section class="slide" data-slide="6">
+      <div class="sheet grid-2">
+        <div>
+          <p class="kicker">На объекте</p>
+          <h2>«9 аллея» — не абстракция</h2>
+          <p class="lede">В заявке видите название группы двора и населённый пункт. Маршрут строится к этому адресу с вашего текущего места.</p>
+        </div>
+        <div class="panel">
+          <p class="mini-title">Пример карточки</p>
+          <p style="font-size:1.15rem; font-weight:600; margin:0.4rem 0;">Чистка снега</p>
+          <p class="muted">Объект: 9 аллея, Куюки</p>
+          <p class="muted">Роль: техническая команда</p>
+          <p class="muted" style="margin-top:0.75rem;">Кнопки: Яндекс.Карты · 2ГИС</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8 -->
+    <section class="slide" data-slide="7">
+      <div class="sheet">
+        <p class="kicker">Зачем это вам</p>
+        <h2>Понятные заказы без беготни</h2>
+        <div class="two-col">
+          <div class="panel">
+            <ul class="steps">
+              <li><span class="n">✓</span><span>Заявки сами приходят, когда двор собрал деньги.</span></li>
+              <li><span class="n">✓</span><span>Адрес и маршрут сразу в телефоне.</span></li>
+              <li><span class="n">✓</span><span>Приоритет команде Voitos — меньше «пустых» дней.</span></li>
+            </ul>
+          </div>
+          <div class="panel">
+            <ul class="steps">
+              <li><span class="n">✓</span><span>Связь с коллегами на одной задаче.</span></li>
+              <li><span class="n">✓</span><span>Оплата через понятные реквизиты.</span></li>
+              <li><span class="n">✓</span><span>Тот же принцип — для водителя грузовика.</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9 -->
+    <section class="slide" data-slide="8">
+      <div class="sheet">
+        <p class="kicker">Старт сегодня</p>
+        <h2>Три шага</h2>
+        <ol class="steps panel">
+          <li><span class="n">1</span><span>Установить Voitos: Android — APK, iPhone — iOS-сборка (не APK).</span></li>
+          <li><span class="n">2</span><span>Зарегистрироваться исполнителем: техника, стаж, права.</span></li>
+          <li><span class="n">3</span><span>Дождаться проверки — и принимать заказы двора.</span></li>
+        </ol>
+        <div class="qr-pair">
+          <div class="qr-block">
+            <img src="qr-latest-apk.png" width="148" height="148" alt="QR: Voitos для Android" />
+            <p>Android</p>
+            <a href="https://github.com/pulya-na-vullet/Voitos/releases/latest/download/voitos-debug.apk">APK</a>
+          </div>
+          <div class="qr-block">
+            <img src="qr-latest-ios.png" width="148" height="148" alt="QR: Voitos для iPhone" />
+            <p>iPhone</p>
+            <a href="https://github.com/pulya-na-vullet/Voitos/releases/latest/download/voitos-ios.ipa">iOS</a>
+          </div>
+        </div>
+        <p class="lede" style="margin-top:0.75rem;">APK на iPhone не ставится — для Apple свой QR.</p>
+      </div>
+    </section>
+
+    <!-- 10 -->
+    <section class="slide finale" data-slide="9">
+      <div class="sheet">
+        <p class="brand" style="font-size:clamp(2.4rem,7vw,4.5rem);">Voi<em>tos</em></p>
+        <h2>Двор собирает — вы выезжаете</h2>
+        <p class="lede">Вопросы по подключению и приоритету команды — к администратору Voitos после презентации.</p>
+        <div class="chips" style="justify-content:center; margin-top:0.5rem;">
+          <span class="chip">Техническая команда</span>
+          <span class="chip">Водитель грузовика</span>
+          <span class="chip">Команда Voitos</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="nav">
+    <button type="button" id="prev" aria-label="Назад">← Назад</button>
+    <div>
+      <div class="dots" id="dots" aria-label="Слайды"></div>
+      <p class="hint-keys">← → · пробел · клик по точкам</p>
+    </div>
+    <button type="button" id="next" aria-label="Вперёд">Далее →</button>
+  </div>
+
+  <script>
+    (function () {
+      var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+      var i = 0;
+      var dots = document.getElementById("dots");
+      var counter = document.getElementById("counter");
+      var prev = document.getElementById("prev");
+      var next = document.getElementById("next");
+
+      slides.forEach(function (_, idx) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("aria-label", "Слайд " + (idx + 1));
+        b.addEventListener("click", function () { go(idx); });
+        dots.appendChild(b);
+      });
+
+      function go(n) {
+        if (n < 0 || n >= slides.length) return;
+        slides[i].classList.remove("active");
+        i = n;
+        slides[i].classList.add("active");
+        counter.textContent = (i + 1) + " / " + slides.length;
+        prev.disabled = i === 0;
+        next.disabled = i === slides.length - 1;
+        Array.prototype.forEach.call(dots.children, function (d, idx) {
+          d.classList.toggle("on", idx === i);
+        });
+      }
+
+      prev.addEventListener("click", function () { go(i - 1); });
+      next.addEventListener("click", function () { go(i + 1); });
+
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
+          e.preventDefault();
+          go(i + 1);
+        } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+          e.preventDefault();
+          go(i - 1);
+        } else if (e.key === "Home") {
+          go(0);
+        } else if (e.key === "End") {
+          go(slides.length - 1);
+        }
+      });
+
+      go(0);
+    })();
+  </script>
+</body>
+</html>

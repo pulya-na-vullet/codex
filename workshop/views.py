@@ -8,7 +8,7 @@ from io import BytesIO
 from django.conf import settings
 from django.contrib import messages
 from django.db.models import Q
-from django.http import HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -74,6 +74,7 @@ def dashboard(request: HttpRequest):
         SoftwareDevContract,
         SoftwareDevStatus,
     )
+    from workshop.products import PRODUCTS
 
     orders_in_work = Order.objects.filter(status=OrderStatus.ACTIVE).count()
     diagnostics_in_work = AcceptanceAct.objects.filter(status=AcceptanceActStatus.DIAGNOSTICS).count()
@@ -124,8 +125,52 @@ def dashboard(request: HttpRequest):
             "software_open": software_open,
             "software_in_progress": software_in_progress,
             "software_pending_signature": software_pending_signature,
+            "product_count": len(PRODUCTS),
         },
     )
+
+
+def products_shelf(request: HttpRequest):
+    from workshop.products import PRODUCTS
+
+    return render(
+        request,
+        "workshop/products.html",
+        {
+            "title": "Продукты",
+            "products": PRODUCTS,
+        },
+    )
+
+
+def product_deck(request: HttpRequest, slug: str, page: str | None = None):
+    from workshop.products import extract_embed, get_product, rewrite_internal_html_links, rewrite_relative_assets
+
+    product = get_product(slug)
+    if product is None:
+        raise Http404("product")
+    page_obj = product.page(page)
+    if page_obj is None:
+        raise Http404("product page")
+    path = product.file_path(page_obj)
+    if not path.is_file():
+        raise Http404("product file")
+    html = path.read_text(encoding="utf-8")
+    html = rewrite_internal_html_links(html, product)
+    html = rewrite_relative_assets(html, product)
+    deck = extract_embed(html)
+    return render(
+        request,
+        "workshop/product_embed.html",
+        {
+            "product": product,
+            "page": page_obj,
+            "deck": deck,
+            "title": f"{product.name} · {page_obj.title}",
+            "product_embed": True,
+        },
+    )
+
 
 def statistics(request: HttpRequest):
     from calendar import Calendar
@@ -2953,12 +2998,14 @@ def tv_display_api(request: HttpRequest):
     follow = bool(payload.get("follow"))
     viewport_w = payload.get("viewport_w", request.POST.get("viewport_w"))
     viewport_h = payload.get("viewport_h", request.POST.get("viewport_h"))
+    caster = payload.get("caster", request.POST.get("caster"))
     cfg = set_display(
         mode=mode,
         path=path,
         follow=follow,
         viewport_w=viewport_w,
         viewport_h=viewport_h,
+        caster=caster,
     )
     if not follow:
         log_action(
@@ -2976,7 +3023,13 @@ def tv_cast_frame_api(request: HttpRequest):
     from workshop.tv_cast_frames import put_jpeg
     from workshop.tv_display import state_payload
 
-    seq = put_jpeg(request.body or b"")
+    caster = request.headers.get("X-Tv-Caster") or request.META.get("HTTP_X_TV_CASTER") or ""
+    seq = put_jpeg(request.body or b"", caster=caster)
+    if seq is None:
+        payload = state_payload()
+        payload["ok"] = False
+        payload["error"] = "caster"
+        return HttpResponse(json.dumps(payload), content_type="application/json", status=409)
     if not seq:
         return HttpResponse(
             json.dumps({"ok": False, "error": "not-jpeg"}),
