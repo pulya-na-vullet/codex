@@ -98,8 +98,8 @@ PRODUCTS: tuple[Product, ...] = (
     ),
     Product(
         slug="qms",
-        name="QA Manager",
-        tagline="Система управления качеством тестирования",
+        name="QMS",
+        tagline="Quality management system",
         description=(
             "Веб-приложение QMS: каталог тестов, требования, тест-раны и матрица "
             "трассируемости. ИИ-ревью кейсов, роли Admin / Analyst / Tester."
@@ -110,7 +110,7 @@ PRODUCTS: tuple[Product, ...] = (
             ProductPage(
                 slug="presentation",
                 file_name="presentation.html",
-                title="Презентация QA Manager",
+                title="Презентация QMS",
                 blurb="Слайды по продукту. Стрелки или пробел — листать.",
                 kind="slides",
             ),
