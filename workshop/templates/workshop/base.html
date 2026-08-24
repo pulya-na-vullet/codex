@@ -838,7 +838,42 @@
     document.head.appendChild(s);
   }
 
+  function withBlankIframes(fn) {
+    var orig = document.createElement;
+    document.createElement = function (name) {
+      var el = orig.apply(this, arguments);
+      if (String(name).toLowerCase() === 'iframe') {
+        try { el.setAttribute('src', 'about:blank'); } catch (e) {}
+      }
+      return el;
+    };
+    var restore = function () { document.createElement = orig; };
+    try {
+      var result = fn();
+      if (result && typeof result.then === 'function') {
+        return Promise.resolve(result).then(function (value) {
+          restore();
+          return value;
+        }, function (err) {
+          restore();
+          throw err;
+        });
+      }
+      restore();
+      return result;
+    } catch (e) {
+      restore();
+      throw e;
+    }
+  }
+
   function prepClone(doc) {
+    Array.prototype.forEach.call(doc.querySelectorAll('iframe.html2canvas-container'), function (el) {
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    });
+    var freeze = doc.createElement('style');
+    freeze.textContent = '*,*::before,*::after{animation:none!important;transition:none!important;}';
+    (doc.head || doc.documentElement).appendChild(freeze);
     var nodes = doc.querySelectorAll('.service-tree, .panel-scroll');
     Array.prototype.forEach.call(nodes, function (el) {
       el.style.overflow = 'visible';
@@ -871,25 +906,30 @@
     var dpr = window.devicePixelRatio || 1;
     var scale = Math.min(dpr, 2, 1920 / w);
     if (scale < 1) scale = Math.min(1, 1920 / w);
-    window.html2canvas(document.body, {
-      logging: false,
-      backgroundColor: '#0f172a',
-      useCORS: true,
-      foreignObjectRendering: false,
-      scale: scale,
-      width: w,
-      height: h,
-      x: window.pageXOffset || 0,
-      y: window.pageYOffset || 0,
-      scrollX: -(window.pageXOffset || 0),
-      scrollY: -(window.pageYOffset || 0),
-      windowWidth: w,
-      windowHeight: h,
-      ignoreElements: function (el) {
-        return !!(el && el.getAttribute && el.getAttribute('data-html2canvas-ignore'));
-      },
-      onclone: prepClone
-    }).then(function (canvas) {
+    var job = withBlankIframes(function () {
+      return window.html2canvas(document.body, {
+        logging: false,
+        backgroundColor: '#0f172a',
+        useCORS: true,
+        foreignObjectRendering: false,
+        scale: scale,
+        width: w,
+        height: h,
+        x: window.pageXOffset || 0,
+        y: window.pageYOffset || 0,
+        scrollX: -(window.pageXOffset || 0),
+        scrollY: -(window.pageYOffset || 0),
+        windowWidth: w,
+        windowHeight: h,
+        ignoreElements: function (el) {
+          if (!el || !el.getAttribute) return false;
+          if (el.getAttribute('data-html2canvas-ignore')) return true;
+          return String(el.tagName || '').toLowerCase() === 'iframe';
+        },
+        onclone: prepClone
+      });
+    });
+    Promise.resolve(job).then(function (canvas) {
       return new Promise(function (resolve) {
         canvas.toBlob(resolve, 'image/jpeg', 0.88);
       });

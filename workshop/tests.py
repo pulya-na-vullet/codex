@@ -281,6 +281,9 @@ class AuthAndPagesTests(TestCase):
         self.assertNotContains(r, "worldFx")
         self.assertNotContains(r, "id=\"portal\"")
         self.assertContains(r, "id=\"tvCastView\"")
+        self.assertContains(r, "id=\"tvCastA\"")
+        self.assertContains(r, "id=\"tvCastB\"")
+        self.assertContains(r, "tv-cast-frame")
         self.assertContains(r, "/tv/state")
         self.assertContains(r, "page_v")
         self.assertContains(r, "location.replace")
@@ -375,6 +378,7 @@ class AuthAndPagesTests(TestCase):
 
         js = Path(__file__).resolve().parent / "static" / "workshop" / "js" / "html2canvas.min.js"
         self.assertTrue(js.is_file())
+        self.assertIn('t.src="about:blank"', js.read_text(encoding="utf-8"))
 
         anon = HttpClient()
         r = anon.get("/tv/cast.jpg")
@@ -385,7 +389,8 @@ class AuthAndPagesTests(TestCase):
         self.http.post("/login", {"username": "ITM", "password": "pass", "next": "/"})
         r = self.http.get("/")
         self.assertContains(r, "html2canvas.min.js")
-        self.assertContains(r, "tv-cast-frame")
+        self.assertContains(r, "about:blank")
+        self.assertContains(r, "withBlankIframes")
         self.assertContains(r, "показать клиенту на ТВ")
         self.assertContains(r, "показать рекламу на ТВ")
         self.assertContains(r, 'id="tvCastToggle"')
@@ -474,6 +479,8 @@ class AuthAndPagesTests(TestCase):
         self.assertNotContains(r, "product-deck-chrome.js")
         self.assertNotContains(r, 'id="itmDeckTvCrm"')
         self.assertContains(r, "html2canvas.min.js")
+        self.assertContains(r, "about:blank")
+        self.assertContains(r, "withBlankIframes")
         self.assertContains(r, "#product-deck")
 
         r = self.http.get("/products/voitos/traktoristy")
